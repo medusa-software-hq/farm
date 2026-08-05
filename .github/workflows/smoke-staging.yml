@@ -1,0 +1,61 @@
+name: Smoke-test staging
+
+# Post-deploy smoke against the deployed staging environment. workflow_call so
+# the promotion workflows can wire it as the gate between the staging and prod
+# deploys; workflow_dispatch to run it ad hoc.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NO_COLOR: 1
+
+jobs:
+  smoke:
+    name: Smoke (staging)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # `environment:` resolves vars.* to staging's values (its own project id,
+    # CI/CD identity, API URL). The trunk-only deployment branch policy allows
+    # this from trunk.
+    environment: staging
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
+          service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      # The API Cloud Run service is public (allUsers) and exposes /health, so it
+      # can be smoked end-to-end over plain HTTP at its published URL. Retry to
+      # ride out cold starts and the brief window before a new revision serves.
+      - name: Smoke the API health endpoint
+        run: |
+          url="${{ vars.API_URL }}/health"
+          echo "GET $url"
+          code=$(curl -fsS -o /dev/null -w '%{http_code}' \
+            --retry 5 --retry-all-errors --retry-delay 10 --max-time 30 "$url" || true)
+          echo "HTTP $code"
+          test "$code" = "200"
+
+      # The web app is IAP-gated, so it can't be fetched anonymously. Assert the
+      # Cloud Run service resolves (a control-plane check the CI/CD SA is
+      # authorized for) — the deploy step already blocks on revision readiness.
+      - name: Verify the web service is serving
+        run: |
+          gcloud run services describe ${{ vars.GCP_WEB_RUN_SERVICE_NAME }} \
+            --project=${{ vars.GCP_PROJECT_ID }} \
+            --region=${{ vars.GCP_PRIMARY_LOCATION }} \
+            --format='value(status.url)'

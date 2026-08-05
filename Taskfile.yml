@@ -1,0 +1,111 @@
+version: '3'
+
+includes:
+  infra:
+    taskfile: infra/Taskfile.yml
+    dir: infra
+
+  web:app:
+    taskfile: web-app/Taskfile.yml
+    dir: web-app
+
+  web:infra:
+    taskfile: web-app/infra/foundation/Taskfile.yml
+    dir: web-app/infra/foundation
+
+  web:domain-mapping:
+    taskfile: web-app/infra/domain-mapping/Taskfile.yml
+    dir: web-app/infra/domain-mapping
+
+  api:impl:
+    taskfile: backend/api/Taskfile.yml
+    dir: backend/api
+
+  api:infra:
+    taskfile: backend/infra/Taskfile.yml
+    dir: backend/infra
+
+  api:domain-mapping:
+    taskfile: backend/infra/domain-mapping/Taskfile.yml
+    dir: backend/infra/domain-mapping
+
+  cli:
+    taskfile: cli/Taskfile.yml
+    dir: cli
+
+tasks:
+  github-ci:lint:
+    desc: Lint GitHub workflows
+    sources:
+      - '.github/workflows/*.yml'
+    cmds:
+      - github-ci lint
+
+  github-ci:fixLint:
+    desc: Fix lint issues in GitHub workflows
+    sources:
+      - '.github/workflows/*.yml'
+    cmds:
+      - github-ci lint --fix
+
+  github-ci:upgrade:
+    desc: Upgrade GitHub workflow actions to the latest versions
+    cmds:
+      - github-ci upgrade
+
+  checkFormatting-all:
+    desc: Check formatting for the entire codebase
+    deps:
+      - github-ci:lint
+      - infra:checkFormatting
+      - web:app:checkFormatting
+      - web:infra:checkFormatting
+      - web:domain-mapping:checkFormatting
+      - api:impl:checkFormatting
+      - api:infra:checkFormatting
+      - api:domain-mapping:checkFormatting
+      - cli:checkFormatting
+
+  fixFormatting-all:
+    desc: Fix formatting for the entire codebase
+    deps:
+      - github-ci:fixLint
+      - infra:fixFormatting
+      - web:app:fixFormatting
+      - web:infra:fixFormatting
+      - web:domain-mapping:fixFormatting
+      - api:impl:fixFormatting
+      - api:infra:fixFormatting
+      - api:domain-mapping:fixFormatting
+      - cli:fixFormatting
+
+  lint-all:
+    desc: Lint the entire codebase
+    deps:
+      - github-ci:lint
+      - infra:lint
+      - web:app:lint
+      - web:infra:lint
+      - web:domain-mapping:lint
+      - api:impl:lint
+      - api:infra:lint
+      - api:domain-mapping:lint
+      - cli:lint
+
+  analyze-all:
+    desc: Analyze the entire codebase
+    deps:
+      - infra:validate
+      - web:app:analyze
+      - web:infra:validate
+      - web:domain-mapping:validate
+      - api:infra:validate
+      - api:domain-mapping:validate
+      - cli:compile
+      - cli:test
+
+  run:
+    desc: Run the frontend and the API locally
+    deps:
+      - web:app:run
+      - api:impl:run

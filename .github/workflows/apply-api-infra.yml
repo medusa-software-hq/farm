@@ -1,0 +1,75 @@
+name: Apply API infra
+
+on:
+  push:
+    branches: ["trunk/*"]
+    paths:
+      - "backend/infra/**"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TERRAFORM_VERSION: 1.14
+
+  TF_INPUT: false
+  TF_CLI_ARGS: -no-color
+  NO_COLOR: 1
+
+jobs:
+  apply-config:
+    name: Apply Terraform (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+
+    # One job per environment. `environment:` is what makes vars.* resolve to
+    # that environment's values (its own GCP project, CI/CD identity, Artifact
+    # Registry and API URL); the Terraform workspace is what keeps their states
+    # apart. Production's workspace is `default`: its state predates the
+    # prod/staging split and stays where it is.
+    #
+    # Serialized, staging first (promotion ordering): staging applies before
+    # production so infra changes are proven on staging first, and fail-fast
+    # gates production on it — a failed staging apply cancels the still-queued
+    # production job, so broken infra never reaches prod.
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        include:
+          - environment: staging
+            workspace: staging
+          - environment: production
+            workspace: default
+
+    environment: ${{ matrix.environment }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
+          service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ~> ${{ env.TERRAFORM_VERSION }}
+
+      - name: Apply Terraform configuration
+        working-directory: backend/infra
+        env:
+          TF_VAR_gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
+          TF_VAR_neon_api_key: ${{ secrets.NEON_API_KEY }}
+        run: |
+          terraform init
+          terraform workspace select -or-create=true ${{ matrix.workspace }}
+          terraform apply -auto-approve

@@ -1,0 +1,44 @@
+name: Check PR
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check-workflows:
+    name: Workflows
+    uses: ./.github/workflows/check-workflows.yml
+
+  check-infra:
+    name: Infra (root)
+    uses: ./.github/workflows/check-infra.yml
+
+  check-web-app-infra:
+    name: Web app (infra)
+    uses: ./.github/workflows/check-web-app-infra.yml
+
+  check-web-app-domain-mapping:
+    name: Web app (domain mapping)
+    uses: ./.github/workflows/check-web-app-domain-mapping.yml
+
+  check-web-app-impl:
+    name: Web app (implementation)
+    uses: ./.github/workflows/check-web-app-impl.yml
+
+  check-api-infra:
+    name: API (infra)
+    uses: ./.github/workflows/check-api-infra.yml
+
+  check-api-domain-mapping:
+    name: API (domain mapping)
+    uses: ./.github/workflows/check-api-domain-mapping.yml
+
+  check-api-impl:
+    name: API (implementation)
+    uses: ./.github/workflows/check-api-impl.yml
+
+  check-cli:
+    name: CLI
+    uses: ./.github/workflows/check-cli.yml

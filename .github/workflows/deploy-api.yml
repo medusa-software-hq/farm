@@ -1,0 +1,160 @@
+name: Deploy API
+
+# Phased promotion of the API: deploy staging → smoke → deploy prod, in one run.
+# Each environment builds its own image into its own Artifact Registry; the
+# promotion property is ordering + gating (deploy-prod needs smoke), not artifact
+# identity.
+
+on:
+  push:
+    branches: ["trunk/*"]
+    paths:
+      - "backend/api/**"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: 21
+  NO_COLOR: 1
+
+  # NOTE: IMAGE_REF is deliberately NOT defined here. It depends on
+  # vars.GCP_AR_REPO_ENDPOINT, and environment-scoped variables only exist on the
+  # runner once the job is executing — a workflow- or job-level env: block
+  # silently falls back to the *repository-level* (production) value, which would
+  # push staging's image into production's Artifact Registry. It is resolved in a
+  # step below.
+
+  SERVICE_PATH: backend/api
+
+jobs:
+  deploy-staging:
+    name: Build & deploy staging
+    runs-on: ubuntu-latest
+
+    environment: staging
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
+          service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
+
+      - name: Resolve the image ref
+        # Resolved in a step, not an env: block, so it picks up this
+        # environment's registry — see the note at the top of the file.
+        run: echo "IMAGE_REF=${{ vars.GCP_AR_REPO_ENDPOINT }}/api/${{ github.sha }}" >> "$GITHUB_ENV"
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_AR_REPO_HOSTNAME }} --quiet
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and push image
+        working-directory: ${{ env.SERVICE_PATH }}
+        run: |
+          ./gradlew :gcp:jib \
+            -Pjib.imageRef=${{ env.IMAGE_REF }} \
+            -Pjib.imageTag=${{ github.sha }} \
+            --stacktrace --info
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ vars.GCP_API_RUN_SERVICE_NAME }} \
+            --project=${{ vars.GCP_PROJECT_ID }} \
+            --region=${{ vars.GCP_PRIMARY_LOCATION }} \
+            --image=${{ env.IMAGE_REF }} \
+            --quiet
+          gcloud run services describe ${{ vars.GCP_API_RUN_SERVICE_NAME }} \
+            --project=${{ vars.GCP_PROJECT_ID }} \
+            --region=${{ vars.GCP_PRIMARY_LOCATION }} \
+            --format='value(status.url)' | tee service-url.txt
+          {
+            echo '## Staging deployment'
+            echo ''
+            echo "- Service URL: [$(cat service-url.txt)]($(cat service-url.txt))"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # id-token: write must be granted here — a called workflow's GITHUB_TOKEN
+  # permissions are capped by the caller, and the smoke job needs it for WIF auth.
+  smoke:
+    name: Smoke gate
+    needs: deploy-staging
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/smoke-staging.yml
+
+  deploy-prod:
+    name: Deploy prod (promote)
+    needs: smoke
+    runs-on: ubuntu-latest
+
+    environment: production
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
+          service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
+
+      - name: Resolve the image ref
+        run: echo "IMAGE_REF=${{ vars.GCP_AR_REPO_ENDPOINT }}/api/${{ github.sha }}" >> "$GITHUB_ENV"
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_AR_REPO_HOSTNAME }} --quiet
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and push image
+        working-directory: ${{ env.SERVICE_PATH }}
+        run: |
+          ./gradlew :gcp:jib \
+            -Pjib.imageRef=${{ env.IMAGE_REF }} \
+            -Pjib.imageTag=${{ github.sha }} \
+            --stacktrace --info
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ vars.GCP_API_RUN_SERVICE_NAME }} \
+            --project=${{ vars.GCP_PROJECT_ID }} \
+            --region=${{ vars.GCP_PRIMARY_LOCATION }} \
+            --image=${{ env.IMAGE_REF }} \
+            --quiet
+          gcloud run services describe ${{ vars.GCP_API_RUN_SERVICE_NAME }} \
+            --project=${{ vars.GCP_PROJECT_ID }} \
+            --region=${{ vars.GCP_PRIMARY_LOCATION }} \
+            --format='value(status.url)' | tee service-url.txt
+          {
+            echo '## Production deployment'
+            echo ''
+            echo "- Service URL: [$(cat service-url.txt)]($(cat service-url.txt))"
+          } >> "$GITHUB_STEP_SUMMARY"

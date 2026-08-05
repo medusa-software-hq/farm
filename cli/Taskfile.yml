@@ -1,0 +1,51 @@
+version: '3'
+
+.kotlinSources: &kotlinSources
+  - '**/*.kt'
+  - '**/*.kts'
+
+tasks:
+  checkFormatting:
+    desc: Check Kotlin formatting
+    sources: *kotlinSources
+    cmds:
+      - ./gradlew ktfmtCheck
+
+  fixFormatting:
+    desc: Fix Kotlin formatting
+    sources: *kotlinSources
+    cmds:
+      - ./gradlew ktfmtFormat
+
+  lint:
+    desc: Lint the Kotlin sources
+    sources: *kotlinSources
+    cmds:
+      - ./gradlew detekt
+
+  compile:
+    desc: Compile the Kotlin sources
+    sources: *kotlinSources
+    cmds:
+      - ./gradlew compileKotlin
+
+  test:
+    desc: Run tests
+    sources: *kotlinSources
+    cmds:
+      - ./gradlew test
+
+  install:
+    desc: Install the CLI locally (build/install/cli/bin/cli)
+    sources: *kotlinSources
+    generates:
+      - ./build/install/cli/bin/cli
+    cmds:
+      - ./gradlew installDist
+
+  run:
+    desc: Run the locally-installed CLI (pass args after --)
+    deps: [install]
+    cmds:
+      - ./bin/ms-counter {{.CLI_ARGS}}
+    interactive: true
