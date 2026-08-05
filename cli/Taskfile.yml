@@ -47,5 +47,5 @@ tasks:
     desc: Run the locally-installed CLI (pass args after --)
     deps: [install]
     cmds:
-      - ./bin/ms-counter {{.CLI_ARGS}}
+      - ./bin/ms-farm {{.CLI_ARGS}}
     interactive: true

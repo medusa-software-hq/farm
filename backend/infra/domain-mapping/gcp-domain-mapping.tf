@@ -8,7 +8,7 @@
 # which is a verified owner of the domain (a one-time org bootstrap performed in
 # the `meta` repo) — so no per-project domain-ownership step is needed.
 resource "google_cloud_run_domain_mapping" "api" {
-  name     = local.counter_api_host_name
+  name     = local.farm_api_host_name
   location = module.common.gcp_primary_location
   project  = var.gcp_project_id
 
@@ -24,5 +24,5 @@ resource "google_cloud_run_domain_mapping" "api" {
 
 output "api_url" {
   description = "Public URL of the API — stable across redeploys, unlike Cloud Run's auto-generated URL."
-  value       = "https://${local.counter_api_host_name}"
+  value       = "https://${local.farm_api_host_name}"
 }

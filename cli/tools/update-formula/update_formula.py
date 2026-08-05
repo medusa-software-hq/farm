@@ -7,8 +7,8 @@ from pathlib import Path
 from github import Github, GithubException
 
 TAP_REPO = "medusa-software-hq/homebrew-tap"
-RELEASES_REPO = "medusa-software-hq/counter-releases"
-FORMULA_PATH = "Formula/counter.rb"
+RELEASES_REPO = "medusa-software-hq/farm-releases"
+FORMULA_PATH = "Formula/farm.rb"
 
 
 def compute_sha256(path: Path) -> str:
@@ -16,11 +16,11 @@ def compute_sha256(path: Path) -> str:
 
 
 def render_formula(version: str, sha256: str) -> str:
-    url = f"https://github.com/{RELEASES_REPO}/releases/download/{version}/counter-cli.jar"
+    url = f"https://github.com/{RELEASES_REPO}/releases/download/{version}/farm-cli.jar"
     return textwrap.dedent(f"""\
-        class Counter < Formula
-          desc "Counter CLI"
-          homepage "https://github.com/medusa-software-hq/counter"
+        class Farm < Formula
+          desc "Farm CLI"
+          homepage "https://github.com/medusa-software-hq/farm"
           url "{url}"
           sha256 "{sha256}"
           version "{version}"
@@ -28,11 +28,11 @@ def render_formula(version: str, sha256: str) -> str:
           depends_on "openjdk@21"
 
           def install
-            libexec.install "counter-cli.jar"
+            libexec.install "farm-cli.jar"
             # java_version pins the launcher to the openjdk@21 we depend on and build against, so the
             # CLI never silently runs on a newer JDK (where Clikt's JNA calls print JEP 498 warnings).
-            bin.write_jar_script libexec/"counter-cli.jar",
-                                 "ms-counter",
+            bin.write_jar_script libexec/"farm-cli.jar",
+                                 "ms-farm",
                                  "--enable-native-access=ALL-UNNAMED",
                                  java_version: "21"
           end
@@ -49,7 +49,7 @@ def main() -> None:
     token = os.environ["GITHUB_TOKEN"]
     sha256 = compute_sha256(args.jar)
     formula = render_formula(args.version, sha256)
-    message = f"Update Counter CLI to {args.version}"
+    message = f"Update Farm CLI to {args.version}"
 
     repo = Github(token).get_repo(TAP_REPO)
 

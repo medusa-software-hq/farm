@@ -8,8 +8,7 @@ resource "github_repository" "this" {
   # The repository is temporarily public
   visibility = "public"
 
-  // 🎨 TEMPLATE EJECT: Make this false
-  is_template = true
+  is_template = false
 
   has_discussions = false
   has_issues      = false

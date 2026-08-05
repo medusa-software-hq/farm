@@ -58,7 +58,7 @@ protobuf {
 sqldelight {
   databases {
     create("CounterDatabase") {
-      packageName.set("software.medusa.counter.db")
+      packageName.set("software.medusa.farm.db")
       dialect(libs.sqldelight.postgresql.dialect)
     }
   }
