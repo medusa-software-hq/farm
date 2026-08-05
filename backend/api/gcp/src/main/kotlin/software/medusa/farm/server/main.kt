@@ -1,0 +1,43 @@
+package software.medusa.farm.server
+
+private const val portEnvVarName = "PORT"
+private const val clientIdEnvVarName = "GOOGLE_CLIENT_ID"
+private const val cliClientIdEnvVarName = "GOOGLE_CLI_CLIENT_ID"
+private const val allowedDomainEnvVarName = "GOOGLE_ALLOWED_DOMAIN"
+private const val corsOriginRegexEnvVarName = "CORS_ALLOWED_ORIGIN_REGEX"
+private const val databaseUrlEnvVarName = "DATABASE_URL"
+
+fun main() {
+  val port =
+      System.getenv(portEnvVarName)?.toIntOrNull()
+          ?: error("$portEnvVarName environment variable must be set to a valid integer")
+
+  val clientId =
+      System.getenv(clientIdEnvVarName)
+          ?: error("$clientIdEnvVarName environment variable must be set")
+
+  // Optional: the CLI (Desktop) OAuth client. When set, the API also accepts ID tokens whose
+  // audience is the CLI client, so `ms-farm` can call it. Absent (blank) → web-only.
+  val cliClientId = System.getenv(cliClientIdEnvVarName)?.takeIf { it.isNotBlank() }
+
+  val allowedDomain =
+      System.getenv(allowedDomainEnvVarName)
+          ?: error("$allowedDomainEnvVarName environment variable must be set")
+
+  val corsOriginRegex =
+      System.getenv(corsOriginRegexEnvVarName)
+          ?: error("$corsOriginRegexEnvVarName environment variable must be set")
+
+  val databaseUrl =
+      System.getenv(databaseUrlEnvVarName)
+          ?: error("$databaseUrlEnvVarName environment variable must be set")
+
+  buildServer(
+          originRegex = corsOriginRegex,
+          port = port,
+          auth = GoogleIdTokenAuthDecorator(setOfNotNull(clientId, cliClientId), allowedDomain),
+          counterStore = PostgresCounterStore.build(databaseUrl),
+      )
+      .start()
+      .join()
+}

@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
 
     # `environment: production` resolves vars.API_URL + the releases app id to the prod values, and
-    # the secrets to prod's. The published CLI targets prod; staging use is via COUNTER_API_URL.
+    # the secrets to prod's. The published CLI targets prod; staging use is via FARM_API_URL.
     environment: production
 
     steps:
@@ -40,15 +40,15 @@ jobs:
         # non-confidential for a Desktop OAuth client, but kept out of source so GitHub's push
         # protection doesn't fight us. Backend URLs + client ids are NOT baked — they're
         # deterministic public source constants. The staging secret is optional: if unset it bakes
-        # empty, and `COUNTER_ENVIRONMENT=staging ms-counter login` reports that cleanly.
+        # empty, and `FARM_ENVIRONMENT=staging ms-farm login` reports that cleanly.
         env:
-          CLI_OAUTH_CLIENT_SECRET: ${{ secrets.COUNTER_CLI_OAUTH_CLIENT_SECRET }}
-          CLI_STAGING_OAUTH_CLIENT_SECRET: ${{ secrets.COUNTER_CLI_OAUTH_CLIENT_SECRET_STAGING }}
+          CLI_OAUTH_CLIENT_SECRET: ${{ secrets.FARM_CLI_OAUTH_CLIENT_SECRET }}
+          CLI_STAGING_OAUTH_CLIENT_SECRET: ${{ secrets.FARM_CLI_OAUTH_CLIENT_SECRET_STAGING }}
         run: |
           ./gradlew shadowJar \
             -PcliOauthClientSecret="$CLI_OAUTH_CLIENT_SECRET" \
             -PcliStagingOauthClientSecret="$CLI_STAGING_OAUTH_CLIENT_SECRET"
-          echo "JAR=$GITHUB_WORKSPACE/cli/build/libs/counter-cli.jar" >> $GITHUB_ENV
+          echo "JAR=$GITHUB_WORKSPACE/cli/build/libs/farm-cli.jar" >> $GITHUB_ENV
           echo "VERSION=0.0.${{ github.run_number }}" >> $GITHUB_ENV
 
       - name: Create GitHub App token
@@ -58,15 +58,15 @@ jobs:
           client-id: ${{ vars.GH_RELEASES_CLIENT_ID }}
           private-key: ${{ secrets.GH_RELEASES_APP_PEM_CONTENT }}
           owner: medusa-software-hq
-          repositories: counter-releases,homebrew-tap
+          repositories: farm-releases,homebrew-tap
 
       - name: Create a release
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh release create "${VERSION}" \
-            --repo medusa-software-hq/counter-releases \
-            --title "Counter CLI ${VERSION}" \
+            --repo medusa-software-hq/farm-releases \
+            --title "Farm CLI ${VERSION}" \
             --notes "Built from ${GITHUB_REPOSITORY}@${GITHUB_SHA}" \
             "${JAR}"
 

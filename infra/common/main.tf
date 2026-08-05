@@ -38,7 +38,7 @@ locals {
       # GCP project (authorized origin = the web app's URL) and change it here 👆
       google_client_id = "390879863874-fbuvtnt28dqj2k8po5fss3ps37d8b4f8.apps.googleusercontent.com"
 
-      # Google OAuth 2.0 *Desktop* client ID — what the `ms-counter` CLI signs in
+      # Google OAuth 2.0 *Desktop* client ID — what the `ms-farm` CLI signs in
       # with (loopback + PKCE). A second accepted audience alongside google_client_id
       # (see GoogleIdTokenAuthDecorator's setOfNotNull). Kept in sync with the CLI's
       # Environment.Prod.oauthClientId. Its non-confidential secret is baked at publish.
@@ -68,9 +68,9 @@ locals {
       google_client_id = "1099281545285-nu3h1ifa0i3bfdmsbac6vm3d112squ6e.apps.googleusercontent.com"
 
       # Staging's own Desktop OAuth client (same credential-boundary reasoning as
-      # google_client_id above). The CLI reaches staging via COUNTER_ENVIRONMENT=staging
+      # google_client_id above). The CLI reaches staging via FARM_ENVIRONMENT=staging
       # (see the CLI's Environment.Staging); its secret is baked from a separate
-      # COUNTER_CLI_OAUTH_CLIENT_SECRET_STAGING Actions secret.
+      # FARM_CLI_OAUTH_CLIENT_SECRET_STAGING Actions secret.
       # https://console.cloud.google.com/auth/clients/1099281545285-smp4hh6b1rec63qgblp6apgbe534kpdd.apps.googleusercontent.com?project=ms-counter-f7f40f25
       cli_client_id = "1099281545285-smp4hh6b1rec63qgblp6apgbe534kpdd.apps.googleusercontent.com"
     }
@@ -92,20 +92,20 @@ locals {
   # NOT part of environment_config. Used for WIF principalSets, the `github`
   # provider owner, and Terraform state prefixes.
   gh_organization_name   = "medusa-software-hq"
-  gh_repo_name           = "counter" # 🎨 TEMPLATE EJECT: Change the repo name
+  gh_repo_name           = "farm"
   gh_api_url_var_name    = "API_URL"
-  gh_default_branch_name = "trunk/v3" # 🎨 TEMPLATE EJECT: Change the default branch
+  gh_default_branch_name = "trunk/v1"
 
   # The releases repo the CLI publishes its fat jar to (provisioned by the root
   # infra), and the GitHub App the Publish CLI workflow authenticates as to push
   # releases + the Homebrew formula. Flavor constants — one app, one releases
   # repo, shared across environments.
-  gh_releases_repo_name = "counter-releases"
+  gh_releases_repo_name = "farm-releases"
   # 🎨 TEMPLATE POST-EJECT: Create a GitHub App and change its client id here 👇
   gh_releases_client_id = "Iv23ct4SGbvxYw9pxJs8" # "Medusa Counter Releaser"
 
-  project_base_name = "counter"  # 🎨 TEMPLATE EJECT: Choose an org-unique project base name
-  project_variant   = "baseline" # 🎨 TEMPLATE EJECT: Choose a project-unique variant name
+  project_base_name = "farm"
+  project_variant   = "v1"
 
   gh_environment_name     = local.selected_environment.gh_environment_name
   gcp_project_name_suffix = local.selected_environment.gcp_project_name_suffix

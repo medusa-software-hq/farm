@@ -18,7 +18,7 @@ dependencies {
 }
 
 application {
-  mainClass = "software.medusa.counter.cli.MainKt"
+  mainClass = "software.medusa.farm.cli.MainKt"
 
   // Clikt pulls in JNA (terminal detection); recent JDKs warn on its System.load unless native
   // access is opted in. Keep the installDist launcher quiet (the Homebrew launcher passes the
@@ -42,7 +42,7 @@ val generateCliBuildConfig by tasks.registering {
   inputs.property("stagingSecret", stagingSecret)
   outputs.dir(cliBuildConfigDir)
   doLast {
-    val file = cliBuildConfigDir.get().file("counter-cli-build.properties").asFile
+    val file = cliBuildConfigDir.get().file("farm-cli-build.properties").asFile
     file.parentFile.mkdirs()
     // GOCSPX-… secrets are properties-safe. Written by hand to avoid Properties.store's date
     // comment.
@@ -55,7 +55,7 @@ val generateCliBuildConfig by tasks.registering {
 sourceSets.named("main") { resources.srcDir(generateCliBuildConfig) }
 
 tasks.shadowJar {
-  archiveBaseName = "counter-cli"
+  archiveBaseName = "farm-cli"
   archiveClassifier = ""
   archiveVersion = ""
 }

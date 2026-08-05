@@ -9,7 +9,7 @@ terraform {
 
   backend "gcs" {
     bucket = "ms-tfstate-c1984596bdabf023"
-    prefix = "projects/counter/baseline/backend/api/domain-mapping" # 🎨 TEMPLATE EJECT: Update the prefix (!)
+    prefix = "projects/farm/v1/backend/api/domain-mapping"
   }
 
   required_providers {

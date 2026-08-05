@@ -12,7 +12,7 @@ val containerImageTag = findProperty("jib.imageTag")?.toString() ?: "local"
 
 dependencies { implementation(project(":shared")) }
 
-application { mainClass = "software.medusa.counter.server.MainKt" }
+application { mainClass = "software.medusa.farm.server.MainKt" }
 
 jib {
   from { image = "eclipse-temurin:$javaVersion-jre-alpine" }
@@ -24,6 +24,6 @@ jib {
 
   container {
     ports = listOf(containerPort.toString())
-    mainClass = "software.medusa.counter.server.MainKt"
+    mainClass = "software.medusa.farm.server.MainKt"
   }
 }

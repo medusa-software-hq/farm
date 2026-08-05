@@ -30,7 +30,7 @@ resource "google_cloud_run_v2_service" "primary" {
       }
 
       # Also accept ID tokens minted by the CLI's Desktop OAuth client, so
-      # `ms-counter` can call the API (see GoogleIdTokenAuthDecorator).
+      # `ms-farm` can call the API (see GoogleIdTokenAuthDecorator).
       env {
         name  = "GOOGLE_CLI_CLIENT_ID"
         value = module.common.cli_client_id
