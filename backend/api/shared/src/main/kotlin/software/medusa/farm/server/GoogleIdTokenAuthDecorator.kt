@@ -16,9 +16,15 @@ import com.nimbusds.jwt.proc.DefaultJWTProcessor
 import java.net.URI
 import java.text.ParseException
 
+// Google's OpenID Connect endpoints, from its OIDC discovery document
+// (https://accounts.google.com/.well-known/openid-configuration):
+//   jwks_uri = https://www.googleapis.com/oauth2/v3/certs
+//   issuer   = https://accounts.google.com
+// Pinned rather than fetched at runtime — these change very rarely.
+// Docs: https://developers.google.com/identity/openid-connect/openid-connect#discovery
 private const val googleAccountsHostname = "accounts.google.com"
-
 private val googleJwksUri = URI("https://www.googleapis.com/oauth2/v3/certs").toURL()
+// Google emits `iss` as either the bare host or the https URL — accept both.
 private val googleIssuers = setOf("https://$googleAccountsHostname", googleAccountsHostname)
 
 /**
