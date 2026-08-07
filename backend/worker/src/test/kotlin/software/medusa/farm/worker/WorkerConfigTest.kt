@@ -14,12 +14,17 @@ class WorkerConfigTest {
       )
 
   @Test
-  fun `defaults temporal address namespace and task queue`() {
+  fun `defaults temporal address and namespace`() {
     val config = WorkerConfig.fromEnvironment(required)
 
     assertEquals("127.0.0.1:7233", config.temporal.address)
     assertEquals("farm", config.temporal.namespace)
-    assertEquals(TaskQueues.pipeline, config.temporal.taskQueue)
+  }
+
+  @Test
+  fun `task queues are shared consts, not env-configured`() {
+    assertEquals("farm-pipeline", TaskQueues.pipeline)
+    assertEquals("farm-engine", TaskQueues.engine)
   }
 
   @Test

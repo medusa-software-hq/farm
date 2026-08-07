@@ -1,22 +1,24 @@
 package software.medusa.farm.worker.workflow
 
 import io.temporal.activity.ActivityOptions
-import io.temporal.api.enums.v1.ParentClosePolicy
 import io.temporal.common.RetryOptions
-import io.temporal.workflow.Async
 import io.temporal.workflow.ChildWorkflowOptions
 import io.temporal.workflow.Workflow
 import java.time.Duration
 import software.medusa.farm.worker.activity.GitHubActivities
 import software.medusa.farm.worker.model.PipelineInput
+import software.medusa.farm.worker.model.PipelineStage
 import software.medusa.farm.worker.model.RepoCoordinatorStatus
 import software.medusa.farm.worker.model.RepoRef
 
 /**
  * The per-repo mutex holder. Single running execution per repo (workflow id `repo:<full-name>`).
- * Picks one ready issue at a time, starts a child [PipelineWorkflow] with `ABANDON` parent-close
- * policy (so post-merge/self-heal outlive the coordinator's continue-as-new), then blocks until
- * that pipeline signals [onPipelineMutexReleased] at MERGED. Continue-as-new bounds history.
+ * Picks one unblocked ready issue at a time and starts an **owned** child [BuildWorkflow] (no
+ * ABANDON), then blocks in the child's synchronous `run(...)` call — that await IS the mutex, and
+ * it returns when the build merges (or fails). Post-merge work runs on in a detached
+ * PostMergeWorkflow the build spawns, so the coordinator can move to the next issue.
+ * Continue-as-new (between picks, with no child in flight) bounds history. See DESIGN.md §2.1 and
+ * section B.
  */
 class RepoCoordinatorWorkflowImpl : RepoCoordinatorWorkflow {
   private val log = Workflow.getLogger(RepoCoordinatorWorkflowImpl::class.java)
@@ -30,33 +32,46 @@ class RepoCoordinatorWorkflowImpl : RepoCoordinatorWorkflow {
       )
 
   @Volatile private var wakeUp: Boolean = false
-  @Volatile private var mutexReleasedFor: Int? = null
+  @Volatile private var approved: Boolean = false
   @Volatile private var activeIssue: Int? = null
+  @Volatile private var trunkHealthy: Boolean = true
   private var processedCount: Int = 0
+  private var consecutiveFailures: Int = 0
 
   override fun coordinate(repo: RepoRef) {
     var iterations = 0
     while (iterations < maxIterationsBeforeContinueAsNew) {
+      // Circuit breaker (DESIGN.md §6.6): after K straight failures, pause re-pick and require a
+      // human `approve` — a soft escalation, not Flow's wedge-on-every-failure default.
+      if (consecutiveFailures >= circuitBreakerThreshold) {
+        log.warn(
+            "circuit breaker open for {} after {} failures",
+            repo.fullName,
+            consecutiveFailures,
+        )
+        Workflow.await { approved }
+        approved = false
+        consecutiveFailures = 0
+      }
+
       val next = github.discoverNextReadyIssue(repo)
       if (next != null) {
         activeIssue = next.issueNumber
-        mutexReleasedFor = null
+        // OWNED child, awaited synchronously: this call is the mutex. It returns when the build
+        // reaches MERGED (having handed off a detached PostMergeWorkflow) or FAILED.
         val child =
             Workflow.newChildWorkflowStub(
-                PipelineWorkflow::class.java,
+                BuildWorkflow::class.java,
                 ChildWorkflowOptions.newBuilder()
                     .setWorkflowId("pipeline:${repo.fullName}#${next.issueNumber}")
-                    .setParentClosePolicy(ParentClosePolicy.PARENT_CLOSE_POLICY_ABANDON)
                     .build(),
             )
-        // Start async and detach: we only block until the pipeline releases the mutex (at MERGED),
-        // not until it fully finishes (post-merge checks + self-heal run on in the abandoned
-        // child).
-        Async.function(
-            child::run,
-            PipelineInput(repo = repo, issueNumber = next.issueNumber, engine = defaultEngine),
-        )
-        Workflow.await { mutexReleasedFor == next.issueNumber }
+        val result =
+            child.run(
+                PipelineInput(repo = repo, issueNumber = next.issueNumber, engine = defaultEngine)
+            )
+        consecutiveFailures =
+            if (result.stage == PipelineStage.FAILED) consecutiveFailures + 1 else 0
         activeIssue = null
         processedCount++
         iterations++
@@ -66,7 +81,7 @@ class RepoCoordinatorWorkflowImpl : RepoCoordinatorWorkflow {
         wakeUp = false
       }
     }
-    log.info("continue-as-new for {} after {} pipelines", repo.fullName, processedCount)
+    log.info("continue-as-new for {} after {} builds", repo.fullName, processedCount)
     Workflow.continueAsNew(repo)
   }
 
@@ -74,8 +89,14 @@ class RepoCoordinatorWorkflowImpl : RepoCoordinatorWorkflow {
     wakeUp = true
   }
 
-  override fun onPipelineMutexReleased(issueNumber: Int) {
-    mutexReleasedFor = issueNumber
+  override fun approve() {
+    approved = true
+  }
+
+  override fun onTrunkStatusChanged(sha: String, healthy: Boolean) {
+    // Authoritative per-repo trunk health; relayed to the active build's trunk-health merge gate.
+    // TODO: forward `healthy` to the in-flight owned BuildWorkflow (or expose via getTrunkHealth).
+    trunkHealthy = healthy
   }
 
   override fun status(): RepoCoordinatorStatus =
@@ -83,11 +104,13 @@ class RepoCoordinatorWorkflowImpl : RepoCoordinatorWorkflow {
           repo = RepoRef("", ""), // TODO: carry repo in workflow state for the query
           activeIssue = activeIssue,
           processedCount = processedCount,
+          trunkHealthy = trunkHealthy,
       )
 
   companion object {
     private const val defaultEngine = "claude"
     private const val maxIterationsBeforeContinueAsNew = 50
+    private const val circuitBreakerThreshold = 3
     private val idlePollInterval: Duration = Duration.ofMinutes(5)
   }
 }

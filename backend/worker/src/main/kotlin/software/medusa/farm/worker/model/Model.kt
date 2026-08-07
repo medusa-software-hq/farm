@@ -16,15 +16,29 @@ data class RepoRef(val owner: String, val name: String) {
 /** A ready issue discovered on a repo. */
 data class IssueRef(val repo: RepoRef, val issueNumber: Int, val title: String)
 
-/** Input to a per-issue [software.medusa.farm.worker.workflow.PipelineWorkflow] run. */
+/** Input to a per-issue [software.medusa.farm.worker.workflow.BuildWorkflow] run. */
 data class PipelineInput(
     val repo: RepoRef,
     val issueNumber: Int,
     val engine: String,
     /**
-     * Set when this pipeline is a self-heal fix for a broken trunk, not a fresh `flow:ready` issue.
+     * Set when this build is a self-heal fix for a broken trunk, not a fresh `flow:ready` issue.
      */
     val healingForMergeSha: String? = null,
+    /**
+     * Informs *pick order* when issue B depends on issue A. Merge-safety itself is guaranteed by
+     * the trunk-health gate ([BuildWorkflow] awaits trunk healthy before merging), not by this
+     * field.
+     */
+    val dependsOnIssue: Int? = null,
+)
+
+/** Input to a detached [software.medusa.farm.worker.workflow.PostMergeWorkflow] run. */
+data class PostMergeInput(
+    val repo: RepoRef,
+    val issueNumber: Int,
+    val mergeCommitSha: String,
+    val prUrl: String? = null,
 )
 
 /**
@@ -54,14 +68,28 @@ data class PipelineStatus(
     val failureSummary: String? = null,
 )
 
-/** Terminal outcome returned by a pipeline workflow method. */
-data class PipelineResult(val stage: PipelineStage, val prUrl: String? = null)
+/**
+ * Result returned by [software.medusa.farm.worker.workflow.BuildWorkflow]. The build returns at
+ * MERGED (having handed post-merge work to a detached PostMergeWorkflow) or at FAILED; that return
+ * is what releases the per-repo mutex the coordinator holds.
+ */
+data class BuildResult(
+    val stage: PipelineStage,
+    val mergeCommitSha: String? = null,
+    val prNumber: Int? = null,
+    val prUrl: String? = null,
+)
+
+/** Query-able live status of a detached post-merge workflow. */
+data class PostMergeStatus(val stage: PipelineStage, val healAttempts: Int = 0)
 
 /** Query-able status of a repo coordinator (the per-repo mutex holder). */
 data class RepoCoordinatorStatus(
     val repo: RepoRef,
     val activeIssue: Int?,
     val processedCount: Int,
+    /** Cached hint over the literal default-branch health (ground truth: `getTrunkHealth`). */
+    val trunkHealthy: Boolean = true,
 )
 
 /** Handle to an on-disk workspace materialized by [prepareWorkspace]-style activities. */

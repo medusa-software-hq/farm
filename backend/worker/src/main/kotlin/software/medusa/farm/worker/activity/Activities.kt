@@ -33,6 +33,16 @@ interface RepoActivities {
       workspace: WorkspaceRef,
   ): PublishResult
 
+  /**
+   * Push a pre-merge fix ADDITIVELY (never a blind force-push): re-fetch first so a human's push is
+   * folded in, not clobbered (reactor stance, DESIGN.md §2.5). Force-push is reserved for
+   * Farm-authored rebases that first reconcile/replay human commits forward.
+   */
+  @ActivityMethod fun pushFix(repo: RepoRef, issueNumber: Int, workspace: WorkspaceRef)
+
+  /** Rebase the pipeline branch onto the latest trunk; the reconciler for trunk drift (§2.2). */
+  @ActivityMethod fun rebaseOntoTrunk(repo: RepoRef, workspace: WorkspaceRef): Boolean
+
   /** Best-effort teardown of the on-disk workspace; safe to retry / call twice. */
   @ActivityMethod fun cleanupWorkspace(workspace: WorkspaceRef)
 }
@@ -60,6 +70,13 @@ interface GitHubActivities {
   @ActivityMethod fun getPullRequestState(repo: RepoRef, prNumber: Int): PrStatus
 
   @ActivityMethod fun getMergeCheckStatus(repo: RepoRef, commitSha: String): CheckSnapshot
+
+  /**
+   * Ground truth for the trunk-health merge gate (DESIGN.md §2.1–§2.2): the LITERAL default-branch
+   * HEAD combined check/deploy status right now, whoever authored the last commit. Read at the
+   * merge gate and to re-sync after a missed webhook or a coordinator continue-as-new.
+   */
+  @ActivityMethod fun getTrunkHealth(repo: RepoRef): Boolean
 
   /** Arm GitHub-native auto-merge (idempotent). Actual merge is GitHub's or a human's. */
   @ActivityMethod fun armAutoMerge(repo: RepoRef, prNumber: Int)

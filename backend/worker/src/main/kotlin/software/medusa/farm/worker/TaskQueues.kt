@@ -5,11 +5,13 @@ package software.medusa.farm.worker
  * start), mirroring the org Temporal demo's single `TaskQueue` const so worker and clients never
  * drift.
  *
- * A single queue is the default. If the long engine run needs to be isolated from lightweight
- * orchestration (so a saturated engine cannot starve pipeline decisions), split into [pipeline] + a
- * dedicated `farm-engine` queue and register the engine activity there — see DESIGN.md, "Task-queue
- * partitioning".
+ * Farm splits into TWO queues in one worker process (DESIGN.md §2.4, §6.2): [pipeline] carries the
+ * workflow tasks + all light activities, and [engine] carries ONLY the long `runEngine` activity,
+ * so a saturated 2-hour engine run can't starve the seconds-long orchestration/GitHub/DB
+ * activities. `runEngine` is pinned to [engine] via `ActivityOptions.setTaskQueue`. The split is a
+ * concurrency boundary now and the relocation seam if the engine ever moves to a separate fleet.
  */
 object TaskQueues {
   const val pipeline: String = "farm-pipeline"
+  const val engine: String = "farm-engine"
 }

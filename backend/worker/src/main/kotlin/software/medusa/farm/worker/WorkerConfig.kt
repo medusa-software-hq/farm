@@ -19,7 +19,6 @@ data class WorkerConfig(
                 TemporalConfig(
                     address = env["TEMPORAL_ADDRESS"] ?: "127.0.0.1:7233",
                     namespace = env["TEMPORAL_NAMESPACE"] ?: "farm",
-                    taskQueue = env["FARM_WORKER_TASK_QUEUE"] ?: TaskQueues.pipeline,
                 ),
             database =
                 DatabaseConfig(
@@ -42,9 +41,11 @@ data class WorkerConfig(
 }
 
 /**
- * Temporal connection + placement. Mirrors the org demo's `TEMPORAL_ADDRESS`/`TEMPORAL_NAMESPACE`.
+ * Temporal connection. Mirrors the org demo's `TEMPORAL_ADDRESS`/`TEMPORAL_NAMESPACE`. Task-queue
+ * names are not env-configured knobs — they are shared consts in [TaskQueues] the worker registers
+ * and the api reads (DESIGN.md §0, §2.4).
  */
-data class TemporalConfig(val address: String, val namespace: String, val taskQueue: String)
+data class TemporalConfig(val address: String, val namespace: String)
 
 /** Postgres domain store + read model connection (full JDBC URL incl. credentials and sslmode). */
 data class DatabaseConfig(val jdbcUrl: String)

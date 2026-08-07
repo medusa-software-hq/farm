@@ -26,11 +26,17 @@ import software.medusa.farm.worker.model.WorkspaceRef
  * / GitHub App / engine-subprocess / SQLDelight logic here (see DESIGN.md and Flow's `worker/`).
  */
 class RepoActivitiesImpl(private val config: WorkerConfig) : RepoActivities {
+  // TODO (DESIGN.md §6.4): port Flow's `github-app-auth` and hold a single worker-singleton
+  // `RefreshingGitHubAppToken` here (minted once from config.github, auto-refreshed across activity
+  // calls) rather than re-minting per invocation. Shared by RepoActivitiesImpl +
+  // GitHubActivitiesImpl.
+
   override fun prepareWorkspace(repo: RepoRef, issueNumber: Int, engine: String): WorkspaceRef {
-    // TODO: mint per-repo GitHub App token, clone, cut branch `farm/issue-<n>-<engine>`.
+    // TODO: mint per-repo installation token (worker-singleton token), clone, cut branch
+    // `farm/issue-<n>`.
     return WorkspaceRef(
         workspaceId = "ws-${repo.name}-$issueNumber",
-        branch = "farm/issue-$issueNumber-$engine",
+        branch = "farm/issue-$issueNumber",
     )
   }
 
@@ -43,6 +49,17 @@ class RepoActivitiesImpl(private val config: WorkerConfig) : RepoActivities {
     return PublishResult(prNumber = null, prUrl = null, hadChanges = false)
   }
 
+  override fun pushFix(repo: RepoRef, issueNumber: Int, workspace: WorkspaceRef) {
+    // TODO: re-fetch first (fold in any human commit), commit + sign, push ADDITIVELY — never a
+    // blind force-push (reactor stance, DESIGN.md §2.5).
+  }
+
+  override fun rebaseOntoTrunk(repo: RepoRef, workspace: WorkspaceRef): Boolean {
+    // TODO: fetch trunk, rebase the branch, push; return whether there was drift. A Farm-authored
+    // rebase may force-push, but only after replaying human commits forward.
+    return false
+  }
+
   override fun cleanupWorkspace(workspace: WorkspaceRef) {
     // TODO: remove the on-disk workspace directory (idempotent).
   }
@@ -52,8 +69,11 @@ class EngineActivitiesImpl(private val config: WorkerConfig) : EngineActivities 
   override fun runEngine(request: EngineRunRequest): EngineOutcome {
     val ctx = Activity.getExecutionContext()
     // TODO: spawn the pinned engine CLI subprocess (stream-json), parse transcript, drive the
-    // health-gate bounce loop. Heartbeat progress so Temporal can cancel on abort and detect
-    // a dead worker. Recover progress on retry via ctx.getHeartbeatDetails(...).
+    // health-gate bounce loop. `claude` ONLY to start (no builtin/leader — DESIGN.md §6.3); the CLI
+    // is baked into the worker image and selected by config.engine.defaultEngine. Heartbeat
+    // progress
+    // so Temporal can cancel on abort and detect a dead worker. Recover on retry via
+    // ctx.getHeartbeatDetails(...).
     ctx.heartbeat("engine-started")
     return EngineOutcome(
         kind = EngineOutcomeKind.NO_CHANGES,
@@ -71,6 +91,9 @@ class GitHubActivitiesImpl(private val config: WorkerConfig) : GitHubActivities 
 
   override fun getMergeCheckStatus(repo: RepoRef, commitSha: String): CheckSnapshot =
       CheckSnapshot(CheckStatus.PENDING) // TODO
+
+  override fun getTrunkHealth(repo: RepoRef): Boolean =
+      true // TODO: combined check/deploy status of the LITERAL default-branch HEAD (any author).
 
   override fun armAutoMerge(repo: RepoRef, prNumber: Int) {
     // TODO: PUT auto-merge if repo settings allow.

@@ -12,7 +12,8 @@ import software.medusa.farm.worker.activity.impl.EngineActivitiesImpl
 import software.medusa.farm.worker.activity.impl.GitHubActivitiesImpl
 import software.medusa.farm.worker.activity.impl.RepoActivitiesImpl
 import software.medusa.farm.worker.activity.impl.WorkerDomainStore
-import software.medusa.farm.worker.workflow.PipelineWorkflowImpl
+import software.medusa.farm.worker.workflow.BuildWorkflowImpl
+import software.medusa.farm.worker.workflow.PostMergeWorkflowImpl
 import software.medusa.farm.worker.workflow.RepoCoordinatorWorkflowImpl
 
 /**
@@ -36,19 +37,27 @@ class TemporalWorkerHost(private val config: WorkerConfig) {
     val factory = WorkerFactory.newInstance(client)
 
     val domainStore = WorkerDomainStore.build(config.database.jdbcUrl)
-    val worker = factory.newWorker(config.temporal.taskQueue)
 
-    worker.registerWorkflowImplementationTypes(
+    // Two task queues, one process (DESIGN.md §2.4, §6.2). `farm-pipeline` runs all three workflows
+    // and the light activities with a generous activity-concurrency budget; `farm-engine` runs ONLY
+    // the long `runEngine` with its own, small budget so a saturated engine can't starve
+    // orchestration. `runEngine` is routed here by
+    // `ActivityOptions.setTaskQueue(TaskQueues.engine)`.
+    val pipelineWorker = factory.newWorker(TaskQueues.pipeline)
+    pipelineWorker.registerWorkflowImplementationTypes(
         RepoCoordinatorWorkflowImpl::class.java,
-        PipelineWorkflowImpl::class.java,
+        BuildWorkflowImpl::class.java,
+        PostMergeWorkflowImpl::class.java,
     )
-    worker.registerActivitiesImplementations(
+    pipelineWorker.registerActivitiesImplementations(
         RepoActivitiesImpl(config),
-        EngineActivitiesImpl(config),
         GitHubActivitiesImpl(config),
         DeployActivitiesImpl(config),
         DomainStoreActivitiesImpl(domainStore),
     )
+
+    val engineWorker = factory.newWorker(TaskQueues.engine)
+    engineWorker.registerActivitiesImplementations(EngineActivitiesImpl(config))
 
     Runtime.getRuntime()
         .addShutdownHook(
@@ -60,9 +69,10 @@ class TemporalWorkerHost(private val config: WorkerConfig) {
         )
 
     log.info(
-        "starting Farm worker: namespace={} taskQueue={} target={}",
+        "starting Farm worker: namespace={} taskQueues=[{}, {}] target={}",
         config.temporal.namespace,
-        config.temporal.taskQueue,
+        TaskQueues.pipeline,
+        TaskQueues.engine,
         config.temporal.address,
     )
     factory.start()
