@@ -25,7 +25,7 @@ resource "google_cloud_run_v2_service" "primary" {
       }
 
       env {
-        name  = "GOOGLE_CLIENT_ID"
+        name  = "GOOGLE_WEB_CLIENT_ID"
         value = module.common.google_client_id
       }
 
