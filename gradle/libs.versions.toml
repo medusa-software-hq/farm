@@ -17,6 +17,7 @@ protobuf = "4.34.1"
 protobuf-plugin = "0.10.0"
 shadow = "9.4.2"
 sqldelight = "2.3.2"
+temporal = "1.37.0"
 versionCatalogUpdate = "1.1.0"
 
 [libraries]
@@ -44,6 +45,9 @@ protobuf-protocGen-grpc-java = { module = "io.grpc:protoc-gen-grpc-java", versio
 protobuf-protocGen-grpc-kotlin = "io.grpc:protoc-gen-grpc-kotlin:1.5.0"
 sqldelight-jdbc-driver = { module = "app.cash.sqldelight:jdbc-driver", version.ref = "sqldelight" }
 sqldelight-postgresql-dialect = { module = "app.cash.sqldelight:postgresql-dialect", version.ref = "sqldelight" }
+temporal-kotlin = { module = "io.temporal:temporal-kotlin", version.ref = "temporal" }
+temporal-sdk = { module = "io.temporal:temporal-sdk", version.ref = "temporal" }
+temporal-testing = { module = "io.temporal:temporal-testing", version.ref = "temporal" }
 
 [plugins]
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }

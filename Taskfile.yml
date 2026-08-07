@@ -21,6 +21,10 @@ includes:
     taskfile: backend/api/Taskfile.yml
     dir: backend/api
 
+  worker:impl:
+    taskfile: backend/worker/Taskfile.yml
+    dir: backend/worker
+
   api:infra:
     taskfile: backend/infra/Taskfile.yml
     dir: backend/infra
@@ -62,6 +66,7 @@ tasks:
       - web:infra:checkFormatting
       - web:domain-mapping:checkFormatting
       - api:impl:checkFormatting
+      - worker:impl:checkFormatting
       - api:infra:checkFormatting
       - api:domain-mapping:checkFormatting
       - cli:checkFormatting
@@ -75,6 +80,7 @@ tasks:
       - web:infra:fixFormatting
       - web:domain-mapping:fixFormatting
       - api:impl:fixFormatting
+      - worker:impl:fixFormatting
       - api:infra:fixFormatting
       - api:domain-mapping:fixFormatting
       - cli:fixFormatting
@@ -88,6 +94,7 @@ tasks:
       - web:infra:lint
       - web:domain-mapping:lint
       - api:impl:lint
+      - worker:impl:lint
       - api:infra:lint
       - api:domain-mapping:lint
       - cli:lint
@@ -103,6 +110,8 @@ tasks:
       - api:domain-mapping:validate
       - cli:compile
       - cli:test
+      - worker:impl:compile
+      - worker:impl:test
 
   run:
     desc: Run the frontend and the API locally

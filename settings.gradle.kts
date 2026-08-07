@@ -9,5 +9,6 @@ include(
     ":backend:api:gcp",
     ":backend:api:local",
     ":backend:api:shared",
+    ":backend:worker",
     ":cli",
 )

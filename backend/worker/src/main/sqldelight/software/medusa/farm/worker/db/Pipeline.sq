@@ -1,0 +1,40 @@
+-- Schema for SQLDelight compile-time query verification (Postgres dialect).
+-- The runtime schema is owned by Flyway; keep this identical to
+-- src/main/resources/db/migration/V1__create_worker_schema.sql.
+CREATE TABLE pipeline (
+  repo_full_name   TEXT    NOT NULL,
+  issue_number     INTEGER NOT NULL,
+  stage            TEXT    NOT NULL,
+  pr_number        INTEGER,
+  pr_url           TEXT,
+  merge_commit_sha TEXT,
+  failure_summary  TEXT,
+  updated_at       TIMESTAMP NOT NULL DEFAULT now(),
+  PRIMARY KEY (repo_full_name, issue_number)
+);
+
+CREATE TABLE stage_transition (
+  id             BIGSERIAL PRIMARY KEY,
+  repo_full_name TEXT      NOT NULL,
+  issue_number   INTEGER   NOT NULL,
+  stage          TEXT      NOT NULL,
+  at             TIMESTAMP NOT NULL DEFAULT now()
+);
+
+upsertPipeline:
+INSERT INTO pipeline (repo_full_name, issue_number, stage, pr_number, pr_url, merge_commit_sha, failure_summary, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, now())
+ON CONFLICT (repo_full_name, issue_number) DO UPDATE SET
+  stage = EXCLUDED.stage,
+  pr_number = EXCLUDED.pr_number,
+  pr_url = EXCLUDED.pr_url,
+  merge_commit_sha = EXCLUDED.merge_commit_sha,
+  failure_summary = EXCLUDED.failure_summary,
+  updated_at = now();
+
+recordStageTransition:
+INSERT INTO stage_transition (repo_full_name, issue_number, stage)
+VALUES (?, ?, ?);
+
+selectPipeline:
+SELECT * FROM pipeline WHERE repo_full_name = ? AND issue_number = ?;

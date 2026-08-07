@@ -1,0 +1,48 @@
+version: '3'
+
+.kotlinSources: &kotlinSources
+  - '**/*.kt'
+  - '**/*.kts'
+  - '**/*.sq'
+
+tasks:
+  checkFormatting:
+    desc: Check Kotlin formatting
+    sources: *kotlinSources
+    cmds:
+      - ../../gradlew ktfmtCheck
+    interactive: true
+
+  fixFormatting:
+    desc: Fix Kotlin formatting
+    sources: *kotlinSources
+    cmds:
+      - ../../gradlew ktfmtFormat
+    interactive: true
+
+  lint:
+    desc: Lint the Kotlin sources
+    sources: *kotlinSources
+    cmds:
+      - ../../gradlew detekt
+    interactive: true
+
+  compile:
+    desc: Compile the Kotlin sources
+    sources: *kotlinSources
+    cmds:
+      - ../../gradlew :backend:worker:compileKotlin
+    interactive: true
+
+  test:
+    desc: Run the worker tests
+    sources: *kotlinSources
+    cmds:
+      - ../../gradlew :backend:worker:test
+    interactive: true
+
+  run:
+    desc: Run the worker locally (env-configured; requires a reachable Temporal + Postgres)
+    cmds:
+      - ../../gradlew :backend:worker:run
+    interactive: true

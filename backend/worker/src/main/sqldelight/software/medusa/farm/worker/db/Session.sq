@@ -1,0 +1,20 @@
+-- Schema for SQLDelight compile-time query verification (Postgres dialect).
+-- The runtime schema is owned by Flyway; keep this identical to
+-- src/main/resources/db/migration/V1__create_worker_schema.sql.
+CREATE TABLE session (
+  id             TEXT    NOT NULL PRIMARY KEY,
+  repo_full_name TEXT    NOT NULL,
+  issue_number   INTEGER NOT NULL,
+  engine_session_id TEXT,
+  outcome_kind   TEXT    NOT NULL,
+  transcript_uri TEXT,
+  total_cost_usd DOUBLE PRECISION,
+  created_at     TIMESTAMP NOT NULL DEFAULT now()
+);
+
+recordSession:
+INSERT INTO session (id, repo_full_name, issue_number, engine_session_id, outcome_kind, transcript_uri, total_cost_usd)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+selectSessionsForIssue:
+SELECT * FROM session WHERE repo_full_name = ? AND issue_number = ? ORDER BY created_at;
