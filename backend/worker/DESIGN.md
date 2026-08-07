@@ -202,24 +202,24 @@ always *between* picks, so no child is in flight at the boundary.
 Note the coordinator no longer has an `onPipelineMutexReleased` signal: the mutex release is not an
 event to be told about, it is the return of the awaited child.
 
-**The coordinator also caches per-repo `trunkHealthy` state**, but the **source of truth is the literal
-GitHub default-branch state** — the combined check/deploy status of trunk's HEAD *right now*, **whoever
-authored the last commit.** This grounding is a co-author requirement (§2.5): a human can merge an
-urgent out-of-band fixup (a non-Farm PR, with no `PostMergeWorkflow` watching it); if *that* breaks
-trunk, a health signal fed only by Farm's own post-merge workflows would miss it and Farm would merge
-onto a broken trunk. So `trunkHealthy` is fed from two literal-state sources:
+**Trunk health has exactly one source of truth: the `getTrunkHealth(repo)` read activity**, which
+computes the **literal GitHub default-branch state** — the combined status of the runs linked to trunk's
+current tip commit, *right now*, **whoever authored it** (the mechanical definition is in §2.2). The
+build's merge gate (§2.2) calls it directly. This grounding is a co-author requirement (§2.5): a human
+can merge an urgent out-of-band fixup (a non-Farm PR, with no `PostMergeWorkflow` watching it); if *that*
+breaks trunk, a health value fed only by Farm's own post-merge workflows would miss it and Farm would
+merge onto a broken trunk. Reading the branch itself can't be fooled that way.
 
-- **(a) `onTrunkStatusChanged(sha, healthy)`** — trunk `check_run`/`workflow_run`/deploy webhooks for
-  **any** commit/author, via the api. This is a low-latency *wakeup* hint so a waiting build need not
-  busy-poll. (Unlike the artificial `onPipelineMutexReleased` handshake we removed, this signal carries
-  real cross-workflow state no single workflow can derive on its own.)
-- **(b) the `getTrunkHealth(repo)` read activity** — reads the actual default-branch HEAD status. This is
-  the **ground truth**: the build's merge gate (§2.2) checks it at the moment of merge, and the
-  coordinator re-syncs from it after a missed webhook or a `continueAsNew`.
+The **`onTrunkStatusChanged(sha, healthy)`** signal — fed by trunk `check_run`/`workflow_run`/deploy
+webhooks for **any** commit/author via the api — is **only a low-latency hint**: it lets the api nudge
+a waiting build to re-read sooner than its backstop timer would. It is **not** cached as an authoritative
+value and is **not** relayed coordinator→build as the gate's input; correctness never depends on the
+hint arriving, only latency does. (The coordinator may keep the last hint for observability in its
+`status()` query, but that value is explicitly not what the gate trusts.)
 
-Note the reporting direction is inverted from the first sketch: `PostMergeWorkflow` is **not** the
-authority for trunk health (§2.3) — it is a *consumer* of trunk state and the *self-healer of Farm's own
-merges*. The gate trusts the literal branch, not Farm's memory of what it merged.
+`PostMergeWorkflow` is likewise **not** the authority for trunk health (§2.3) — it is a *consumer* of
+trunk state and the *self-healer of Farm's own merges*. The gate trusts `getTrunkHealth`, i.e. the
+literal branch, not Farm's memory of what it merged.
 
 **Circuit breaker (§6.6).** The coordinator tracks *consecutive* `BuildWorkflow` failures for the repo.
 After **K straight failures** (default small, e.g. 3) it does **not** keep re-picking into a wall — it
@@ -267,18 +267,55 @@ prepare → engine → open PR → pre-merge fix loop (until green) → rebase o
 That `return` is the mutex release.
 
 **Trunk-health merge gate (the second gate).** After pre-merge checks are green *and* the branch has
-been rebased onto the latest trunk, the build calls **`awaitTrunkHealthy()`** *before* the merge step.
-"Healthy" means the **literal GitHub default-branch HEAD status** (combined check/deploy state of trunk
-right now, whoever authored it) — read via the `getTrunkHealth` activity as ground truth, with the
-coordinator's `trunkHealthy` cache (§2.1) as a low-latency hint so the build need not busy-poll. It
-resolves immediately in the common case (trunk is already green by the time this build is ready → full
-parallelism, no wait). It **blocks** only when trunk is currently red or still deploying — which is the
-correct exception: **stop stacking merges onto a broken default branch** until it recovers. Because the
-build **holds the mutex** while it waits here, a red trunk naturally **pauses the whole repo's merges** —
-free backpressure, no extra mechanism, and it fires for a red trunk from **any** cause (a Farm merge, an
-unrelated stacked merge, or a human's out-of-band commit). The wait is **bounded**: if trunk stays red
-past the bound, the build **escalates to a human** (tying into the §6.6 circuit breaker / self-heal cap)
-rather than blocking the repo forever.
+been rebased onto the latest trunk, the build calls **`awaitTrunkHealthy()`** *before* the merge step,
+reading trunk health via `getTrunkHealth` (§2.1). It resolves immediately in the common case (trunk is
+already green by the time this build is ready → full parallelism, no wait). It **waits** only when trunk
+is currently red or still deploying — which is the correct exception: **stop stacking merges onto a
+broken default branch** until it recovers. Because the build **holds the mutex** while it waits here, a
+red trunk naturally **pauses the whole repo's merges** — free backpressure, no extra mechanism, and it
+fires for a red trunk from **any** cause (a Farm merge, an unrelated stacked merge, or a human's
+out-of-band commit). The wait is **bounded**: if trunk stays red past the bound, the build **escalates
+to a human** (tying into the §6.6 circuit breaker / self-heal cap) rather than blocking the repo forever.
+
+**What counts as a "red trunk" — mechanical, no per-repo declaration.** A **trunk-health-relevant run**
+is any workflow run (or check-run) with `head_branch == default_branch` **and**
+`head_sha == the current trunk tip`. That single rule is **opt-*out***, not opt-in: *everything* that
+ran against the tip counts, and a specific non-load-bearing workflow can be **excluded individually** if
+it ever over-triggers — there is no set of "gating workflows" to declare and keep in sync. The rule
+falls out cleanly: it **excludes PR checks** (different branch) and **excludes stale runs** (different
+commit); a workflow that simply didn't run against the tip is **vacuous, not red**. `getTrunkHealth(repo)`
+computes exactly this off the tip commit's runs/check-runs.
+
+Trunk health is **tri-state**, not binary:
+
+- **red** — ≥1 tip-linked run *concluded* in a **real** failure (see flaky handling below). The gate
+  waits (backpressure), bounded → escalate.
+- **pending** — some tip-linked run is still in progress. The gate **waits** (up to the cap) and treats
+  it as neither red nor green. This is the normal state *right after* a merge: the new tip's deploys are
+  pending until they conclude.
+- **green** — all tip-linked runs concluded and none failed (a tip with no relevant runs is vacuously
+  green — absence never blocks).
+
+**Flaky vs. real failure.** A concluded failure counts as **red only after re-run discrimination** — a
+single flaky/transient run (the GCS-503 / GitHub-Actions-outage / flaky-test class) is **not** red on
+its own; it is re-run first and only a *confirmed* failure flips trunk to red. This is deliberately the
+mechanism that keeps the gate from **wedging the repo on noise**: without it, one infrastructure hiccup
+on trunk would freeze every merge in the repo behind a false red.
+
+**Break-glass override — a safe default, not a one-way door.** The gate is the right default, but its
+false-positives (whatever automation's flaky-detection still gets wrong) need a human recourse. An admin
+can **override the gate** through the **same signal path as `approve`/`abort`** (ms-farm / console →
+`backend/api` → workflow signal), at three scopes:
+
+- **per-PR** — "land this one anyway" (overrides the gate for a single build);
+- **per-repo** — "gating off for this repo";
+- **global-temporary** — "gating off until I say."
+
+Two guardrails make the escape hatch safe: every override is **audited** (who / when / why — a forced
+merge past a red trunk must leave a record), and the **global scope is time-boxed** (it auto-expires, so
+gating is never silently left off forever). This is the human's recourse for the gate's false-positives,
+consistent with the co-author stance (§2.5): a person can always step in and land a change Farm is
+holding.
 
 **Pre-merge fix loop (§6.6, distinct heal loop #1).** While `stage < MERGED`, if the PR's checks go
 red, the build does **not** fail: it re-runs the engine with "these checks failed: `<diagnostics>`; the
@@ -336,9 +373,9 @@ interface PostMergeWorkflow {
 The merge gate reads the literal branch state (§2.1–§2.2), which already reflects this merge's
 check/deploy result via the api's trunk webhooks regardless of which workflow — if any — is watching.
 So the post-merge workflow does not "report health up" as the gate's source of truth; it *consumes*
-trunk state to decide whether **its own** merge needs healing. (It may still emit `onTrunkStatusChanged`
-as one more input into the coordinator's cache, but the cache is only a hint; `getTrunkHealth` is
-authoritative.)
+trunk state to decide whether **its own** merge needs healing. (Its trunk `check_run`/`workflow_run`
+results reach a waiting build only as the low-latency `onTrunkStatusChanged` *hint* of §2.1 — never as an
+authoritative relay; the gate re-reads `getTrunkHealth` regardless.)
 
 **Self-heal scope (§6.6): the gate is universal, the self-heal is Farm-scoped by default.** The
 trunk-health merge *gate* pauses merging for a red trunk from **any** cause. But Farm **self-heals only
@@ -382,7 +419,7 @@ process today — the split is a *concurrency* boundary now and a *relocation* s
 | `issue_pipelines` partial unique index (pick guard) | one **owned** `BuildWorkflow` child started per coordinator loop |
 | mutex releases at merge (`blocksPick` excludes AwaitingMergeChecks) | coordinator **awaits an owned `BuildWorkflow`** that returns *at merge* — no release signal, no orphan (section B) |
 | `FAILED` holds the mutex until a human clears it | failure **releases** the mutex by default; a per-repo **consecutive-failure circuit breaker** is the only pause (§6.6) |
-| a red post-merge check wedges the repo (Flow) / nothing stops a merge onto red trunk | second gate: **`awaitTrunkHealthy()`** before merge, reading the **literal default-branch state** (`getTrunkHealth`, with `onTrunkStatusChanged` webhooks as a hint); a red trunk from **any** author pauses the repo's merges as **backpressure**, bounded → escalate |
+| a red post-merge check wedges the repo (Flow) / nothing stops a merge onto red trunk | second gate: **`awaitTrunkHealthy()`** before merge, reading the **literal default-branch state** via `getTrunkHealth` (tri-state red/pending/green; flaky failures re-run first; `onTrunkStatusChanged` is only a latency hint); a red trunk from **any** author pauses the repo's merges as **backpressure**, bounded → escalate; admin **break-glass** override (audited, global scope time-boxed) is the recourse |
 | worker-death requeue (`maxWorkerDeathRetries`, lazy heartbeat expiry) | activity **heartbeat timeout** + **retry policy** |
 | reconciler poll every 3 min | signals (webhook→api) + per-workflow backstop timers |
 | one worker/queue for everything | **`farm-pipeline` + `farm-engine`** split, so the engine can't starve orchestration |
@@ -425,7 +462,7 @@ change freely.**
 |---|---|---|---|---|
 | `RepoActivities` | `prepareWorkspace`, `publishBranchAndOpenPr`, `pushFix`, `rebaseOntoTrunk`, `cleanupWorkspace` | `farm-pipeline` | short `startToClose` (5 min), retry ≤5 | keyed on `(repo, issue)`; branch `farm/issue-<n>`; `publish` returns `hadChanges=false` on empty diff; `pushFix` is **additive** (§2.5) |
 | `EngineActivities` | `runEngine` | **`farm-engine`** | **long** `startToClose` (2 h), **short** `heartbeatTimeout` (2 min), retry ≤2 | resume via `resumeSessionId`; see below |
-| `GitHubActivities` | `discoverNextReadyIssue`, `getPullRequestState`, `getMergeCheckStatus`, `getTrunkHealth`, `armAutoMerge`, `markIssueDone`, `setPipelineLabel` | `farm-pipeline` | short, retry ≤5 | reads are naturally idempotent (`getTrunkHealth` backstops `awaitTrunkHealthy`); `armAutoMerge`/`markIssueDone` are PUT/close (idempotent) |
+| `GitHubActivities` | `discoverNextReadyIssue`, `getPullRequestState`, `getMergeCheckStatus`, `getTrunkHealth`, `armAutoMerge`, `markIssueDone`, `setPipelineLabel` | `farm-pipeline` | short, retry ≤5 | reads are naturally idempotent; `getTrunkHealth` returns tri-state (red/pending/green) off the tip commit's runs, re-running a flaky failure before calling it red (§2.2); `armAutoMerge`/`markIssueDone` are PUT/close (idempotent) |
 | `DeployActivities` | `triggerDeploy`, `getDeployStatus` | `farm-pipeline` | short, retry ≤5 | `triggerDeploy` is **trigger-or-observe** and idempotent per merge sha (§6.7) |
 | `DomainStoreActivities` | `upsertPipeline`, `recordStageTransition`, `recordSession` | `farm-pipeline` | short, retry ≤5 | upserts keyed on `(repo, issue[, stage])` |
 
@@ -532,9 +569,9 @@ Both are clients of **`backend/api`**; neither touches Temporal or the worker di
 ms-farm (CLI) ─┐
                ├─gRPC→ backend/api ──WorkflowClient──▶ Temporal namespace `farm`
 web console  ──┘        │           │                     ├─ RepoCoordinatorWorkflow   (mutex; awaits…)
-                        │           │                     │     │   ▲ trunkHealthy cache (onTrunkStatusChanged)
+                        │           │                     │     │   ▵ onTrunkStatusChanged (latency hint only)
                         │           │                     │     └─ BuildWorkflow        (mutex-held; → merge)
-                        │           │                     │            │ awaitTrunkHealthy() = getTrunkHealth
+                        │           │                     │            │ awaitTrunkHealthy() = getTrunkHealth (tip runs)
                         │           │                     │            └╌ PostMergeWorkflow (ABANDON; self-heals own merge)
    trunk check/deploy ──┘           │                     │
    webhooks (any author)            └──SQLDelight─────▶ Postgres read model (lists/history)
@@ -622,13 +659,27 @@ changes are a **manual task-queue drain**.
 - **The trunk-health merge gate — a second gate, distinct from the mutex** (§2.1–§2.4). The mutex
   serializes *build starts*; it does **not** stop a build that ran in parallel from merging onto a trunk
   that just went red. So a build, after green pre-merge checks and a rebase onto latest trunk, must clear
-  **`awaitTrunkHealthy()`** before merging. **Source of truth = the literal GitHub default-branch HEAD
-  status** (via `getTrunkHealth`, with `onTrunkStatusChanged` webhooks for **any** author as a
-  low-latency hint), *not* Farm's own `PostMergeWorkflow`s — otherwise a human's out-of-band merge that
-  broke trunk would be invisible to the gate. Because the build holds the mutex while it waits, a red
-  trunk **pauses the whole repo's merges** as natural backpressure — common case (trunk already green) =
-  no wait, full parallelism; the stall is the correct exception. **Bounded → escalate** if trunk stays
-  red past the bound.
+  **`awaitTrunkHealthy()`** before merging. **Single source of truth = `getTrunkHealth`** — the literal
+  default-branch state, *not* Farm's own `PostMergeWorkflow`s (else a human's out-of-band merge that broke
+  trunk would be invisible); `onTrunkStatusChanged` webhooks are **only a latency hint**, never a cached
+  authoritative relay. Because the build holds the mutex while it waits, a red trunk **pauses the whole
+  repo's merges** as natural backpressure. **Bounded → escalate** if trunk stays red past the bound.
+- **"Red trunk" is defined mechanically, and health is tri-state** (§2.2). A relevant run is any run with
+  `head_branch == default_branch` **and** `head_sha == the trunk tip` — **opt-out** (everything that ran
+  against the tip counts; exclude a noisy workflow individually), never an opt-in declared set; this
+  auto-excludes PR checks (other branch) and stale runs (other commit). **red** = ≥1 tip-linked run
+  concluded in a **real** failure; **pending** = a tip-linked run still running → the gate **waits** (the
+  normal state just after a merge); **green** = all concluded, none failed (no relevant runs = vacuously
+  green).
+- **Flaky failures don't count as red** (§2.2). A concluded failure is red **only after re-run
+  discrimination** — a single flaky/transient run (GCS-503 / Actions-outage / flaky-test class) is
+  re-run first and is not red on its own. This is the mechanism that stops the gate from **wedging the
+  repo on noise**.
+- **Break-glass override — the gate is a safe default, not a one-way door** (§2.2). An admin overrides via
+  the **same signal path as `approve`/`abort`** (ms-farm/console → api → signal) at three scopes —
+  **per-PR** (land this one anyway), **per-repo** (gating off for this repo), **global-temporary** (off
+  until I say). Two guardrails: every override is **audited** (who/when/why), and the **global scope is
+  time-boxed** (auto-expires). It is the human recourse for the gate's false-positives.
 - **Self-heal scope for a human-caused red trunk: the gate is universal, the self-heal is Farm-scoped.**
   The merge *gate* pauses for a red trunk from **any** cause. But Farm **self-heals only its own merges'
   breakage** — it does **not** auto-open a competing fix PR against a human's active out-of-band change
@@ -659,6 +710,8 @@ creds is revisited only once self-heal is trusted on the CI-applied class. This 
 ### Remaining open items
 - **Worker Versioning (Build IDs)** enabled on the self-hosted Temporal? (blocks the "drain, don't
   patch" mechanism in §6.5; check with temporal-instance #8/#9 — else manual task-queue drain).
-- **Circuit-breaker `K` and the self-heal cap** exact values (§6.6) — start small (K≈3, cap 2–3), tune
-  operationally.
+- **Numeric thresholds, tune operationally** (§6.6): the circuit-breaker `K` (≈3) and self-heal cap
+  (2–3); the trunk-health-gate wait bound; the flaky re-run count (how many transient failures before a
+  concluded failure is called *real* red); and the global break-glass time-box duration. The *policy* is
+  decided; only the constants are pending.
 - **Concrete `apply-*` workflow names / dispatch inputs** per repo (§6.7) — enumerated as repos onboard.

@@ -92,8 +92,11 @@ class GitHubActivitiesImpl(private val config: WorkerConfig) : GitHubActivities 
   override fun getMergeCheckStatus(repo: RepoRef, commitSha: String): CheckSnapshot =
       CheckSnapshot(CheckStatus.PENDING) // TODO
 
-  override fun getTrunkHealth(repo: RepoRef): Boolean =
-      true // TODO: combined check/deploy status of the LITERAL default-branch HEAD (any author).
+  override fun getTrunkHealth(repo: RepoRef): CheckStatus =
+      // TODO: tri-state off the trunk-tip commit's runs/check-runs (head_branch == default_branch
+      // &&
+      // head_sha == tip); re-run a flaky failure before calling it RED (DESIGN.md §2.2).
+      CheckStatus.GREEN
 
   override fun armAutoMerge(repo: RepoRef, prNumber: Int) {
     // TODO: PUT auto-merge if repo settings allow.

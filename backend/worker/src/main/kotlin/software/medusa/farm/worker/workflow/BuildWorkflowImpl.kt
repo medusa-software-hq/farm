@@ -161,18 +161,32 @@ class BuildWorkflowImpl : BuildWorkflow {
   }
 
   /**
-   * The trunk-health merge gate (DESIGN.md §2.1–§2.2). "Healthy" = the LITERAL default-branch HEAD
-   * status via [GitHubActivities.getTrunkHealth]; a red trunk from any author pauses the repo's
-   * merges (the build holds the mutex while it waits). Bounded → escalate.
+   * The trunk-health merge gate (DESIGN.md §2.1–§2.2). Reads TRI-STATE health via the sole source
+   * of truth [GitHubActivities.getTrunkHealth] (RED only after a flaky failure is re-run-confirmed;
+   * PENDING while a tip run is in progress). RED (any author) / PENDING both wait — the build holds
+   * the mutex, so a red trunk pauses the repo's merges. Bounded → escalate; admin break-glass
+   * bypass.
    */
   private fun awaitTrunkHealthy(input: PipelineInput): Boolean {
     val deadline = Workflow.currentTimeMillis() + trunkHealthGraceMillis
     while (Workflow.currentTimeMillis() < deadline) {
-      if (github.getTrunkHealth(input.repo)) return true
-      Workflow.sleep(pollInterval) // TODO: also wake on a coordinator-relayed trunk-status hint.
+      // Break-glass (DESIGN.md §2.2): an admin `approve` (per-PR "land this one anyway") bypasses
+      // the
+      // gate. Auditing + per-repo/global scopes live at the api; here it is the same signal path.
+      if (approved) {
+        log.warn("break-glass override for {}; merging past the trunk gate", input.repo.fullName)
+        return true
+      }
+      when (github.getTrunkHealth(input.repo)) {
+        // GREEN, or vacuously green (a tip with no relevant runs) — clear to merge.
+        CheckStatus.GREEN,
+        CheckStatus.NO_RUNS -> return true
+        // RED (real, re-run-confirmed) = backpressure; PENDING = normal just after a merge. Both
+        // wait.
+        else -> Workflow.sleep(pollInterval)
+      }
     }
-    // TODO: escalate to a human (label / coordinator approve) rather than blocking the repo
-    // forever.
+    // TODO: escalate to a human rather than blocking the repo forever.
     log.warn("trunk stayed unhealthy for {}; escalating", input.repo.fullName)
     return false
   }

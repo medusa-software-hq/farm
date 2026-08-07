@@ -18,9 +18,9 @@ import software.medusa.farm.worker.model.RepoRef
  * its workflow id is derived from the repo full name (`repo:<owner>/<name>`) — Temporal guarantees
  * a single running execution per id. It serially picks the next unblocked ready issue and starts
  * one **owned** child [BuildWorkflow] at a time, awaiting its result; that await IS the mutex, and
- * it ends when the build returns at MERGED. It also caches per-repo `trunkHealthy` state (a hint
- * over the literal default-branch status, fed by [onTrunkStatusChanged]) for the merge gate — see
- * DESIGN.md §2.1.
+ * it ends when the build returns at MERGED. It keeps a per-repo `trunkHealthy` hint (from
+ * [onTrunkStatusChanged]) for observability ONLY — the merge gate's source of truth is the
+ * [GitHubActivities.getTrunkHealth] read, not this hint — see DESIGN.md §2.1.
  */
 @WorkflowInterface
 interface RepoCoordinatorWorkflow {
@@ -35,9 +35,10 @@ interface RepoCoordinatorWorkflow {
   @SignalMethod fun approve()
 
   /**
-   * Low-latency hint about the repo's *literal* default-branch health — trunk check/deploy webhooks
-   * for ANY commit/author, via the api. A cache over ground truth: the merge gate ultimately reads
-   * [GitHubActivities.getTrunkHealth]. Not fed authoritatively by [PostMergeWorkflow] (a human's
+   * Low-latency HINT ONLY about the repo's *literal* default-branch health — trunk check/deploy
+   * webhooks for ANY commit/author, via the api. NOT a cached authoritative relay: the merge gate's
+   * sole source of truth is the [GitHubActivities.getTrunkHealth] read, and correctness never
+   * depends on this hint arriving (only latency does). Not fed by [PostMergeWorkflow] (a human's
    * out-of-band merge that breaks trunk has no PostMergeWorkflow but must still gate merges).
    */
   @SignalMethod fun onTrunkStatusChanged(sha: String, healthy: Boolean)

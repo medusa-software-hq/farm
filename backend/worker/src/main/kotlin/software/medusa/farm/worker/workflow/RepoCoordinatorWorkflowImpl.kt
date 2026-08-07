@@ -94,9 +94,13 @@ class RepoCoordinatorWorkflowImpl : RepoCoordinatorWorkflow {
   }
 
   override fun onTrunkStatusChanged(sha: String, healthy: Boolean) {
-    // Authoritative per-repo trunk health; relayed to the active build's trunk-health merge gate.
-    // TODO: forward `healthy` to the in-flight owned BuildWorkflow (or expose via getTrunkHealth).
+    // Low-latency HINT only (DESIGN.md §2.1): `getTrunkHealth` is the sole source of truth, so
+    // there
+    // is NO coordinator->build relay. Kept for the status() query / observability, and wakes the
+    // loop
+    // so a parked coordinator re-checks sooner.
     trunkHealthy = healthy
+    wakeUp = true
   }
 
   override fun status(): RepoCoordinatorStatus =

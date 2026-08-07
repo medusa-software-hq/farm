@@ -3,6 +3,7 @@ package software.medusa.farm.worker.activity
 import io.temporal.activity.ActivityInterface
 import io.temporal.activity.ActivityMethod
 import software.medusa.farm.worker.model.CheckSnapshot
+import software.medusa.farm.worker.model.CheckStatus
 import software.medusa.farm.worker.model.EngineOutcome
 import software.medusa.farm.worker.model.EngineRunRequest
 import software.medusa.farm.worker.model.IssueRef
@@ -72,11 +73,14 @@ interface GitHubActivities {
   @ActivityMethod fun getMergeCheckStatus(repo: RepoRef, commitSha: String): CheckSnapshot
 
   /**
-   * Ground truth for the trunk-health merge gate (DESIGN.md §2.1–§2.2): the LITERAL default-branch
-   * HEAD combined check/deploy status right now, whoever authored the last commit. Read at the
-   * merge gate and to re-sync after a missed webhook or a coordinator continue-as-new.
+   * Single source of truth for the trunk-health merge gate (DESIGN.md §2.1–§2.2). Computes
+   * TRI-STATE health off the CURRENT trunk-tip commit's runs/check-runs: a run counts iff
+   * `head_branch == default_branch` AND `head_sha == tip` (opt-out, auto-excluding PR checks +
+   * stale runs). Returns RED only after a flaky failure is re-run and confirmed; PENDING while a
+   * tip run is still in progress; GREEN when all concluded and none failed (no relevant runs =>
+   * NO_RUNS, treated as vacuously green by the gate).
    */
-  @ActivityMethod fun getTrunkHealth(repo: RepoRef): Boolean
+  @ActivityMethod fun getTrunkHealth(repo: RepoRef): CheckStatus
 
   /** Arm GitHub-native auto-merge (idempotent). Actual merge is GitHub's or a human's. */
   @ActivityMethod fun armAutoMerge(repo: RepoRef, prNumber: Int)
