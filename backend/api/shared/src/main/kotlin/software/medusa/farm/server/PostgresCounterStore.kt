@@ -36,7 +36,7 @@ class PostgresCounterStore(
               }
           )
 
-      Flyway.configure().dataSource(dataSource).load().migrate()
+      Flyway.configure().apply { dataSource(dataSource) }.load().migrate()
 
       return PostgresCounterStore(CounterDatabase(dataSource.asJdbcDriver()))
     }
