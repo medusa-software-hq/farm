@@ -1,2 +1,9 @@
 # Task cache
 .task/
+
+# Gradle
+.gradle/
+build/
+
+# Kotlin compiler cache
+.kotlin/

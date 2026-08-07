@@ -9,31 +9,31 @@ tasks:
     desc: Check Kotlin formatting
     sources: *kotlinSources
     cmds:
-      - ./gradlew ktfmtCheck
+      - ../gradlew ktfmtCheck
 
   fixFormatting:
     desc: Fix Kotlin formatting
     sources: *kotlinSources
     cmds:
-      - ./gradlew ktfmtFormat
+      - ../gradlew ktfmtFormat
 
   lint:
     desc: Lint the Kotlin sources
     sources: *kotlinSources
     cmds:
-      - ./gradlew detekt
+      - ../gradlew detekt
 
   compile:
     desc: Compile the Kotlin sources
     sources: *kotlinSources
     cmds:
-      - ./gradlew compileKotlin
+      - ../gradlew compileKotlin
 
   test:
     desc: Run tests
     sources: *kotlinSources
     cmds:
-      - ./gradlew test
+      - ../gradlew test
 
   install:
     desc: Install the CLI locally (build/install/cli/bin/cli)
@@ -41,7 +41,7 @@ tasks:
     generates:
       - ./build/install/cli/bin/cli
     cmds:
-      - ./gradlew installDist
+      - ../gradlew installDist
 
   run:
     desc: Run the locally-installed CLI (pass args after --)

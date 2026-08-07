@@ -4,11 +4,7 @@ plugins {
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.shadow)
-  alias(libs.plugins.ktfmt)
-  alias(libs.plugins.detekt)
 }
-
-repositories { mavenCentral() }
 
 dependencies {
   implementation(libs.clikt)
@@ -59,13 +55,3 @@ tasks.shadowJar {
   archiveClassifier = ""
   archiveVersion = ""
 }
-
-tasks.named("check") { dependsOn(tasks.named("ktfmtCheck")) }
-
-detekt { config.setFrom(file("config/detekt/detekt.yml")) }
-
-java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
-
-tasks.withType<JavaCompile>().configureEach { options.compilerArgs.add("-parameters") }
-
-tasks.withType<Test>().configureEach { useJUnitPlatform() }

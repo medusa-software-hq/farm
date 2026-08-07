@@ -45,7 +45,7 @@ jobs:
           CLI_OAUTH_CLIENT_SECRET: ${{ secrets.FARM_CLI_OAUTH_CLIENT_SECRET }}
           CLI_STAGING_OAUTH_CLIENT_SECRET: ${{ secrets.FARM_CLI_OAUTH_CLIENT_SECRET_STAGING }}
         run: |
-          ./gradlew shadowJar \
+          ../gradlew :cli:shadowJar \
             -PcliOauthClientSecret="$CLI_OAUTH_CLIENT_SECRET" \
             -PcliStagingOauthClientSecret="$CLI_STAGING_OAUTH_CLIENT_SECRET"
           echo "JAR=$GITHUB_WORKSPACE/cli/build/libs/farm-cli.jar" >> $GITHUB_ENV

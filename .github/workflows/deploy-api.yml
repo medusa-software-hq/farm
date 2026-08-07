@@ -68,7 +68,7 @@ jobs:
       - name: Build and push image
         working-directory: ${{ env.SERVICE_PATH }}
         run: |
-          ./gradlew :gcp:jib \
+          ../../gradlew :backend:api:gcp:jib \
             -Pjib.imageRef=${{ env.IMAGE_REF }} \
             -Pjib.imageTag=${{ github.sha }} \
             --stacktrace --info
@@ -137,7 +137,7 @@ jobs:
       - name: Build and push image
         working-directory: ${{ env.SERVICE_PATH }}
         run: |
-          ./gradlew :gcp:jib \
+          ../../gradlew :backend:api:gcp:jib \
             -Pjib.imageRef=${{ env.IMAGE_REF }} \
             -Pjib.imageTag=${{ github.sha }} \
             --stacktrace --info
