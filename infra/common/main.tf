@@ -36,16 +36,16 @@ locals {
       # https://console.cloud.google.com/auth/clients/97246827152-5s18i6k7atkq7j1mm8j19s6tk443ednu.apps.googleusercontent.com?project=ms-counter-1175e509
       # 🎨 TEMPLATE POST-EJECT: Create a project-specific Web OAuth Client ID in the prod
       # GCP project (authorized origin = the web app's URL) and change it here 👆
-      google_client_id = "97246827152-5s18i6k7atkq7j1mm8j19s6tk443ednu.apps.googleusercontent.com"
+      google_web_client_id = "97246827152-5s18i6k7atkq7j1mm8j19s6tk443ednu.apps.googleusercontent.com"
 
       # Google OAuth 2.0 *Desktop* client ID — what the `ms-farm` CLI signs in
-      # with (loopback + PKCE). A second accepted audience alongside google_client_id
+      # with (loopback + PKCE). A second accepted audience alongside google_web_client_id
       # (see GoogleIdTokenAuthDecorator's setOfNotNull). Kept in sync with the CLI's
       # Environment.Prod.oauthClientId. Its non-confidential secret is baked at publish.
       # https://console.cloud.google.com/auth/clients/97246827152-d2e73hif1ckri70a6osh139v6jmaesag.apps.googleusercontent.com?project=ms-counter-1175e509
       # 🎨 TEMPLATE POST-EJECT: Create a Desktop OAuth Client ID in the prod GCP project
       # and change it here 👆
-      cli_client_id = "97246827152-d2e73hif1ckri70a6osh139v6jmaesag.apps.googleusercontent.com"
+      google_cli_client_id = "97246827152-d2e73hif1ckri70a6osh139v6jmaesag.apps.googleusercontent.com"
     }
     staging = {
       gh_environment_name     = "staging"
@@ -65,14 +65,14 @@ locals {
       # https://console.cloud.google.com/auth/clients/329509758995-8pqmbc01jp0lm3gilesi0g4ljcnh1cob.apps.googleusercontent.com?project=ms-counter-f7f40f25
       # 🎨 TEMPLATE POST-EJECT: Create a separate Web OAuth Client ID in the *staging*
       # GCP project (its authorized origin = staging's subdomain), and change it here 👇.
-      google_client_id = "329509758995-8pqmbc01jp0lm3gilesi0g4ljcnh1cob.apps.googleusercontent.com"
+      google_web_client_id = "329509758995-8pqmbc01jp0lm3gilesi0g4ljcnh1cob.apps.googleusercontent.com"
 
       # Staging's own Desktop OAuth client (same credential-boundary reasoning as
-      # google_client_id above). The CLI reaches staging via FARM_ENVIRONMENT=staging
+      # google_web_client_id above). The CLI reaches staging via FARM_ENVIRONMENT=staging
       # (see the CLI's Environment.Staging); its secret is baked from a separate
       # FARM_CLI_OAUTH_CLIENT_SECRET_STAGING Actions secret.
       # https://console.cloud.google.com/auth/clients/329509758995-cn8lk8fcuen0u813a14m6cmfls3an24e.apps.googleusercontent.com?project=ms-counter-f7f40f25
-      cli_client_id = "329509758995-cn8lk8fcuen0u813a14m6cmfls3an24e.apps.googleusercontent.com"
+      google_cli_client_id = "329509758995-cn8lk8fcuen0u813a14m6cmfls3an24e.apps.googleusercontent.com"
     }
   }
   selected_environment = local.environment_config[local.environment]
@@ -127,10 +127,10 @@ locals {
 
   # Google OAuth 2.0 client ID — per environment (see environment_config). It is
   # the audience of the user tokens that environment's API accepts.
-  google_client_id = local.selected_environment.google_client_id
+  google_web_client_id = local.selected_environment.google_web_client_id
 
   # Google OAuth 2.0 Desktop client ID — per environment; the CLI's audience.
-  cli_client_id = local.selected_environment.cli_client_id
+  google_cli_client_id = local.selected_environment.google_cli_client_id
 }
 
 output "organization_domain" {
@@ -197,12 +197,12 @@ output "api_url" {
   value = local.api_url
 }
 
-output "google_client_id" {
-  value = local.google_client_id
+output "google_web_client_id" {
+  value = local.google_web_client_id
 }
 
-output "cli_client_id" {
-  value = local.cli_client_id
+output "google_cli_client_id" {
+  value = local.google_cli_client_id
 }
 
 output "gh_releases_repo_name" {

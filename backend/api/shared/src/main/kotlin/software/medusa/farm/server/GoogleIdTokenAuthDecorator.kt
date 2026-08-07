@@ -38,21 +38,13 @@ private const val emailClaim = "email"
 private const val hostedDomainClaim = "hd"
 
 /**
- * Verifies a Google ID token passed as `Authorization: Bearer <token>`.
- *
- * Checks:
- * - Valid signature against Google's JWKS
- * - `iss` is a known Google issuer
- * - `aud` is one of [allowedAudiences] (the web SPA client and, optionally, the CLI Desktop client
- *   — these are distinct OAuth clients, both minted by the same organization)
- * - Token is not expired
- * - `hd` claim matches [allowedDomain] — the hosted-domain claim is what keeps out any token whose
- *   audience happens to match but whose subject isn't in this Workspace
- *
- * Returns HTTP 401 on any failure.
+ * A *Sign in with Google* decorator: verifies a Google-issued ID token, accepts the configured
+ * OAuth clients (matched against the token's `aud`), and restricts access to a single Google
+ * Workspace / Cloud Identity domain via the `hd` (hosted-domain) claim. Returns 401 on failure.
  */
 class GoogleIdTokenAuthDecorator(
-    private val allowedAudiences: Set<String>,
+    // Google OAuth client IDs; each value is matched against the token's `aud` claim.
+    private val allowedClientIds: Set<String>,
     private val allowedDomain: String,
 ) : DecoratingHttpServiceFunction {
   companion object {
@@ -89,7 +81,7 @@ class GoogleIdTokenAuthDecorator(
 
       // Audience is verified manually below: Nimbus's DefaultJWTClaimsVerifier can only exact-match
       // a
-      // single audience, but we accept any of a set (web + CLI clients).
+      // single audience, but we accept any of a set (any of our accepted OAuth clients).
 
       // Require the claims we actually rely on downstream:
       //   sub   → stable, unique user id
@@ -111,6 +103,9 @@ class GoogleIdTokenAuthDecorator(
         jwtClaimsSetVerifier = claimsVerifier
       }
     }
+
+    private fun extractBearerToken(req: HttpRequest): String? =
+        AuthTokenExtractors.oAuth2().apply(req.headers())?.accessToken()?.takeIf { it.isNotEmpty() }
   }
 
   override fun serve(
@@ -124,7 +119,7 @@ class GoogleIdTokenAuthDecorator(
       return missingCredential
     }
 
-    val claims =
+    val claimsSet =
         try {
           jwtProcessor.process(token, null)
         } catch (_: ParseException) {
@@ -138,19 +133,17 @@ class GoogleIdTokenAuthDecorator(
     // client's fault — let it propagate to a 500 rather than masquerade as a 401.
 
     // Verify issuer manually (nimbus claimsVerifier checks exp/required fields).
-    if (claims.issuer !in googleIssuers) return invalidToken
+    if (claimsSet.issuer !in googleIssuers) return invalidToken
 
-    // Accept a token minted by any of our OAuth clients (web SPA or CLI Desktop client).
-    if ((claims.audience ?: emptyList()).none { it in allowedAudiences }) return invalidToken
+    // Accept a token minted by any of our accepted OAuth clients (its `aud` must match a configured
+    // client id).
+    if ((claimsSet.audience ?: emptyList()).none { it in allowedClientIds }) return invalidToken
 
     // Enforce hosted domain: restrict access to our organization's Workspace domain, so a token
     // with a valid signature and audience but from a foreign Workspace is still rejected.
-    val hd = claims.getStringClaim(hostedDomainClaim)
+    val hd = claimsSet.getStringClaim(hostedDomainClaim)
     if (hd != allowedDomain) return invalidToken
 
     return delegate.serve(ctx, req)
   }
-
-  private fun extractBearerToken(req: HttpRequest): String? =
-      AuthTokenExtractors.oAuth2().apply(req.headers())?.accessToken()?.takeIf { it.isNotEmpty() }
 }

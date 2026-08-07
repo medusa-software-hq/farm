@@ -25,15 +25,15 @@ resource "google_cloud_run_v2_service" "primary" {
       }
 
       env {
-        name  = "GOOGLE_CLIENT_ID"
-        value = module.common.google_client_id
+        name  = "GOOGLE_WEB_CLIENT_ID"
+        value = module.common.google_web_client_id
       }
 
       # Also accept ID tokens minted by the CLI's Desktop OAuth client, so
       # `ms-farm` can call the API (see GoogleIdTokenAuthDecorator).
       env {
         name  = "GOOGLE_CLI_CLIENT_ID"
-        value = module.common.cli_client_id
+        value = module.common.google_cli_client_id
       }
 
       env {
