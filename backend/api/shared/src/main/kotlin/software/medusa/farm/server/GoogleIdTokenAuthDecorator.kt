@@ -6,6 +6,7 @@ import com.linecorp.armeria.common.HttpStatus
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction
 import com.linecorp.armeria.server.HttpService
 import com.linecorp.armeria.server.ServiceRequestContext
+import com.linecorp.armeria.server.auth.AuthTokenExtractors
 import com.nimbusds.jose.jwk.source.JWKSourceBuilder
 import com.nimbusds.jose.proc.BadJOSEException
 import com.nimbusds.jose.proc.JWSVerificationKeySelector
@@ -14,9 +15,6 @@ import com.nimbusds.jwt.proc.DefaultJWTClaimsVerifier
 import com.nimbusds.jwt.proc.DefaultJWTProcessor
 import java.net.URI
 import java.text.ParseException
-
-private const val httpAuthorizationHeaderName = "Authorization"
-private const val bearerPrefix = "Bearer "
 
 private const val googleAccountsHostname = "accounts.google.com"
 
@@ -101,9 +99,6 @@ class GoogleIdTokenAuthDecorator(
     return delegate.serve(ctx, req)
   }
 
-  private fun extractBearerToken(req: HttpRequest): String? {
-    val header = req.headers().get(httpAuthorizationHeaderName) ?: return null
-    if (!header.startsWith(bearerPrefix)) return null
-    return header.removePrefix(bearerPrefix).trim().takeIf { it.isNotEmpty() }
-  }
+  private fun extractBearerToken(req: HttpRequest): String? =
+      AuthTokenExtractors.oAuth2().apply(req.headers())?.accessToken()?.takeIf { it.isNotEmpty() }
 }
