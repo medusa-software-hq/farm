@@ -8,7 +8,7 @@ plugins {
 }
 
 // Proto sources live at the repo root, shared across services.
-sourceSets { main { proto { srcDir("../../../proto") } } }
+sourceSets { main { proto { srcDir(rootDir.resolve("proto")) } } }
 
 dependencies {
   api(platform(libs.armeria.bom))
