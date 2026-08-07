@@ -9,10 +9,13 @@ import com.linecorp.armeria.server.DecoratingHttpServiceFunction
 import com.linecorp.armeria.server.HttpService
 import com.linecorp.armeria.server.ServiceRequestContext
 import com.linecorp.armeria.server.auth.AuthTokenExtractors
+import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.jwk.source.JWKSourceBuilder
 import com.nimbusds.jose.proc.BadJOSEException
 import com.nimbusds.jose.proc.JWSVerificationKeySelector
 import com.nimbusds.jose.proc.SecurityContext
+import com.nimbusds.jwt.JWTClaimNames
+import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.proc.DefaultJWTClaimsVerifier
 import com.nimbusds.jwt.proc.DefaultJWTProcessor
 import java.net.URI
@@ -28,6 +31,11 @@ private const val googleAccountsHostname = "accounts.google.com"
 private val googleJwksUri = URI("https://www.googleapis.com/oauth2/v3/certs").toURL()
 // Google emits `iss` as either the bare host or the https URL — accept both.
 private val googleIssuers = setOf("https://$googleAccountsHostname", googleAccountsHostname)
+
+// OIDC "email" claim — not an RFC 7519 registered claim, so there's no JWTClaimNames constant.
+private const val emailClaim = "email"
+// Google Workspace "hd" (hosted-domain) claim — Google-specific, no library constant.
+private const val hostedDomainClaim = "hd"
 
 /**
  * Verifies a Google ID token passed as `Authorization: Bearer <token>`.
@@ -70,27 +78,38 @@ class GoogleIdTokenAuthDecorator(
                   .add(HttpHeaderNames.WWW_AUTHENTICATE, "Bearer error=\"invalid_token\"")
                   .build()
           )
-  }
 
-  private val jwtProcessor = buildJwtProcessor()
+    private val jwtProcessor = run {
+      val jwkSource =
+          JWKSourceBuilder.create<SecurityContext>(googleJwksUri).refreshAheadCache(true).build()
 
-  private fun buildJwtProcessor(): DefaultJWTProcessor<SecurityContext> {
-    val jwkSource =
-        JWKSourceBuilder.create<SecurityContext>(googleJwksUri).refreshAheadCache(true).build()
+      val keySelector = JWSVerificationKeySelector(JWSAlgorithm.RS256, jwkSource)
 
-    val keySelector = JWSVerificationKeySelector(com.nimbusds.jose.JWSAlgorithm.RS256, jwkSource)
+      val emptyClaimSet = JWTClaimsSet.Builder().build()
 
-    // Audience is verified manually below: Nimbus's DefaultJWTClaimsVerifier can only exact-match a
-    // single audience, but we accept any of a set (web + CLI clients).
-    val claimsVerifier =
-        DefaultJWTClaimsVerifier<SecurityContext>(
-            com.nimbusds.jwt.JWTClaimsSet.Builder().build(),
-            setOf("sub", "email", "iat", "exp"),
-        )
+      // Audience is verified manually below: Nimbus's DefaultJWTClaimsVerifier can only exact-match
+      // a
+      // single audience, but we accept any of a set (web + CLI clients).
 
-    return DefaultJWTProcessor<SecurityContext>().apply {
-      jwsKeySelector = keySelector
-      jwtClaimsSetVerifier = claimsVerifier
+      // Require the claims we actually rely on downstream:
+      //   sub   → stable, unique user id
+      //   email → the caller's identity
+      //   iat / exp → issuance/expiry, so we only accept fresh, unexpired tokens
+      val claimsVerifier =
+          DefaultJWTClaimsVerifier<SecurityContext>(
+              /* exactMatchClaims = */ emptyClaimSet,
+              /* requiredClaims = */ setOf(
+                  JWTClaimNames.SUBJECT,
+                  emailClaim,
+                  JWTClaimNames.ISSUED_AT,
+                  JWTClaimNames.EXPIRATION_TIME,
+              ),
+          )
+
+      DefaultJWTProcessor<SecurityContext>().apply {
+        jwsKeySelector = keySelector
+        jwtClaimsSetVerifier = claimsVerifier
+      }
     }
   }
 
@@ -124,8 +143,9 @@ class GoogleIdTokenAuthDecorator(
     // Accept a token minted by any of our OAuth clients (web SPA or CLI Desktop client).
     if ((claims.audience ?: emptyList()).none { it in allowedAudiences }) return invalidToken
 
-    // Enforce hosted domain.
-    val hd = claims.getStringClaim("hd")
+    // Enforce hosted domain: restrict access to our organization's Workspace domain, so a token
+    // with a valid signature and audience but from a foreign Workspace is still rejected.
+    val hd = claims.getStringClaim(hostedDomainClaim)
     if (hd != allowedDomain) return invalidToken
 
     return delegate.serve(ctx, req)

@@ -16,9 +16,11 @@ fun main() {
       System.getenv(clientIdEnvVarName)
           ?: error("$clientIdEnvVarName environment variable must be set")
 
-  // Optional: the CLI (Desktop) OAuth client. When set, the API also accepts ID tokens whose
-  // audience is the CLI client, so `ms-farm` can call it. Absent (blank) → web-only.
-  val cliClientId = System.getenv(cliClientIdEnvVarName)?.takeIf { it.isNotBlank() }
+  // Required: the CLI (Desktop) OAuth client. The API also accepts ID tokens whose audience is the
+  // CLI client, so `ms-farm` can call it. This is a distinct OAuth client from the web SPA.
+  val cliClientId =
+      System.getenv(cliClientIdEnvVarName)
+          ?: error("$cliClientIdEnvVarName environment variable must be set")
 
   val allowedDomain =
       System.getenv(allowedDomainEnvVarName)
@@ -35,7 +37,7 @@ fun main() {
   buildServer(
           originRegex = corsOriginRegex,
           port = port,
-          auth = GoogleIdTokenAuthDecorator(setOfNotNull(clientId, cliClientId), allowedDomain),
+          auth = GoogleIdTokenAuthDecorator(setOf(clientId, cliClientId), allowedDomain),
           counterStore = PostgresCounterStore.build(databaseUrl),
       )
       .start()
