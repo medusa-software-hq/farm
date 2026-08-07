@@ -7,11 +7,13 @@ import com.linecorp.armeria.server.DecoratingHttpServiceFunction
 import com.linecorp.armeria.server.HttpService
 import com.linecorp.armeria.server.ServiceRequestContext
 import com.nimbusds.jose.jwk.source.JWKSourceBuilder
+import com.nimbusds.jose.proc.BadJOSEException
 import com.nimbusds.jose.proc.JWSVerificationKeySelector
 import com.nimbusds.jose.proc.SecurityContext
 import com.nimbusds.jwt.proc.DefaultJWTClaimsVerifier
 import com.nimbusds.jwt.proc.DefaultJWTProcessor
 import java.net.URI
+import java.text.ParseException
 
 private const val httpAuthorizationHeaderName = "Authorization"
 private const val bearerPrefix = "Bearer "
@@ -76,9 +78,15 @@ class GoogleIdTokenAuthDecorator(
     val claims =
         try {
           jwtProcessor.process(token, null)
-        } catch (_: Exception) {
+        } catch (_: ParseException) {
+          // Malformed / non-JWT token.
+          return unauthorized
+        } catch (_: BadJOSEException) {
+          // Bad signature or failed claims verification.
           return unauthorized
         }
+    // Anything else (e.g. RemoteKeySourceException when Google's JWKS is unreachable) is NOT the
+    // client's fault — let it propagate to a 500 rather than masquerade as a 401.
 
     // Verify issuer manually (nimbus claimsVerifier checks exp/required fields).
     if (claims.issuer !in googleIssuers) return unauthorized
