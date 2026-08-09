@@ -1,5 +1,7 @@
 package software.medusa.farm.server
 
+import software.medusa.farm.shared.FarmStore
+
 private const val portEnvVarName = "PORT"
 private const val webClientIdEnvVarName = "GOOGLE_WEB_CLIENT_ID"
 
@@ -43,7 +45,7 @@ fun main() {
       System.getenv(databaseUrlEnvVarName)
           ?: error("$databaseUrlEnvVarName environment variable must be set")
 
-  val database = buildFarmDatabase(databaseUrl)
+  val farmStore = FarmStore.buildWithMigrations(databaseUrl)
 
   buildServer(
           originRegex = corsOriginRegex,
@@ -53,8 +55,7 @@ fun main() {
                   allowedClientIds = setOf(webClientId, cliClientId),
                   allowedDomain = allowedDomain,
               ),
-          counterStore = PostgresCounterStore(database),
-          fibonacciStore = PostgresFibonacciStore(database),
+          farmStore = farmStore,
       )
       .start()
       .join()

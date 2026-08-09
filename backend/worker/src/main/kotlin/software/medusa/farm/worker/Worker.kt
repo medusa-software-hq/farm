@@ -3,6 +3,7 @@ package software.medusa.farm.worker
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
+import software.medusa.farm.shared.FibonacciStore
 
 /**
  * Persists the computed sequence, resuming from stored progress so a restart continues rather than

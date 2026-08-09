@@ -1,5 +1,5 @@
--- Mirror of the API-owned Flyway migration, for SQLDelight's compile-time query verification only;
--- the two must stay identical. The API owns the runtime schema; the worker only writes rows.
+-- Mirror of the Flyway migration for this table; SQLDelight verifies the queries
+-- below against it at compile time, so the two must stay identical.
 CREATE TABLE fibonacci (
   n           INTEGER   NOT NULL PRIMARY KEY,
   value       TEXT      NOT NULL,
@@ -11,3 +11,6 @@ INSERT INTO fibonacci (n, value) VALUES (?, ?);
 
 highestIndex:
 SELECT n FROM fibonacci ORDER BY n DESC LIMIT 1;
+
+selectAll:
+SELECT n, value FROM fibonacci ORDER BY n;

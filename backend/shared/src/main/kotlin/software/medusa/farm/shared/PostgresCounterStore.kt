@@ -1,9 +1,10 @@
-package software.medusa.farm.server
+package software.medusa.farm.shared
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import software.medusa.farm.db.FarmDatabase
+import software.medusa.farm.shared.db.FarmDatabase
 
+/** [CounterStore] backed by a Postgres database. */
 class PostgresCounterStore(
     private val database: FarmDatabase,
 ) : CounterStore {
