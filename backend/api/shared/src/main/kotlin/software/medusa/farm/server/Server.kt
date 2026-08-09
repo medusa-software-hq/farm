@@ -7,12 +7,13 @@ import com.linecorp.armeria.server.Server
 import com.linecorp.armeria.server.cors.CorsService
 import com.linecorp.armeria.server.grpc.GrpcService
 import com.linecorp.armeria.server.healthcheck.HealthCheckService
+import software.medusa.farm.shared.FarmStore
 
 fun buildServer(
     originRegex: String,
     port: Int,
     auth: DecoratingHttpServiceFunction,
-    counterStore: CounterStore,
+    farmStore: FarmStore,
 ): Server {
   val cors =
       CorsService.builderForOriginRegex(originRegex)
@@ -38,7 +39,7 @@ fun buildServer(
   val grpcService =
       GrpcService.builder()
           .apply {
-            addService(FarmServiceImpl(counterStore))
+            addService(FarmServiceImpl(farmStore.counter, farmStore.fibonacci))
             enableUnframedRequests(true)
           }
           .build()

@@ -33,6 +33,7 @@ function AppContent({ token }: { token: string }) {
   const { handleUnauthorized } = useAuth();
   const [count, setCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fibonacci, setFibonacci] = useState<{ index: number; value: string }[]>([]);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
@@ -67,6 +68,31 @@ function AppContent({ token }: { token: string }) {
     void load();
     return () => {
       cancelled = true;
+    };
+  }, [headers, handleError]);
+
+  // The worker computes Fibonacci numbers into the database out of band; poll so the list fills in.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadFibonacci() {
+      try {
+        const response = await client.listFibonacci({}, { headers });
+        if (!cancelled) {
+          setFibonacci(response.numbers.map((n) => ({ index: n.index, value: n.value })));
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          handleError(err);
+        }
+      }
+    }
+
+    void loadFibonacci();
+    const interval = setInterval(() => void loadFibonacci(), 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
     };
   }, [headers, handleError]);
 
@@ -127,6 +153,26 @@ function AppContent({ token }: { token: string }) {
           )}
         </Stack>
       </Box>
+
+      <Stack align="center" gap="xs" mt="xl" mb="xl">
+        <Title order={2}>Fibonacci</Title>
+        <Text c="dimmed" size="sm">
+          Computed by the worker, stored in the database.
+        </Text>
+        {fibonacci.length === 0 ? (
+          <Text c="dimmed" size="sm">
+            No numbers yet…
+          </Text>
+        ) : (
+          <Stack gap={2} align="center">
+            {fibonacci.map((n) => (
+              <Text key={n.index} size="sm" ff="monospace">
+                F({n.index}) = {n.value}
+              </Text>
+            ))}
+          </Stack>
+        )}
+      </Stack>
 
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={0} className={classes.nextSteps}>
         <Box className={classes.section}>

@@ -6,6 +6,8 @@ plugins {
 rootProject.name = "farm"
 
 include(
+    ":backend:shared",
+    ":backend:worker",
     ":backend:api:gcp",
     ":backend:api:local",
     ":backend:api:shared",

@@ -10,6 +10,7 @@ service FarmService {
   rpc GetCount(GetCountRequest) returns (GetCountResponse);
   rpc Increment(IncrementRequest) returns (IncrementResponse);
   rpc Decrement(DecrementRequest) returns (DecrementResponse);
+  rpc ListFibonacci(ListFibonacciRequest) returns (ListFibonacciResponse);
 }
 
 message GetCountRequest {}
@@ -28,4 +29,15 @@ message DecrementRequest {}
 
 message DecrementResponse {
   int32 count = 1;
+}
+
+message ListFibonacciRequest {}
+
+message ListFibonacciResponse {
+  repeated FibonacciNumber numbers = 1;
+}
+
+message FibonacciNumber {
+  int32 index = 1;
+  string value = 2;
 }
