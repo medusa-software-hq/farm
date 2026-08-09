@@ -21,6 +21,10 @@ includes:
     taskfile: backend/api/Taskfile.yml
     dir: backend/api
 
+  worker:impl:
+    taskfile: backend/worker/Taskfile.yml
+    dir: backend/worker
+
   api:infra:
     taskfile: backend/infra/Taskfile.yml
     dir: backend/infra
