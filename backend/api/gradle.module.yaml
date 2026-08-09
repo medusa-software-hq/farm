@@ -1,9 +1,0 @@
-analyze:
-  steps:
-    - name: Assemble
-      task: assemble
-
-test:
-  steps:
-    - name: Test
-      task: test
