@@ -9,6 +9,7 @@ fun main() {
           port = localPort,
           auth = NoOpAuthDecorator,
           counterStore = InMemoryCounterStore(),
+          fibonacciStore = InMemoryFibonacciStore(),
       )
       .start()
       .join()

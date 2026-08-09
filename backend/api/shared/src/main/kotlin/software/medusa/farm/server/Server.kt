@@ -13,6 +13,7 @@ fun buildServer(
     port: Int,
     auth: DecoratingHttpServiceFunction,
     counterStore: CounterStore,
+    fibonacciStore: FibonacciStore,
 ): Server {
   val cors =
       CorsService.builderForOriginRegex(originRegex)
@@ -38,7 +39,7 @@ fun buildServer(
   val grpcService =
       GrpcService.builder()
           .apply {
-            addService(FarmServiceImpl(counterStore))
+            addService(FarmServiceImpl(counterStore, fibonacciStore))
             enableUnframedRequests(true)
           }
           .build()

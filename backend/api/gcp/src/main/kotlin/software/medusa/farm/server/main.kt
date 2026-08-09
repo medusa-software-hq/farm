@@ -43,6 +43,8 @@ fun main() {
       System.getenv(databaseUrlEnvVarName)
           ?: error("$databaseUrlEnvVarName environment variable must be set")
 
+  val database = buildFarmDatabase(databaseUrl)
+
   buildServer(
           originRegex = corsOriginRegex,
           port = port,
@@ -51,7 +53,8 @@ fun main() {
                   allowedClientIds = setOf(webClientId, cliClientId),
                   allowedDomain = allowedDomain,
               ),
-          counterStore = PostgresCounterStore.build(databaseUrl),
+          counterStore = PostgresCounterStore(database),
+          fibonacciStore = PostgresFibonacciStore(database),
       )
       .start()
       .join()

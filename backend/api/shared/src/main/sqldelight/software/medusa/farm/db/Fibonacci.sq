@@ -1,0 +1,11 @@
+-- Schema for SQLDelight compile-time query verification (Postgres dialect).
+-- The runtime schema is owned by Flyway; keep this identical to
+-- src/main/resources/db/migration/V2__create_fibonacci.sql.
+CREATE TABLE fibonacci (
+  n           INTEGER   NOT NULL PRIMARY KEY,
+  value       TEXT      NOT NULL,
+  computed_at TIMESTAMP NOT NULL DEFAULT now()
+);
+
+selectAll:
+SELECT n, value FROM fibonacci ORDER BY n;
