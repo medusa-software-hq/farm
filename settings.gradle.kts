@@ -8,7 +8,7 @@ rootProject.name = "farm"
 include(
     ":backend:shared",
     ":backend:worker",
-    ":backend:api:gcp",
+    ":backend:api:proper",
     ":backend:api:local",
     ":backend:api:shared",
     ":cli",
