@@ -1,0 +1,6 @@
+# Terraform working dir + state (state lives in GCS). Keep .terraform.lock.hcl.
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+crash.log

@@ -6,6 +6,7 @@ plugins {
 
 dependencies {
   implementation(project(":backend:worker:shared"))
+  implementation(libs.temporal.sdk)
   implementation(platform(libs.google.cloud.bom))
   implementation(libs.google.cloud.secretmanager)
   runtimeOnly(libs.postgresql)

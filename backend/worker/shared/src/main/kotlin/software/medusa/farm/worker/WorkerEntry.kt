@@ -2,8 +2,10 @@ package software.medusa.farm.worker
 
 import software.medusa.farm.shared.FarmStore
 
-/** Runs the worker logic against the database configured in [config]. */
-fun runFarmWorker(config: WorkerConfig) {
+/** Runs the Fibonacci Temporal worker over [config] and blocks, staying up to process tasks. */
+fun runTemporalWorker(config: WorkerConfig) {
   val store = FarmStore.buildWithoutMigrations(config.databaseUrl)
-  Worker(config, store.fibonacci).run()
+  TemporalWorkerHost(config, store.fibonacci).start()
+  // Stay up; the worker factory polls on background threads.
+  Thread.currentThread().join()
 }

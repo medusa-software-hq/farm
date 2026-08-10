@@ -3,33 +3,29 @@ package software.medusa.farm.worker
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.time.Duration.Companion.milliseconds
 
 class WorkerConfigTest {
+  private val full =
+      mapOf(
+          "DATABASE_URL" to "jdbc:postgresql://localhost/farm",
+          "TEMPORAL_ADDRESS" to "farm.kr9zt.tmprl.cloud:7233",
+          "TEMPORAL_NAMESPACE" to "farm.kr9zt",
+          "TEMPORAL_API_KEY" to "secret-key",
+      )
+
   @Test
   fun `reads config from the environment`() {
-    val config =
-        WorkerConfig.fromEnvironment(
-            mapOf(
-                "DATABASE_URL" to "jdbc:postgresql://localhost/farm",
-                "FIB_TICK_MS" to "250",
-                "FIB_MAX_INDEX" to "10",
-            )
-        )
+    val config = WorkerConfig.fromEnvironment(full)
     assertEquals("jdbc:postgresql://localhost/farm", config.databaseUrl)
-    assertEquals(250.milliseconds, config.tick)
-    assertEquals(10, config.maxIndex)
+    assertEquals("farm.kr9zt.tmprl.cloud:7233", config.temporalAddress)
+    assertEquals("farm.kr9zt", config.temporalNamespace)
+    assertEquals("secret-key", config.temporalApiKey)
   }
 
   @Test
-  fun `tick and max index default when unset`() {
-    val config = WorkerConfig.fromEnvironment(mapOf("DATABASE_URL" to "x"))
-    assertEquals(500.milliseconds, config.tick)
-    assertEquals(40, config.maxIndex)
-  }
-
-  @Test
-  fun `DATABASE_URL is required`() {
-    assertFailsWith<IllegalStateException> { WorkerConfig.fromEnvironment(emptyMap()) }
+  fun `each variable is required`() {
+    for (missing in full.keys) {
+      assertFailsWith<IllegalStateException> { WorkerConfig.fromEnvironment(full - missing) }
+    }
   }
 }
