@@ -20,3 +20,8 @@ resource "google_secret_manager_secret_iam_member" "primary_service_sa_database_
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.primary_service_sa.email}"
 }
+
+# The grant letting this env's SA read the shared worker-temporal-api-key does NOT live here: that
+# secret is in the cross-environment shared project, where the env CI/CD SA has no IAM-admin rights.
+# It is granted from infra/temporal (operator-applied, owns the secret), which reads this env's api-SA
+# email from the primary_service_sa_email output in gcp-service.tf.

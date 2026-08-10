@@ -17,3 +17,14 @@ resource "google_secret_manager_secret_version" "worker_temporal_api_key" {
 
 # Both environments' API service accounts read the one shared key. The runner and worker in each
 # environment authenticate as that environment's api-sa, so both need secretAccessor on this secret.
+# This grant lives here (not with the consumer) because the secret is in the shared project, where
+# the env CI/CD SAs have no IAM-admin rights — this root is operator-applied and does. Members come
+# from each env's backend/api/foundation state (see remote-state.tf), never hardcoded.
+resource "google_secret_manager_secret_iam_member" "api_sa_worker_temporal_api_key_accessor" {
+  for_each = local.api_service_account_emails
+
+  project   = local.shared_project_id
+  secret_id = google_secret_manager_secret.worker_temporal_api_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${each.value}"
+}
