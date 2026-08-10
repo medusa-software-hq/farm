@@ -11,4 +11,4 @@ kotlin { jvmToolchain(21) }
 
 // Distinct jar name so the proper/runner distributions don't collide with :backend:shared's
 // shared.jar (both projects are named "shared").
-base { archivesName = "worker-shared" }
+base { archivesName = "backend-worker-shared" }

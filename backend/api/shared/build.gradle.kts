@@ -50,3 +50,5 @@ protobuf {
     }
   }
 }
+
+base { archivesName = "backend-api-shared" }
