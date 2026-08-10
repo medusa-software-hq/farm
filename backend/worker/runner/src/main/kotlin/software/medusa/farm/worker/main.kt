@@ -9,8 +9,9 @@ private const val temporalApiKeySecretId = "worker-temporal-api-key"
 
 /**
  * Runs the worker locally against a remote database. The database URL comes from the target
- * environment's `api-database-url` secret and the Temporal API key from the (shared) prod
- * `worker-temporal-api-key` secret — both via Application Default Credentials. The non-secret
+ * environment's `api-database-url` secret; the Temporal API key comes from the
+ * `worker-temporal-api-key` secret in the cross-environment shared project
+ * ([BakedConfig.TEMPORAL_KEY_PROJECT]) — both via Application Default Credentials. The non-secret
  * Temporal coordinates are compile-time constants in [BakedConfig].
  */
 fun main() {
@@ -21,8 +22,7 @@ fun main() {
             databaseUrl = client.read(environment.gcpProjectId, databaseUrlSecretId),
             temporalAddress = BakedConfig.TEMPORAL_ADDRESS,
             temporalNamespace = BakedConfig.TEMPORAL_NAMESPACE,
-            temporalApiKey =
-                client.read(RunnerEnvironment.PROD.gcpProjectId, temporalApiKeySecretId),
+            temporalApiKey = client.read(BakedConfig.TEMPORAL_KEY_PROJECT, temporalApiKeySecretId),
         )
       }
   runTemporalWorker(config)
