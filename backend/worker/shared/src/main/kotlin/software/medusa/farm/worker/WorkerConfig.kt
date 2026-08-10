@@ -12,6 +12,14 @@ data class WorkerConfig(val databaseUrl: String, val tick: Duration, val maxInde
             maxIndex = env["FIB_MAX_INDEX"]?.toInt() ?: DEFAULT_MAX_INDEX,
         )
 
+    /** A config targeting [databaseUrl] with the default tick and max index. */
+    fun withDefaults(databaseUrl: String): WorkerConfig =
+        WorkerConfig(
+            databaseUrl = databaseUrl,
+            tick = DEFAULT_TICK_MS.milliseconds,
+            maxIndex = DEFAULT_MAX_INDEX,
+        )
+
     private const val DEFAULT_TICK_MS = 500L
     private const val DEFAULT_MAX_INDEX = 40
   }

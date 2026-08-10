@@ -24,3 +24,5 @@ sqldelight {
     }
   }
 }
+
+base { archivesName = "backend-shared" }

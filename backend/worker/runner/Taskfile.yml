@@ -1,0 +1,45 @@
+version: '3'
+
+.kotlinSources: &kotlinSources
+  - '**/*.kt'
+  - '**/*.kts'
+
+tasks:
+  checkFormatting:
+    desc: Check Kotlin formatting
+    sources: *kotlinSources
+    cmds:
+      - ../../../gradlew ktfmtCheck
+
+  fixFormatting:
+    desc: Fix Kotlin formatting
+    sources: *kotlinSources
+    cmds:
+      - ../../../gradlew ktfmtFormat
+
+  lint:
+    desc: Lint the Kotlin sources
+    sources: *kotlinSources
+    cmds:
+      - ../../../gradlew detekt
+
+  compile:
+    desc: Compile the Kotlin sources
+    sources: *kotlinSources
+    cmds:
+      - ../../../gradlew :backend:worker:runner:compileKotlin
+
+  install:
+    desc: Install the runner locally (build/install/runner/bin/runner)
+    sources: *kotlinSources
+    generates:
+      - ./build/install/runner/bin/runner
+    cmds:
+      - ../../../gradlew :backend:worker:runner:installDist
+
+  run:
+    desc: Run the locally-installed runner against the remote DB (FARM_RUNNER_ENVIRONMENT=prod|staging)
+    deps: [install]
+    cmds:
+      - ./bin/ms-farm-runner
+    interactive: true

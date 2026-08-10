@@ -31,18 +31,18 @@ tasks:
     desc: Compile the Kotlin sources
     sources: *kotlinSources
     cmds:
-      - ../../gradlew :backend:worker:compileKotlin
+      - ../../gradlew compileKotlin
     interactive: true
 
   test:
     desc: Run the worker tests
     sources: *kotlinSources
     cmds:
-      - ../../gradlew :backend:worker:test
+      - ../../gradlew :backend:worker:shared:test
     interactive: true
 
   run:
     desc: Run the worker locally (env-configured; requires a reachable Postgres)
     cmds:
-      - ../../gradlew :backend:worker:run
+      - ../../gradlew :backend:worker:proper:run
     interactive: true
