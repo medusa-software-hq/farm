@@ -13,6 +13,7 @@ fun main() {
           port = localPort,
           auth = NoOpAuthDecorator,
           farmStore = FarmStore(InMemoryCounterStore(), InMemoryFibonacciStore()),
+          fibonacciStarter = NoOpFibonacciStarter,
       )
       .start()
       .join()

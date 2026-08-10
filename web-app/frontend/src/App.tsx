@@ -1,6 +1,6 @@
 import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
-import { Box, Button, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Box, Button, Group, NumberInput, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import heroImg from './assets/hero.png';
 import reactLogo from './assets/react.svg';
@@ -34,6 +34,9 @@ function AppContent({ token }: { token: string }) {
   const [count, setCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fibonacci, setFibonacci] = useState<{ index: number; value: string }[]>([]);
+  const [through, setThrough] = useState<number>(20);
+  const [computing, setComputing] = useState(false);
+  const [computeError, setComputeError] = useState<string | null>(null);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
@@ -116,6 +119,20 @@ function AppContent({ token }: { token: string }) {
     }
   }
 
+  // Kicks off the Temporal workflow; the poll above then fills the list in as the worker persists.
+  async function startFibonacci() {
+    setComputing(true);
+    setComputeError(null);
+    try {
+      await client.startFibonacci({ through }, { headers });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setComputeError(message);
+    } finally {
+      setComputing(false);
+    }
+  }
+
   return (
     <>
       <Box className={classes.center}>
@@ -159,6 +176,30 @@ function AppContent({ token }: { token: string }) {
         <Text c="dimmed" size="sm">
           Computed by the worker, stored in the database.
         </Text>
+        <Group justify="center" gap="xs" align="flex-end">
+          <NumberInput
+            aria-label="Compute through index"
+            value={through}
+            onChange={(value) => setThrough(typeof value === 'number' ? value : 0)}
+            min={0}
+            max={100}
+            allowDecimal={false}
+            w={120}
+          />
+          <Button
+            variant="light"
+            size="sm"
+            loading={computing}
+            onClick={() => void startFibonacci()}
+          >
+            Compute
+          </Button>
+        </Group>
+        {computeError !== null && (
+          <Text c="red" size="sm">
+            Failed to start the computation: {computeError}
+          </Text>
+        )}
         {fibonacci.length === 0 ? (
           <Text c="dimmed" size="sm">
             No numbers yet…

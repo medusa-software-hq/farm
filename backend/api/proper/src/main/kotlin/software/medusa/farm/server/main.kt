@@ -8,6 +8,7 @@ private const val cliClientIdEnvVarName = "GOOGLE_CLI_CLIENT_ID"
 private const val allowedDomainEnvVarName = "GOOGLE_ALLOWED_DOMAIN"
 private const val corsOriginRegexEnvVarName = "CORS_ALLOWED_ORIGIN_REGEX"
 private const val databaseUrlEnvVarName = "DATABASE_URL"
+private const val temporalApiKeyEnvVarName = "TEMPORAL_API_KEY"
 
 fun main() {
   val port =
@@ -36,6 +37,10 @@ fun main() {
       System.getenv(databaseUrlEnvVarName)
           ?: error("$databaseUrlEnvVarName environment variable must be set")
 
+  // Optional: without it the API still starts and only StartFibonacci degrades, so a missing or
+  // rotating Temporal key can never take the service down.
+  val temporalApiKey = System.getenv(temporalApiKeyEnvVarName)
+
   val farmStore = FarmStore.buildWithMigrations(databaseUrl)
 
   buildServer(
@@ -47,6 +52,8 @@ fun main() {
                   allowedDomain = allowedDomain,
               ),
           farmStore = farmStore,
+          fibonacciStarter =
+              temporalApiKey?.let { TemporalFibonacciStarter(it) } ?: NoOpFibonacciStarter,
       )
       .start()
       .join()

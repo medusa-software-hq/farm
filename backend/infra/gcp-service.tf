@@ -55,6 +55,19 @@ resource "google_cloud_run_v2_service" "primary" {
           }
         }
       }
+
+      # The Temporal Cloud key that lets the API start Fibonacci workflows. It lives in the
+      # cross-environment shared project, so it is referenced by its fully-qualified secret name.
+      # Optional at the app level: without it the API still boots and only StartFibonacci degrades.
+      env {
+        name = "TEMPORAL_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = "projects/${data.terraform_remote_state.shared.outputs.shared_project_id}/secrets/worker-temporal-api-key"
+            version = "latest"
+          }
+        }
+      }
     }
   }
 
@@ -88,4 +101,10 @@ resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
 
 output "cloud_run_primary_service_url" {
   value = google_cloud_run_v2_service.primary.uri
+}
+
+# Consumed by infra/temporal (operator-applied) to grant this env's SA read access to the shared
+# worker-temporal-api-key secret. backend/infra applies first so this output exists before that grant.
+output "primary_service_sa_email" {
+  value = google_service_account.primary_service_sa.email
 }

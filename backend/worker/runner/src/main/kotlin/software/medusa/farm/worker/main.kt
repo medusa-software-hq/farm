@@ -2,6 +2,7 @@ package software.medusa.farm.worker
 
 import com.google.cloud.secretmanager.v1.SecretManagerServiceClient
 import com.google.cloud.secretmanager.v1.SecretVersionName
+import software.medusa.farm.shared.BakedConfig
 
 private const val runnerEnvironmentEnvVarName = "FARM_RUNNER_ENVIRONMENT"
 private const val databaseUrlSecretId = "api-database-url"
