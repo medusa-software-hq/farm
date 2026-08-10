@@ -7,15 +7,11 @@ private const val runnerEnvironmentEnvVarName = "FARM_RUNNER_ENVIRONMENT"
 private const val databaseUrlSecretId = "api-database-url"
 private const val temporalApiKeySecretId = "worker-temporal-api-key"
 
-// Non-secret Temporal Cloud connection values — one namespace shared across environments for now
-// (see infra/temporal). The worker key is a secret and comes from Secret Manager, below.
-private const val temporalAddress = "farm.kr9zt.tmprl.cloud:7233"
-private const val temporalNamespace = "farm.kr9zt"
-
 /**
- * Runs the worker locally against a remote database, configured from Google Secret Manager via
- * Application Default Credentials instead of the environment: the target environment's
- * `api-database-url` and the (shared) prod `worker-temporal-api-key`.
+ * Runs the worker locally against a remote database. The database URL comes from the target
+ * environment's `api-database-url` secret and the Temporal API key from the (shared) prod
+ * `worker-temporal-api-key` secret — both via Application Default Credentials. The non-secret
+ * Temporal coordinates are compile-time constants in [BakedConfig].
  */
 fun main() {
   val environment = resolveRunnerEnvironment(System.getenv(runnerEnvironmentEnvVarName))
@@ -23,8 +19,8 @@ fun main() {
       SecretManagerServiceClient.create().use { client ->
         WorkerConfig(
             databaseUrl = client.read(environment.gcpProjectId, databaseUrlSecretId),
-            temporalAddress = temporalAddress,
-            temporalNamespace = temporalNamespace,
+            temporalAddress = BakedConfig.TEMPORAL_ADDRESS,
+            temporalNamespace = BakedConfig.TEMPORAL_NAMESPACE,
             temporalApiKey =
                 client.read(RunnerEnvironment.PROD.gcpProjectId, temporalApiKeySecretId),
         )
