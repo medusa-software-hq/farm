@@ -1,26 +1,21 @@
 package software.medusa.farm.worker
 
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
-
-data class WorkerConfig(val databaseUrl: String, val tick: Duration, val maxIndex: Int) {
+/** Everything the worker needs to reach its database and its Temporal Cloud namespace. */
+data class WorkerConfig(
+    val databaseUrl: String,
+    val temporalAddress: String,
+    val temporalNamespace: String,
+    val temporalApiKey: String,
+) {
   companion object {
+    /** Reads the config from process environment variables. */
     fun fromEnvironment(env: Map<String, String> = System.getenv()): WorkerConfig =
         WorkerConfig(
             databaseUrl = env["DATABASE_URL"] ?: error("DATABASE_URL is required"),
-            tick = (env["FIB_TICK_MS"]?.toLong() ?: DEFAULT_TICK_MS).milliseconds,
-            maxIndex = env["FIB_MAX_INDEX"]?.toInt() ?: DEFAULT_MAX_INDEX,
+            temporalAddress = env["TEMPORAL_ADDRESS"] ?: error("TEMPORAL_ADDRESS is required"),
+            temporalNamespace =
+                env["TEMPORAL_NAMESPACE"] ?: error("TEMPORAL_NAMESPACE is required"),
+            temporalApiKey = env["TEMPORAL_API_KEY"] ?: error("TEMPORAL_API_KEY is required"),
         )
-
-    /** A config targeting [databaseUrl] with the default tick and max index. */
-    fun withDefaults(databaseUrl: String): WorkerConfig =
-        WorkerConfig(
-            databaseUrl = databaseUrl,
-            tick = DEFAULT_TICK_MS.milliseconds,
-            maxIndex = DEFAULT_MAX_INDEX,
-        )
-
-    private const val DEFAULT_TICK_MS = 500L
-    private const val DEFAULT_MAX_INDEX = 40
   }
 }

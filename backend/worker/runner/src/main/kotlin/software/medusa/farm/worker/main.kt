@@ -5,16 +5,31 @@ import com.google.cloud.secretmanager.v1.SecretVersionName
 
 private const val runnerEnvironmentEnvVarName = "FARM_RUNNER_ENVIRONMENT"
 private const val databaseUrlSecretId = "api-database-url"
+private const val temporalApiKeySecretId = "worker-temporal-api-key"
+
+// Non-secret Temporal Cloud connection values — one namespace shared across environments for now
+// (see infra/temporal). The worker key is a secret and comes from Secret Manager, below.
+private const val temporalAddress = "farm.kr9zt.tmprl.cloud:7233"
+private const val temporalNamespace = "farm.kr9zt"
 
 /**
- * Local runner entry point: resolves the target environment's `api-database-url` secret from Google
- * Secret Manager via Application Default Credentials, then runs the worker logic against that
- * remote database.
+ * Runs the worker locally against a remote database, configured from Google Secret Manager via
+ * Application Default Credentials instead of the environment: the target environment's
+ * `api-database-url` and the (shared) prod `worker-temporal-api-key`.
  */
 fun main() {
   val environment = resolveRunnerEnvironment(System.getenv(runnerEnvironmentEnvVarName))
-  val databaseUrl = readDatabaseUrl(environment)
-  runFarmWorker(WorkerConfig.withDefaults(databaseUrl))
+  val config =
+      SecretManagerServiceClient.create().use { client ->
+        WorkerConfig(
+            databaseUrl = client.read(environment.gcpProjectId, databaseUrlSecretId),
+            temporalAddress = temporalAddress,
+            temporalNamespace = temporalNamespace,
+            temporalApiKey =
+                client.read(RunnerEnvironment.PROD.gcpProjectId, temporalApiKeySecretId),
+        )
+      }
+  runTemporalWorker(config)
 }
 
 private fun resolveRunnerEnvironment(raw: String?): RunnerEnvironment {
@@ -24,8 +39,7 @@ private fun resolveRunnerEnvironment(raw: String?): RunnerEnvironment {
       ?: error("$runnerEnvironmentEnvVarName must be one of: $allowed (got \"$raw\")")
 }
 
-private fun readDatabaseUrl(environment: RunnerEnvironment): String =
-    SecretManagerServiceClient.create().use { client ->
-      val version = SecretVersionName.of(environment.gcpProjectId, databaseUrlSecretId, "latest")
-      client.accessSecretVersion(version).payload.data.toStringUtf8()
-    }
+private fun SecretManagerServiceClient.read(projectId: String, secretId: String): String {
+  val version = SecretVersionName.of(projectId, secretId, "latest")
+  return accessSecretVersion(version).payload.data.toStringUtf8()
+}
