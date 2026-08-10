@@ -38,8 +38,10 @@ tasks:
       - ../../../gradlew :backend:worker:runner:installDist
 
   run:
-    desc: Run the locally-installed runner against the remote DB (FARM_RUNNER_ENVIRONMENT=prod|staging)
+    desc: Run the runner against a remote DB. Pass ENVIRONMENT=prod|staging (default prod).
     deps: [install]
+    env:
+      FARM_RUNNER_ENVIRONMENT: '{{.ENVIRONMENT | default "prod"}}'
     cmds:
       - ./bin/ms-farm-runner
     interactive: true
