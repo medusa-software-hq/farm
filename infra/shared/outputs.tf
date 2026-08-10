@@ -6,7 +6,3 @@ output "shared_project_id" {
   value       = local.shared_project_id
 }
 
-output "artifact_registry_repository" {
-  description = "Shared Docker Artifact Registry repository endpoint."
-  value       = google_artifact_registry_repository.shared.registry_uri
-}
