@@ -5,12 +5,9 @@ plugins {
 }
 
 dependencies {
-  implementation(project(":backend:shared"))
-  implementation(libs.kotlinx.coroutines.core)
+  implementation(project(":backend:worker:shared"))
   runtimeOnly(libs.postgresql)
   runtimeOnly(libs.logback.classic)
-
-  testImplementation(libs.kotlin.test)
 }
 
 kotlin { jvmToolchain(21) }
