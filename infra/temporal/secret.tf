@@ -17,14 +17,3 @@ resource "google_secret_manager_secret_version" "worker_temporal_api_key" {
 
 # Both environments' API service accounts read the one shared key. The runner and worker in each
 # environment authenticate as that environment's api-sa, so both need secretAccessor on this secret.
-resource "google_secret_manager_secret_iam_member" "api_sa_accessors" {
-  for_each = toset([
-    "serviceAccount:api-sa@ms-farm-11efee2b.iam.gserviceaccount.com", # prod
-    "serviceAccount:api-sa@ms-farm-98981146.iam.gserviceaccount.com", # staging
-  ])
-
-  project   = local.shared_project_id
-  secret_id = google_secret_manager_secret.worker_temporal_api_key.secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = each.value
-}
