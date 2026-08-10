@@ -12,6 +12,7 @@ kotlinx-serialization = "1.9.0"
 ktfmt = "0.26.0"
 logback = "1.5.32"
 nimbus-jose-jwt = "10.9"
+nimbus-oauth2-oidc-sdk = "11.38.2"
 postgresql = "42.7.8"
 protobuf = "4.34.1"
 protobuf-plugin = "0.10.0"
@@ -29,6 +30,7 @@ flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
 flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
 grpc-bom = { module = "io.grpc:grpc-bom", version.ref = "grpc" }
 grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub", version.ref = "grpc-kotlin" }
+grpc-okhttp = { module = "io.grpc:grpc-okhttp", version.ref = "grpc" }
 grpc-protobuf = { module = "io.grpc:grpc-protobuf", version.ref = "grpc" }
 grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
 hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
@@ -37,7 +39,9 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 nimbus-jose-jwt = { module = "com.nimbusds:nimbus-jose-jwt", version.ref = "nimbus-jose-jwt" }
+nimbus-oauth2-oidc-sdk = { module = "com.nimbusds:oauth2-oidc-sdk", version.ref = "nimbus-oauth2-oidc-sdk" }
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
 protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin", version.ref = "protobuf" }
 protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
 protobuf-protocGen-grpc-java = { module = "io.grpc:protoc-gen-grpc-java", version.ref = "grpc" }
