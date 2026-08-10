@@ -43,7 +43,7 @@ variable "regions" {
 }
 
 variable "gcp_project_id" {
-  description = "GCP project that holds the worker-temporal-api-key secret. Prod (ms-farm-11efee2b) for now; the namespace is shared across environments (see README)."
+  description = "Default GCP project for the google provider (quota/billing). The worker-temporal-api-key secret itself lives in the cross-environment shared project, read via infra/shared remote state — see secret.tf."
   type        = string
   default     = "ms-farm-11efee2b"
 }

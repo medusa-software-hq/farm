@@ -37,6 +37,7 @@ tasks.register("generateBakedConfig") {
     }
     val address = output("grpc_address")
     val namespace = output("namespace_id")
+    val keyProject = output("shared_project_id")
     val target = file("src/main/kotlin/software/medusa/farm/worker/BakedConfig.kt")
     target.writeText(
         """
@@ -47,6 +48,7 @@ tasks.register("generateBakedConfig") {
         |object BakedConfig {
         |  const val TEMPORAL_ADDRESS = "$address"
         |  const val TEMPORAL_NAMESPACE = "$namespace"
+        |  const val TEMPORAL_KEY_PROJECT = "$keyProject"
         |}
         |
         """
