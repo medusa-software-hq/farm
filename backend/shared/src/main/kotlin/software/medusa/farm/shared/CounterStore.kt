@@ -1,11 +1,4 @@
-package software.medusa.farm.server
-
-val mainCounterId = CounterId("main")
-
-@JvmInline
-value class CounterId(
-    val id: String,
-)
+package software.medusa.farm.shared
 
 interface CounterStore {
   suspend fun getCount(counterId: CounterId): Int

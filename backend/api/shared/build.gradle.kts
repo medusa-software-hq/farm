@@ -3,7 +3,6 @@ import com.google.protobuf.gradle.id
 plugins {
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.protobuf)
-  alias(libs.plugins.sqldelight)
   `java-library`
 }
 
@@ -17,16 +16,13 @@ dependencies {
   api(libs.armeria.grpc)
   api(libs.armeria.grpc.kotlin)
   api(libs.armeria.kotlin)
+  api(project(":backend:shared"))
   api(libs.grpc.kotlin.stub)
   api(libs.grpc.protobuf)
   api(libs.grpc.stub)
-  api(libs.hikaricp)
   api(libs.kotlinx.coroutines.core)
   api(libs.nimbus.jose.jwt)
   api(libs.protobuf.kotlin)
-  implementation(libs.flyway.core)
-  implementation(libs.sqldelight.jdbc.driver)
-  runtimeOnly(libs.flyway.database.postgresql)
   runtimeOnly(libs.logback.classic)
   runtimeOnly(libs.postgresql)
 
@@ -51,15 +47,6 @@ protobuf {
         id(grpcKotlinId)
       }
       protoTask.builtins { id("kotlin") }
-    }
-  }
-}
-
-sqldelight {
-  databases {
-    create("CounterDatabase") {
-      packageName.set("software.medusa.farm.db")
-      dialect(libs.sqldelight.postgresql.dialect)
     }
   }
 }
