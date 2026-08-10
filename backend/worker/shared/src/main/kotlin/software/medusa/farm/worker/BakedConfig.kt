@@ -5,5 +5,5 @@ package software.medusa.farm.worker
 object BakedConfig {
   const val TEMPORAL_ADDRESS = "us-east-1.aws.api.temporal.io:7233"
   const val TEMPORAL_NAMESPACE = "farm.kr9zt"
-  const val TEMPORAL_KEY_PROJECT = "ms-farm-shared-00000000"
+  const val TEMPORAL_KEY_PROJECT = "ms-farm-shared-c83577a8"
 }
