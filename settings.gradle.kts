@@ -11,7 +11,7 @@ include(
     ":backend:worker:proper",
     ":backend:worker:runner",
     ":backend:api:proper",
-    ":backend:api:local",
     ":backend:api:core",
+    ":backend:local",
     ":cli",
 )

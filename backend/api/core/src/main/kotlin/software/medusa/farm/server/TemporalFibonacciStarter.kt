@@ -8,11 +8,10 @@ import io.temporal.client.WorkflowClientOptions
 import io.temporal.client.WorkflowOptions
 import io.temporal.serviceclient.WorkflowServiceStubs
 import io.temporal.serviceclient.WorkflowServiceStubsOptions
-import software.medusa.farm.shared.BakedConfig
 
 /**
- * Starts the Fibonacci workflow on Temporal Cloud via an **untyped** stub keyed by workflow type
- * name ("FibonacciWorkflow"), so the API never depends on the worker module.
+ * Starts the Fibonacci workflow on Temporal via an **untyped** stub keyed by workflow type name
+ * ("FibonacciWorkflow"), so the API never depends on the worker module.
  *
  * Single-flight: every start uses the stable workflow id [WORKFLOW_ID] with a conflict policy of
  * USE_EXISTING, so a click while a run is in flight attaches to that run instead of stacking a
@@ -23,22 +22,33 @@ import software.medusa.farm.shared.BakedConfig
  * Robustness: the [WorkflowClient] is built lazily and connects lazily, so construction never
  * blocks server startup or other RPCs. A Temporal-unreachable start is mapped to gRPC UNAVAILABLE
  * and fails only that call.
+ *
+ * The connection mode follows [apiKey]: a non-blank key is the Temporal Cloud shape (API key over
+ * TLS); a blank or null key is the local dev-server shape — plaintext, no TLS, no key.
  */
-class TemporalFibonacciStarter(private val apiKey: String) : FibonacciStarter {
+class TemporalFibonacciStarter(
+    private val address: String,
+    private val namespace: String,
+    private val apiKey: String?,
+) : FibonacciStarter {
   private val client: WorkflowClient by lazy { buildClient() }
 
   private fun buildClient(): WorkflowClient {
     val service =
         WorkflowServiceStubs.newServiceStubs(
             WorkflowServiceStubsOptions.newBuilder()
-                .setTarget(BakedConfig.TEMPORAL_ADDRESS)
-                .setEnableHttps(true)
-                .addApiKey { apiKey }
+                .setTarget(address)
+                .apply {
+                  if (!apiKey.isNullOrBlank()) {
+                    setEnableHttps(true)
+                    addApiKey { apiKey }
+                  }
+                }
                 .build()
         )
     return WorkflowClient.newInstance(
         service,
-        WorkflowClientOptions.newBuilder().setNamespace(BakedConfig.TEMPORAL_NAMESPACE).build(),
+        WorkflowClientOptions.newBuilder().setNamespace(namespace).build(),
     )
   }
 
@@ -61,7 +71,7 @@ class TemporalFibonacciStarter(private val apiKey: String) : FibonacciStarter {
         stub.start(through).workflowId
       } catch (e: Exception) {
         throw Status.UNAVAILABLE.withDescription(
-                "Failed to start the Fibonacci workflow on Temporal Cloud: ${e.message}"
+                "Failed to start the Fibonacci workflow on Temporal: ${e.message}"
             )
             .withCause(e)
             .asException()

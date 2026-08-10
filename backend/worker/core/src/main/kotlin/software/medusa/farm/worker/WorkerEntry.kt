@@ -5,7 +5,13 @@ import software.medusa.farm.shared.FarmStore
 /** Runs the Fibonacci Temporal worker over [config] and blocks, staying up to process tasks. */
 fun runTemporalWorker(config: WorkerConfig) {
   val store = FarmStore.buildWithoutMigrations(config.databaseUrl)
-  TemporalWorkerHost(config, store.fibonacci).start()
+  TemporalWorkerHost(
+          config.temporalAddress,
+          config.temporalNamespace,
+          config.temporalApiKey,
+          store.fibonacci,
+      )
+      .start()
   // Stay up; the worker factory polls on background threads.
   Thread.currentThread().join()
 }

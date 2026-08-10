@@ -1,5 +1,6 @@
 package software.medusa.farm.server
 
+import software.medusa.farm.shared.BakedConfig
 import software.medusa.farm.shared.FarmStore
 
 private const val portEnvVarName = "PORT"
@@ -53,7 +54,13 @@ fun main() {
               ),
           farmStore = farmStore,
           fibonacciStarter =
-              temporalApiKey?.let { TemporalFibonacciStarter(it) } ?: NoOpFibonacciStarter,
+              temporalApiKey?.let {
+                TemporalFibonacciStarter(
+                    BakedConfig.TEMPORAL_ADDRESS,
+                    BakedConfig.TEMPORAL_NAMESPACE,
+                    it,
+                )
+              } ?: NoOpFibonacciStarter,
       )
       .start()
       .join()

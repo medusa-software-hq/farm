@@ -8,10 +8,18 @@ import io.temporal.worker.WorkerFactory
 import software.medusa.farm.shared.FibonacciStore
 
 /**
- * Connects to Temporal Cloud (API key over TLS), registers the Fibonacci workflow + activities, and
- * runs the worker.
+ * Registers the Fibonacci workflow + activities and runs the worker.
+ *
+ * The connection mode follows [apiKey]: a non-blank key is the Temporal Cloud shape (API key over
+ * TLS); a blank or null key is the local dev-server shape — plaintext, no TLS, no key
+ * (`localhost:7233`, namespace `default`).
  */
-class TemporalWorkerHost(config: WorkerConfig, store: FibonacciStore) {
+class TemporalWorkerHost(
+    address: String,
+    namespace: String,
+    apiKey: String?,
+    store: FibonacciStore,
+) {
   private val client: WorkflowClient
   private val factory: WorkerFactory
 
@@ -19,15 +27,19 @@ class TemporalWorkerHost(config: WorkerConfig, store: FibonacciStore) {
     val service =
         WorkflowServiceStubs.newServiceStubs(
             WorkflowServiceStubsOptions.newBuilder()
-                .setTarget(config.temporalAddress)
-                .setEnableHttps(true)
-                .addApiKey { config.temporalApiKey }
+                .setTarget(address)
+                .apply {
+                  if (!apiKey.isNullOrBlank()) {
+                    setEnableHttps(true)
+                    addApiKey { apiKey }
+                  }
+                }
                 .build()
         )
     client =
         WorkflowClient.newInstance(
             service,
-            WorkflowClientOptions.newBuilder().setNamespace(config.temporalNamespace).build(),
+            WorkflowClientOptions.newBuilder().setNamespace(namespace).build(),
         )
     factory = WorkerFactory.newInstance(client)
     val worker = factory.newWorker(TASK_QUEUE)
