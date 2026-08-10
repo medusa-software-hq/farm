@@ -16,3 +16,10 @@ output "worker_api_key" {
   value       = temporalcloud_apikey.farm_worker.token
   sensitive   = true
 }
+
+# Pass-through of the shared project holding worker-temporal-api-key, so the code generator can bake
+# it (TEMPORAL_KEY_PROJECT) — the runner reads the key from this project regardless of its target env.
+output "shared_project_id" {
+  description = "GCP project holding the worker-temporal-api-key secret (the cross-environment shared project)."
+  value       = local.shared_project_id
+}
