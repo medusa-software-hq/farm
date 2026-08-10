@@ -23,6 +23,7 @@ dependencies {
   api(libs.kotlinx.coroutines.core)
   api(libs.nimbus.jose.jwt)
   api(libs.protobuf.kotlin)
+  implementation(libs.temporal.sdk)
   runtimeOnly(libs.logback.classic)
   runtimeOnly(libs.postgresql)
 
