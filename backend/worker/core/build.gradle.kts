@@ -11,6 +11,5 @@ dependencies {
 
 kotlin { jvmToolchain(21) }
 
-// Distinct jar name so the proper/runner distributions don't collide with :backend:shared's
-// shared.jar (both projects are named "shared").
-base { archivesName = "backend-worker-shared" }
+// Distinct jar name so the proper/runner distributions don't collide with other modules' jars.
+base { archivesName = "backend-worker-core" }

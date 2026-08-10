@@ -52,4 +52,4 @@ protobuf {
   }
 }
 
-base { archivesName = "backend-api-shared" }
+base { archivesName = "backend-api-core" }

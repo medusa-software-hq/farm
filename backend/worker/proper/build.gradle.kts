@@ -5,7 +5,7 @@ plugins {
 }
 
 dependencies {
-  implementation(project(":backend:worker:shared"))
+  implementation(project(":backend:worker:core"))
   runtimeOnly(libs.postgresql)
   runtimeOnly(libs.logback.classic)
 }

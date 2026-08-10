@@ -38,7 +38,7 @@ tasks:
     desc: Run the worker tests
     sources: *kotlinSources
     cmds:
-      - ../../gradlew :backend:worker:shared:test
+      - ../../gradlew :backend:worker:core:test
     interactive: true
 
   run:
