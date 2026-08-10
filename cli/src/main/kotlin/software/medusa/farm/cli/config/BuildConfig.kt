@@ -1,4 +1,4 @@
-package software.medusa.farm.cli
+package software.medusa.farm.cli.config
 
 import java.util.Properties
 

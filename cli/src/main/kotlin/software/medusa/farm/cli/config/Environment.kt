@@ -1,29 +1,9 @@
-package software.medusa.farm.cli
+package software.medusa.farm.cli.config
 
+import com.nimbusds.oauth2.sdk.auth.Secret
+import com.nimbusds.oauth2.sdk.id.ClientID
 import java.nio.file.Path
-
-private const val configDirName = "ms-farm"
-
-/**
- * The base state directory, shared by every environment: `$XDG_CONFIG_HOME/ms-farm` or, when that's
- * unset, `~/.config/ms-farm` (also on macOS). Each [Environment] owns a partitioned subdirectory
- * (or, for [Environment.Local], a caller-supplied path) beneath this.
- */
-internal fun configBaseDir(
-    xdgConfigHome: String? = System.getenv("XDG_CONFIG_HOME"),
-    userHome: String = System.getProperty("user.home"),
-): Path {
-  val base =
-      if (!xdgConfigHome.isNullOrBlank()) Path.of(xdgConfigHome) else Path.of(userHome, ".config")
-  return base.resolve(configDirName)
-}
-
-/** Raised when `FARM_ENVIRONMENT` (or a `local`-only variable) is set to something unusable. */
-class EnvironmentSelectionException(message: String) : Exception(message)
-
-/** [text] wrapped in ANSI dim, but only when stderr is an interactive terminal (else plain). */
-internal fun dimmedForStderr(text: String): String =
-    if (System.console() != null) "[2m$text[22m" else text
+import software.medusa.farm.cli.api.ApiEndpoint
 
 /**
  * The closed set of environments a single CLI invocation runs against, selected **once** by the
@@ -43,21 +23,24 @@ sealed interface Environment {
    */
   val label: String
 
-  /** This environment's private state directory — never shared. */
-  val configDir: Path
+  /**
+   * This environment's private state directory beneath a resolved [baseConfigPath] — never shared.
+   * Prod/staging partition by [label]; [Local] uses its own explicit path and ignores the base.
+   */
+  fun resolveConfigDirPath(baseConfigPath: Path): Path
 
   /** The one backend endpoint for this environment. */
-  val apiBaseUrl: String
+  val apiEndpoint: ApiEndpoint
 
   /** The Desktop OAuth client id sign-in presents; the API's accepted CLI audience. */
-  val oauthClientId: String
+  val oauthClientId: ClientID
 
   /**
    * The OAuth client secret for [oauthClientId] — baked at publish, or an env override for a local
-   * build, or null if neither is present (`login` then reports how to set it). For a Desktop client
-   * Google explicitly does not treat this as confidential.
+   * build, else a placeholder that only satisfies the local backend (which ignores auth). For a
+   * Desktop client Google explicitly does not treat this as confidential.
    */
-  val oauthClientSecret: String?
+  val oauthClientSecret: Secret
 
   /** The one-line stderr banner a non-prod session prints so a human can't mix environments. */
   val marker: String?
@@ -67,30 +50,41 @@ sealed interface Environment {
 
   data object Prod : Environment {
     override val label = "prod"
-    override val configDir: Path = configBaseDir().resolve(label)
-    override val apiBaseUrl = "https://api.farm-v1.medusa.software"
+    override val apiEndpoint = ApiEndpoint("api.farm-v1.medusa.software", 443, useTls = true)
+
+    override fun resolveConfigDirPath(baseConfigPath: Path): Path = baseConfigPath.resolve(label)
+
     override val oauthClientId =
-        "390879863874-2lni09664lo24g44kakjceu2j7s164nr.apps.googleusercontent.com"
+        ClientID("390879863874-2lni09664lo24g44kakjceu2j7s164nr.apps.googleusercontent.com")
     override val oauthClientSecretEnvVar = "FARM_CLI_OAUTH_CLIENT_SECRET"
-    override val oauthClientSecret: String?
+    override val oauthClientSecret: Secret
       get() =
-          System.getenv(oauthClientSecretEnvVar)?.ifBlank { null }
-              ?: BuildConfig.bakedProperty("oauthClientSecret")
+          Secret(
+              System.getenv(oauthClientSecretEnvVar)?.ifBlank { null }
+                  ?: BuildConfig.bakedProperty("oauthClientSecret")
+                  ?: PLACEHOLDER_CLIENT_SECRET
+          )
 
     override val marker: String? = null
   }
 
   data object Staging : Environment {
     override val label = "staging"
-    override val configDir: Path = configBaseDir().resolve(label)
-    override val apiBaseUrl = "https://api.farm-v1-staging.medusa.software"
+    override val apiEndpoint =
+        ApiEndpoint("api.farm-v1-staging.medusa.software", 443, useTls = true)
+
+    override fun resolveConfigDirPath(baseConfigPath: Path): Path = baseConfigPath.resolve(label)
+
     override val oauthClientId =
-        "1099281545285-smp4hh6b1rec63qgblp6apgbe534kpdd.apps.googleusercontent.com"
+        ClientID("1099281545285-smp4hh6b1rec63qgblp6apgbe534kpdd.apps.googleusercontent.com")
     override val oauthClientSecretEnvVar = "FARM_CLI_OAUTH_CLIENT_SECRET_STAGING"
-    override val oauthClientSecret: String?
+    override val oauthClientSecret: Secret
       get() =
-          System.getenv(oauthClientSecretEnvVar)?.ifBlank { null }
-              ?: BuildConfig.bakedProperty("stagingOauthClientSecret")
+          Secret(
+              System.getenv(oauthClientSecretEnvVar)?.ifBlank { null }
+                  ?: BuildConfig.bakedProperty("stagingOauthClientSecret")
+                  ?: PLACEHOLDER_CLIENT_SECRET
+          )
 
     override val marker = "[staging]"
   }
@@ -101,15 +95,22 @@ sealed interface Environment {
    * accepted audience is irrelevant — [oauthClientId]/[oauthClientSecret] mirror prod's only so a
    * local `login` attempt has *something* to present.
    */
-  data class Local(override val configDir: Path, val port: Int) : Environment {
-    override val label = "local"
-    override val apiBaseUrl = "http://127.0.0.1:$port"
+  data class Local(private val configDir: Path, val port: Int) : Environment {
+    companion object {
+      const val LABEL = "local"
+    }
+
+    override val label = LABEL
+    override val apiEndpoint = ApiEndpoint("127.0.0.1", port, useTls = false)
     override val oauthClientId = Prod.oauthClientId
     override val oauthClientSecretEnvVar = Prod.oauthClientSecretEnvVar
-    override val oauthClientSecret: String?
+    override val oauthClientSecret: Secret
       get() = Prod.oauthClientSecret
 
     override val marker = "[local]"
+
+    /** Local uses its caller-supplied config path directly; the shared base is irrelevant here. */
+    override fun resolveConfigDirPath(baseConfigPath: Path): Path = configDir
   }
 
   companion object {
@@ -117,26 +118,27 @@ sealed interface Environment {
     const val LOCAL_CONFIG_PATH_ENV = "FARM_LOCAL_CONFIG_PATH"
     const val LOCAL_PORT_ENV = "FARM_API_LOCAL_PORT"
 
+    // Stand-in when no real secret is baked or set: fine for the local backend (which ignores
+    // auth),
+    // and Google simply rejects it for prod/staging — a released build always bakes the real one.
+    private const val PLACEHOLDER_CLIENT_SECRET = "local-development-unset"
+
     /**
-     * Resolve the environment for this invocation — the **single** read of `FARM_ENVIRONMENT` in
-     * the whole CLI (the composition root calls this once and injects the result via the Clikt
-     * context). Absent/blank → [Prod]; `local` requires both local variables. An unknown value or a
-     * misconfigured `local` raises [EnvironmentSelectionException] for a clean top-level message.
+     * Resolve the environment for this invocation from the `FARM_ENVIRONMENT` selector (the caller
+     * passes the raw env values). Matching is exact: absent → [Prod], else one of the three labels
+     * verbatim; `local` requires both local variables. Anything else, or a misconfigured `local`,
+     * raises [EnvironmentSelectionException] for a clean top-level message.
      */
-    fun current(
-        raw: String? = System.getenv(ENV_VAR),
-        localConfigPath: String? = System.getenv(LOCAL_CONFIG_PATH_ENV),
-        localPort: String? = System.getenv(LOCAL_PORT_ENV),
-    ): Environment =
-        when (raw?.trim()?.lowercase()?.ifBlank { null }) {
+    fun current(raw: String?, localConfigPath: String?, localPort: String?): Environment =
+        when (raw) {
           null,
-          "prod",
-          "production" -> Prod
-          "staging" -> Staging
-          "local" -> local(localConfigPath, localPort)
+          Prod.label -> Prod
+          Staging.label -> Staging
+          Local.LABEL -> local(localConfigPath, localPort)
           else ->
               throw EnvironmentSelectionException(
-                  "Unknown $ENV_VAR '$raw'. Valid values: prod (default), staging, local."
+                  "Unknown $ENV_VAR '$raw'. Valid values: ${Prod.label} (default), " +
+                      "${Staging.label}, ${Local.LABEL}."
               )
         }
 
