@@ -13,6 +13,62 @@ plugins {
 // blocking gRPC stub from the same contract the server implements.
 sourceSets { main { proto { srcDir(rootDir.resolve("proto")) } } }
 
+// The per-environment backend host + OAuth client id are generated from the resolved cache in
+// infra/environments — the single source shared with Terraform — so the CLI can't drift from the
+// deployed environments (the bug this replaced: hardcoded ids from a different project). Nothing is
+// committed; it regenerates whenever the cache changes.
+val environmentsCacheFile = rootDir.resolve("infra/environments/environments.cache.json")
+val generatedEnvironmentsDir = layout.buildDirectory.dir("generated/environments/kotlin")
+
+val generateEnvironments by tasks.registering {
+  inputs.file(environmentsCacheFile)
+  outputs.dir(generatedEnvironmentsDir)
+  doLast {
+    @Suppress("UNCHECKED_CAST")
+    val cache =
+        groovy.json.JsonSlurper().parse(environmentsCacheFile) as Map<String, Map<String, Any?>>
+
+    fun value(env: String, key: String): String =
+        cache[env]?.get(key)?.toString() ?: error("environments.cache.json is missing $env.$key")
+
+    fun block(property: String, env: String): String =
+        """
+            |  val $property: Config =
+            |      Config(
+            |          apiHost = "${value(env, "api_host")}",
+            |          oauthClientId = "${value(env, "cli_client_id")}",
+            |      )
+            """
+            .trimMargin()
+
+    val content = buildString {
+      appendLine("// Generated from infra/environments/environments.cache.json — do not edit.")
+      appendLine("package software.medusa.farm.cli.config")
+      appendLine()
+      appendLine("internal object GeneratedEnvironments {")
+      appendLine("  data class Config(val apiHost: String, val oauthClientId: String)")
+      appendLine()
+      appendLine(block("prod", "prod"))
+      appendLine()
+      appendLine(block("staging", "staging"))
+      appendLine("}")
+    }
+
+    val packageDir = generatedEnvironmentsDir.get().dir("software/medusa/farm/cli/config").asFile
+    packageDir.mkdirs()
+    packageDir.resolve("GeneratedEnvironments.kt").writeText(content)
+  }
+}
+
+kotlin { sourceSets.named("main") { kotlin.srcDir(generateEnvironments) } }
+
+// Generated sources are the codegen's product, not hand-written code to police.
+tasks.withType<SourceTask>().configureEach {
+  if (name.startsWith("ktfmt") || name.startsWith("detekt")) {
+    exclude("**/generated/**")
+  }
+}
+
 dependencies {
   implementation(libs.clikt)
   implementation(libs.kotlinx.serialization.json)
@@ -50,9 +106,9 @@ application {
 // workflow passes them via `-PcliOauthClientSecret` (prod) / `-PcliStagingOauthClientSecret`
 // (staging), from Actions secrets. Absent locally → empty values, and each Environment falls back
 // to
-// its `oauthClientSecretEnvVar`, so dev builds still work. Backend URLs + client ids are NOT baked
+// its `oauthClientSecretEnvVar`, so dev builds still work. Backend hosts + client ids are NOT baked
 // —
-// they're deterministic public source constants on Environment. Neither secret is ever committed.
+// they're public values generated from the environments cache. Neither secret is ever committed.
 val cliBuildConfigDir = layout.buildDirectory.dir("generated/cliBuildConfig")
 
 val generateCliBuildConfig by tasks.registering {

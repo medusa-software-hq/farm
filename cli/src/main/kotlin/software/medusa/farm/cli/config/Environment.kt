@@ -12,10 +12,10 @@ import software.medusa.farm.cli.api.ApiEndpoint
  *
  * Each environment is a self-contained bundle of everything a command needs — where its state lives
  * (partitioned, never mixed) and which backend + OAuth client to talk to — so the CLI behaves as N
- * independent instances sharing a binary. The prod/staging backend URLs and Desktop OAuth client
- * ids are deterministic, public, Terraform-computed values kept in sync with `infra/common`'s
- * `environment_config` (the `api.<subdomain_label>.<domain>` host and the per-project
- * `cli_client_id`) — mirrored here as source constants.
+ * independent instances sharing a binary. The prod/staging backend host and Desktop OAuth client id
+ * are deterministic, public values taken from the resolved per-environment cache Terraform also
+ * reads, generated into [GeneratedEnvironments] at build time so they can't drift from the deployed
+ * environments.
  */
 sealed interface Environment {
   /**
@@ -50,12 +50,11 @@ sealed interface Environment {
 
   data object Prod : Environment {
     override val label = "prod"
-    override val apiEndpoint = ApiEndpoint("api.farm-v1.medusa.software", 443, useTls = true)
+    override val apiEndpoint = ApiEndpoint(GeneratedEnvironments.prod.apiHost, 443, useTls = true)
 
     override fun resolveConfigDirPath(baseConfigPath: Path): Path = baseConfigPath.resolve(label)
 
-    override val oauthClientId =
-        ClientID("390879863874-2lni09664lo24g44kakjceu2j7s164nr.apps.googleusercontent.com")
+    override val oauthClientId = ClientID(GeneratedEnvironments.prod.oauthClientId)
     override val oauthClientSecretEnvVar = "FARM_CLI_OAUTH_CLIENT_SECRET"
     override val oauthClientSecret: Secret
       get() =
@@ -71,12 +70,11 @@ sealed interface Environment {
   data object Staging : Environment {
     override val label = "staging"
     override val apiEndpoint =
-        ApiEndpoint("api.farm-v1-staging.medusa.software", 443, useTls = true)
+        ApiEndpoint(GeneratedEnvironments.staging.apiHost, 443, useTls = true)
 
     override fun resolveConfigDirPath(baseConfigPath: Path): Path = baseConfigPath.resolve(label)
 
-    override val oauthClientId =
-        ClientID("1099281545285-smp4hh6b1rec63qgblp6apgbe534kpdd.apps.googleusercontent.com")
+    override val oauthClientId = ClientID(GeneratedEnvironments.staging.oauthClientId)
     override val oauthClientSecretEnvVar = "FARM_CLI_OAUTH_CLIENT_SECRET_STAGING"
     override val oauthClientSecret: Secret
       get() =

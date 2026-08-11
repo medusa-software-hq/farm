@@ -29,53 +29,21 @@ locals {
       # subdomain, Neon project). Empty for prod so its subdomain and Neon
       # project keep their pre-split names.
       resource_name_suffix = ""
-
-      # Google OAuth 2.0 client ID — the audience of the *user* tokens this
-      # environment's API accepts, and the client its SPA signs in with. Lives in
-      # this environment's own GCP project (moved off the shared ms-auth project).
-      # https://console.cloud.google.com/auth/clients/97246827152-5s18i6k7atkq7j1mm8j19s6tk443ednu.apps.googleusercontent.com?project=ms-counter-1175e509
-      # 🎨 TEMPLATE POST-EJECT: Create a project-specific Web OAuth Client ID in the prod
-      # GCP project (authorized origin = the web app's URL) and change it here 👆
-      google_web_client_id = "97246827152-5s18i6k7atkq7j1mm8j19s6tk443ednu.apps.googleusercontent.com"
-
-      # Google OAuth 2.0 *Desktop* client ID — what the `ms-farm` CLI signs in
-      # with (loopback + PKCE). A second accepted audience alongside google_web_client_id
-      # (see GoogleIdTokenAuthDecorator's setOfNotNull). Kept in sync with the CLI's
-      # Environment.Prod.oauthClientId. Its non-confidential secret is baked at publish.
-      # https://console.cloud.google.com/auth/clients/97246827152-d2e73hif1ckri70a6osh139v6jmaesag.apps.googleusercontent.com?project=ms-counter-1175e509
-      # 🎨 TEMPLATE POST-EJECT: Create a Desktop OAuth Client ID in the prod GCP project
-      # and change it here 👆
-      google_cli_client_id = "97246827152-d2e73hif1ckri70a6osh139v6jmaesag.apps.googleusercontent.com"
     }
     staging = {
       gh_environment_name     = "staging"
       gcp_project_name_suffix = " - staging"
       resource_name_suffix    = "-staging"
-
-      # A *separate* OAuth client, whose authorized origin is staging's own
-      # domain — not a second origin bolted onto prod's client. The API
-      # authenticates a user by checking `aud` against this ID (see
-      # GoogleIdTokenAuthDecorator), so a shared client would mean a token minted
-      # through staging's SPA is indistinguishable from a production one and
-      # accepted by the production API. Staging is where not-yet-promoted code
-      # runs; it must not hold a credential production honours. The credential
-      # boundary is the environment boundary.
-      # Web client in the staging GCP project (ms-counter-f7f40f25), authorized
-      # origin https://counter-baseline-staging.medusa.software.
-      # https://console.cloud.google.com/auth/clients/329509758995-8pqmbc01jp0lm3gilesi0g4ljcnh1cob.apps.googleusercontent.com?project=ms-counter-f7f40f25
-      # 🎨 TEMPLATE POST-EJECT: Create a separate Web OAuth Client ID in the *staging*
-      # GCP project (its authorized origin = staging's subdomain), and change it here 👇.
-      google_web_client_id = "329509758995-8pqmbc01jp0lm3gilesi0g4ljcnh1cob.apps.googleusercontent.com"
-
-      # Staging's own Desktop OAuth client (same credential-boundary reasoning as
-      # google_web_client_id above). The CLI reaches staging via FARM_ENVIRONMENT=staging
-      # (see the CLI's Environment.Staging); its secret is baked from a separate
-      # FARM_CLI_OAUTH_CLIENT_SECRET_STAGING Actions secret.
-      # https://console.cloud.google.com/auth/clients/329509758995-cn8lk8fcuen0u813a14m6cmfls3an24e.apps.googleusercontent.com?project=ms-counter-f7f40f25
-      google_cli_client_id = "329509758995-cn8lk8fcuen0u813a14m6cmfls3an24e.apps.googleusercontent.com"
     }
   }
   selected_environment = local.environment_config[local.environment]
+
+  # Per-environment OAuth client ids come from the resolved cache in
+  # infra/environments — the one place they're defined, shared with the CLI so
+  # the two can't drift (its guard aborts the plan on a stale cache). `path.module`
+  # keeps this relative to infra/common regardless of which root imports it.
+  environments_cache  = jsondecode(file("${path.module}/../environments/environments.cache.json"))
+  selected_env_config = local.environments_cache[local.environment]
 
   organization_domain = "medusa.software"
 
@@ -125,12 +93,14 @@ locals {
   api_host_name      = "${local.api_subdomain_name}.${local.organization_domain}"
   api_url            = "https://${local.api_host_name}"
 
-  # Google OAuth 2.0 client ID — per environment (see environment_config). It is
-  # the audience of the user tokens that environment's API accepts.
-  google_web_client_id = local.selected_environment.google_web_client_id
+  # Google OAuth 2.0 client ID — per environment (from the shared cache). It is
+  # the audience of the user tokens that environment's API accepts, and the
+  # client its SPA signs in with.
+  google_web_client_id = local.selected_env_config.web_client_id
 
-  # Google OAuth 2.0 Desktop client ID — per environment; the CLI's audience.
-  google_cli_client_id = local.selected_environment.google_cli_client_id
+  # Google OAuth 2.0 Desktop client ID — per environment; the CLI's audience and
+  # the client it signs in with (loopback + PKCE).
+  google_cli_client_id = local.selected_env_config.cli_client_id
 }
 
 output "organization_domain" {

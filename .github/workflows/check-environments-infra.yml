@@ -1,0 +1,48 @@
+name: Check environments config
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  TERRAFORM_VERSION: 1.14
+
+  TF_INPUT: false
+  TF_CLI_ARGS: -no-color
+  NO_COLOR: 1
+
+jobs:
+  check-config:
+    name: Check Terraform configuration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ~> ${{ env.TERRAFORM_VERSION }}
+
+      - uses: terraform-linters/setup-tflint@v6.2.2
+
+      - name: Check formatting
+        working-directory: infra/environments
+        run: terraform fmt -check -recursive
+
+      - name: Lint Terraform configuration
+        working-directory: infra/environments
+        run: tflint --recursive
+
+      # No cloud auth: this root is pure locals plus a builtin resource. The plan
+      # runs the drift guard, failing the PR when the committed cache disagrees
+      # with what the input derives.
+      - name: Check cache is not stale
+        working-directory: infra/environments
+        run: |
+          terraform init -backend=false
+          terraform validate
+          terraform plan
