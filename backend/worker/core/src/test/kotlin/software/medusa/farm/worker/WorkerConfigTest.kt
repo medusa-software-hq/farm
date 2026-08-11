@@ -20,7 +20,7 @@ class WorkerConfigTest {
     assertEquals("jdbc:postgresql://localhost/farm", config.databaseUrl)
     assertEquals("farm.kr9zt.tmprl.cloud:7233", config.temporalAddress)
     assertEquals("farm.kr9zt", config.temporalNamespace)
-    assertEquals(WorkflowServiceAuthConfig.ApiKey("secret-key"), config.temporalAuth)
+    assertEquals(WorkflowServiceAuthConfig.Cloud("secret-key"), config.temporalAuth)
   }
 
   @Test

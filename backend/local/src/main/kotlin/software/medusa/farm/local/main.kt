@@ -13,20 +13,17 @@ import software.medusa.farm.worker.TemporalWorkerHost
 private const val localPort = 8081
 private const val localCorsOriginRegex = """http://localhost(:\d+)?"""
 
-// The local Temporal dev server (`temporal server start-dev`): plaintext, no API key.
 private const val localTemporalAddress = "localhost:7233"
 private const val localTemporalNamespace = "default"
 
 private val logger = LoggerFactory.getLogger("software.medusa.farm.local.Main")
 
 /**
- * The one-process local stack: one in-memory [FarmStore], a Fibonacci worker hosted in-process over
- * it, and the API served over the same store — so StartFibonacci flows through the local Temporal
- * dev server to the in-process worker and back out via ListFibonacci.
+ * The one-process local stack: the API and an in-process Fibonacci worker over one shared in-memory
+ * [FarmStore].
  *
- * The dev server is optional: if the worker can't reach Temporal, log and keep serving the API (the
- * counter and ListFibonacci still work; StartFibonacci degrades) — the same tolerance the Cloud API
- * has for a missing Temporal key.
+ * Tolerant of an absent local Temporal server: if the worker can't connect, log it and keep serving
+ * — only starting a workflow degrades.
  */
 fun main() {
   val farmStore = FarmStore(InMemoryCounterStore(), InMemoryFibonacciStore())
@@ -35,7 +32,7 @@ fun main() {
     TemporalWorkerHost(
             address = localTemporalAddress,
             namespace = localTemporalNamespace,
-            authConfig = WorkflowServiceAuthConfig.None,
+            authConfig = WorkflowServiceAuthConfig.Local,
             store = farmStore.fibonacci,
         )
         .start()
@@ -57,7 +54,7 @@ fun main() {
               TemporalFibonacciStarter(
                   localTemporalAddress,
                   localTemporalNamespace,
-                  WorkflowServiceAuthConfig.None,
+                  WorkflowServiceAuthConfig.Local,
               ),
       )
       .start()

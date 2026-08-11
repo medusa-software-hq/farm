@@ -23,9 +23,6 @@ import software.medusa.farm.shared.WorkflowServiceAuthConfig
  * Robustness: the [WorkflowClient] is built lazily and connects lazily, so construction never
  * blocks server startup or other RPCs. A Temporal-unreachable start is mapped to gRPC UNAVAILABLE
  * and fails only that call.
- *
- * [authConfig] decides the connection shape (Temporal Cloud API key over TLS, or plaintext for a
- * local dev server).
  */
 class TemporalFibonacciStarter(
     private val address: String,

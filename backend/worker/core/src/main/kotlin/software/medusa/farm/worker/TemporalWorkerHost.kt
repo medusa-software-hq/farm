@@ -8,10 +8,7 @@ import io.temporal.worker.WorkerFactory
 import software.medusa.farm.shared.FibonacciStore
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
-/**
- * Registers the Fibonacci workflow + activities and runs the worker. [authConfig] decides the
- * connection shape (Temporal Cloud API key over TLS, or plaintext for a local dev server).
- */
+/** Registers the Fibonacci workflow + activities and runs the worker. */
 class TemporalWorkerHost(
     address: String,
     namespace: String,

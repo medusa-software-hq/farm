@@ -59,7 +59,7 @@ fun main() {
                 TemporalFibonacciStarter(
                     BakedConfig.TEMPORAL_ADDRESS,
                     BakedConfig.TEMPORAL_NAMESPACE,
-                    WorkflowServiceAuthConfig.ApiKey(it),
+                    WorkflowServiceAuthConfig.Cloud(it),
                 )
               } ?: NoOpFibonacciStarter,
       )

@@ -25,7 +25,7 @@ fun main() {
             temporalAddress = BakedConfig.TEMPORAL_ADDRESS,
             temporalNamespace = BakedConfig.TEMPORAL_NAMESPACE,
             temporalAuth =
-                WorkflowServiceAuthConfig.ApiKey(
+                WorkflowServiceAuthConfig.Cloud(
                     client.read(BakedConfig.TEMPORAL_KEY_PROJECT, temporalApiKeySecretId)
                 ),
         )
