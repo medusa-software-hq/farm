@@ -15,6 +15,7 @@ fun buildServer(
     auth: DecoratingHttpServiceFunction,
     farmStore: FarmStore,
     fibonacciStarter: FibonacciStarter,
+    gitHubOrgs: GitHubOrgService?,
 ): Server {
   val cors =
       CorsService.builderForOriginRegex(originRegex)
@@ -40,7 +41,14 @@ fun buildServer(
   val grpcService =
       GrpcService.builder()
           .apply {
-            addService(FarmServiceImpl(farmStore.counter, farmStore.fibonacci, fibonacciStarter))
+            addService(
+                FarmServiceImpl(
+                    farmStore.counter,
+                    farmStore.fibonacci,
+                    fibonacciStarter,
+                    gitHubOrgs,
+                )
+            )
             enableUnframedRequests(true)
           }
           .build()

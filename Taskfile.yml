@@ -109,20 +109,42 @@ tasks:
       - cli:test
 
   dev:
-    desc: Run the full local stack — Temporal dev server, the local backend, and the frontend
+    desc: Run the full local stack — the local backend (with its Temporal dev server) and the frontend
     deps:
-      - temporal:dev
       - backend:local
       - web:app:run
 
+  fetch-dev-github-key:
+    desc: Fetch the Test GitHub App private key so backend:local can talk to real GitHub
+    vars:
+      KEY_PATH: '{{.HOME}}/.config/ms-farm/dev-github-app.pem'
+    status:
+      - test -f {{.KEY_PATH}}
+    cmds:
+      - mkdir -p {{.HOME}}/.config/ms-farm
+      - gcloud secrets versions access latest --secret dev-github-app-pem --project ms-farm-shared-c83577a8 > {{.KEY_PATH}}
+      - chmod 600 {{.KEY_PATH}}
+
   temporal:dev:
     # Needs the `temporal` CLI on PATH (https://docs.temporal.io/cli).
-    desc: Run a local Temporal dev server
+    desc: Run a local Temporal dev server (skipped if one is already listening on :7233)
+    status:
+      - nc -z localhost 7233
     cmds:
       - temporal server start-dev
 
   backend:local:
-    desc: Run the one-process local backend (API + in-process worker over one in-memory store)
+    desc: Run the one-process local backend (API + in-process worker) with its Temporal dev server
+    deps:
+      - temporal:dev
+      - backend:local:app
+
+  backend:local:app:
+    internal: true
+    deps:
+      - fetch-dev-github-key
+    # The worker connects to Temporal eagerly, so wait for it (started in parallel) before booting.
     cmds:
+      - for i in $(seq 1 100); do nc -z localhost 7233 && exit 0; sleep 0.2; done; echo "Temporal dev server not ready on :7233" >&2; exit 1
       - ./gradlew :backend:local:run
     interactive: true

@@ -1,6 +1,5 @@
 package software.medusa.farm.server
 
-import io.grpc.Status
 import io.temporal.api.enums.v1.WorkflowIdConflictPolicy
 import io.temporal.api.enums.v1.WorkflowIdReusePolicy
 import io.temporal.client.WorkflowClient
@@ -20,9 +19,8 @@ import software.medusa.farm.shared.WorkflowServiceAuthConfig
  * workflow itself resumes from the highest stored index, so overlapping requests never
  * double-write.
  *
- * Robustness: the [WorkflowClient] is built lazily and connects lazily, so construction never
- * blocks server startup or other RPCs. A Temporal-unreachable start is mapped to gRPC UNAVAILABLE
- * and fails only that call.
+ * The [WorkflowClient] is built lazily and connects lazily, so construction never blocks server
+ * startup or other RPCs.
  */
 class TemporalFibonacciStarter(
     private val address: String,
@@ -41,30 +39,23 @@ class TemporalFibonacciStarter(
     )
   }
 
-  override fun start(through: Int): String =
-      try {
-        val stub =
-            client.newUntypedWorkflowStub(
-                WORKFLOW_TYPE,
-                WorkflowOptions.newBuilder()
-                    .setTaskQueue(TASK_QUEUE)
-                    .setWorkflowId(WORKFLOW_ID)
-                    .setWorkflowIdReusePolicy(
-                        WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE
-                    )
-                    .setWorkflowIdConflictPolicy(
-                        WorkflowIdConflictPolicy.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING
-                    )
-                    .build(),
-            )
-        stub.start(through).workflowId
-      } catch (e: Exception) {
-        throw Status.UNAVAILABLE.withDescription(
-                "Failed to start the Fibonacci workflow on Temporal: ${e.message}"
-            )
-            .withCause(e)
-            .asException()
-      }
+  override fun start(through: Int): String {
+    val stub =
+        client.newUntypedWorkflowStub(
+            WORKFLOW_TYPE,
+            WorkflowOptions.newBuilder()
+                .setTaskQueue(TASK_QUEUE)
+                .setWorkflowId(WORKFLOW_ID)
+                .setWorkflowIdReusePolicy(
+                    WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE
+                )
+                .setWorkflowIdConflictPolicy(
+                    WorkflowIdConflictPolicy.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING
+                )
+                .build(),
+        )
+    return stub.start(through).workflowId
+  }
 
   companion object {
     // The worker registers "FibonacciWorkflow" on this task queue (see the worker module's

@@ -1,5 +1,8 @@
 package software.medusa.farm.server
 
+import software.medusa.farm.github.GhCachingInstallationApiClientProvider
+import software.medusa.farm.github.GhProperAppApiClient
+import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.shared.BakedConfig
 import software.medusa.farm.shared.FarmStore
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
@@ -11,6 +14,8 @@ private const val allowedDomainEnvVarName = "GOOGLE_ALLOWED_DOMAIN"
 private const val corsOriginRegexEnvVarName = "CORS_ALLOWED_ORIGIN_REGEX"
 private const val databaseUrlEnvVarName = "DATABASE_URL"
 private const val temporalApiKeyEnvVarName = "TEMPORAL_API_KEY"
+private const val gitHubAppClientIdEnvVarName = "GITHUB_APP_CLIENT_ID"
+private const val gitHubAppPemEnvVarName = "GITHUB_APP_PEM"
 
 fun main() {
   val port =
@@ -43,6 +48,12 @@ fun main() {
   // rotating Temporal key can never take the service down.
   val temporalApiKey = System.getenv(temporalApiKeyEnvVarName)
 
+  // Optional, same contract as the Temporal key: absent -> only the GitHub RPCs degrade. Both
+  // halves are required together; the PEM must be unencrypted PKCS#8 (see the github-client
+  // module).
+  val gitHubAppClientId = System.getenv(gitHubAppClientIdEnvVarName)
+  val gitHubAppPem = System.getenv(gitHubAppPemEnvVarName)
+
   val farmStore = FarmStore.buildWithMigrations(databaseUrl)
 
   buildServer(
@@ -62,6 +73,19 @@ fun main() {
                     WorkflowServiceAuthConfig.Cloud(it),
                 )
               } ?: NoOpFibonacciStarter,
+          gitHubOrgs =
+              if (gitHubAppClientId != null && gitHubAppPem != null) {
+                val appApiClient = GhProperAppApiClient.build(gitHubAppClientId, gitHubAppPem)
+                GitHubOrgService(
+                    appApiClient,
+                    GhCachingInstallationApiClientProvider(
+                        GhProperInstallationApiClientProvider(appApiClient)
+                    ),
+                    farmStore.linkedOrg,
+                )
+              } else {
+                null
+              },
       )
       .start()
       .join()

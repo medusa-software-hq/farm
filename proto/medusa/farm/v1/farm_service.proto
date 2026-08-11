@@ -12,6 +12,8 @@ service FarmService {
   rpc Decrement(DecrementRequest) returns (DecrementResponse);
   rpc ListFibonacci(ListFibonacciRequest) returns (ListFibonacciResponse);
   rpc StartFibonacci(StartFibonacciRequest) returns (StartFibonacciResponse);
+  rpc LinkOrg(LinkOrgRequest) returns (LinkOrgResponse);
+  rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse);
 }
 
 message GetCountRequest {}
@@ -49,4 +51,30 @@ message StartFibonacciRequest {
 
 message StartFibonacciResponse {
   string workflow_id = 1;
+}
+
+message LinkOrgRequest {
+  string org_login = 1;
+}
+
+message LinkOrgResponse {
+  int64 installation_id = 1;
+  repeated string repositories = 2;
+}
+
+message ListRepositoriesRequest {}
+
+message ListRepositoriesResponse {
+  repeated Repository repositories = 1;
+}
+
+message Repository {
+  string org_login = 1;
+  string full_name = 2;
+  repeated Issue recent_issues = 3;
+}
+
+message Issue {
+  int32 number = 1;
+  string title = 2;
 }
