@@ -1,0 +1,59 @@
+version: '3'
+
+.sources: &sources
+  - '**/*.tf'
+  - environments.input.json
+  - environments.cache.json
+
+tasks:
+  checkFormatting:
+    desc: Check Terraform formatting
+    sources: *sources
+    cmds:
+      - terraform fmt -check -recursive
+
+  fixFormatting:
+    desc: Fix Terraform formatting
+    sources: *sources
+    cmds:
+      - terraform fmt -recursive
+
+  lint:
+    desc: Lint the Terraform sources
+    sources: *sources
+    cmds:
+      - tflint --recursive
+
+  init:
+    desc: Initialize the Terraform working directory (no backend — pure locals)
+    sources: *sources
+    cmds:
+      - terraform init -backend=false
+
+  validate:
+    desc: Validate the Terraform configuration
+    deps: [init]
+    sources: *sources
+    cmds:
+      - terraform validate
+
+  check:
+    desc: Fail if environments.cache.json is stale (the drift guard)
+    deps: [init]
+    sources: *sources
+    cmds:
+      - terraform plan
+
+  regenerate:
+    desc: Rewrite environments.cache.json from Terraform's own derivation (single source)
+    deps: [init]
+    sources:
+      - '**/*.tf'
+      - environments.input.json
+    generates:
+      - environments.cache.json
+    cmds:
+      # Write to a temp file first: the shell truncates the redirect target before
+      # terraform reads it, and the config loads the current cache.
+      - echo 'jsonencode(local.derived)' | terraform console -no-color | jq 'fromjson' > environments.cache.json.tmp
+      - mv environments.cache.json.tmp environments.cache.json

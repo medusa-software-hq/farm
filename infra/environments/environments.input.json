@@ -1,0 +1,19 @@
+{
+  "domain": "medusa.software",
+  "project": "farm",
+  "variant": "v1",
+  "environments": {
+    "prod": {
+      "gh_environment_name": "production",
+      "resource_name_suffix": "",
+      "web_client_id": "97246827152-5s18i6k7atkq7j1mm8j19s6tk443ednu.apps.googleusercontent.com",
+      "cli_client_id": "97246827152-d2e73hif1ckri70a6osh139v6jmaesag.apps.googleusercontent.com"
+    },
+    "staging": {
+      "gh_environment_name": "staging",
+      "resource_name_suffix": "-staging",
+      "web_client_id": "329509758995-8pqmbc01jp0lm3gilesi0g4ljcnh1cob.apps.googleusercontent.com",
+      "cli_client_id": "329509758995-cn8lk8fcuen0u813a14m6cmfls3an24e.apps.googleusercontent.com"
+    }
+  }
+}
