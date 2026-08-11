@@ -34,31 +34,19 @@ private val logger = LoggerFactory.getLogger("software.medusa.farm.local.Main")
 
 /**
  * The one-process local stack: the API and an in-process Fibonacci worker over one shared in-memory
- * [FarmStore].
- *
- * Tolerant of an absent local Temporal server: if the worker can't connect, log it and keep serving
- * — only starting a workflow degrades.
+ * [FarmStore]. Requires the local Temporal dev server (`task dev` starts it).
  */
 fun main() {
   val farmStore =
       FarmStore(InMemoryCounterStore(), InMemoryFibonacciStore(), InMemoryLinkedOrgStore())
 
-  try {
-    TemporalWorkerHost(
-            address = localTemporalAddress,
-            namespace = localTemporalNamespace,
-            authConfig = WorkflowServiceAuthConfig.Local,
-            store = farmStore.fibonacci,
-        )
-        .start()
-  } catch (e: Exception) {
-    logger.warn(
-        "Temporal dev server unreachable at {}; serving the API without a worker " +
-            "(StartFibonacci will degrade). Start it with `temporal server start-dev`.",
-        localTemporalAddress,
-        e,
-    )
-  }
+  TemporalWorkerHost(
+          address = localTemporalAddress,
+          namespace = localTemporalNamespace,
+          authConfig = WorkflowServiceAuthConfig.Local,
+          store = farmStore.fibonacci,
+      )
+      .start()
 
   buildServer(
           originRegex = localCorsOriginRegex,
