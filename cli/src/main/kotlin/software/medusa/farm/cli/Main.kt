@@ -4,9 +4,6 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.NoOpCliktCommand
 import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
-import software.medusa.farm.cli.command.DecrementCommand
-import software.medusa.farm.cli.command.GetCommand
-import software.medusa.farm.cli.command.IncrementCommand
 import software.medusa.farm.cli.command.LinkOrgCommand
 import software.medusa.farm.cli.command.LoginCommand
 import software.medusa.farm.cli.command.LogoutCommand
@@ -23,9 +20,6 @@ fun main(args: Array<String>) {
       .subcommands(
           LoginCommand(),
           LogoutCommand(),
-          IncrementCommand(),
-          DecrementCommand(),
-          GetCommand(),
           LinkOrgCommand(),
       )
       .main(args)

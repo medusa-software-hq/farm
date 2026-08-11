@@ -5,9 +5,6 @@ with your `medusa.software` Google account and drives Farm from a terminal.
 
 ```
 ms-farm login        # sign in (opens a browser) and cache the session
-ms-farm increment    # +1, prints the new count
-ms-farm decrement    # -1, prints the new count
-ms-farm get          # print the current count
 ms-farm link-org ORG # link a GitHub org to the Farm app; print its installation id + repos
 ms-farm logout       # forget the cached session on this machine
 ```
@@ -44,8 +41,8 @@ so prod and staging can never share credentials. Non-prod prints a dim marker
 (`[staging]`) to stderr.
 
 ```
-ms-farm increment                              # prod (default)
-FARM_ENVIRONMENT=staging ms-farm increment  # staging (needs the staging OAuth secret)
+ms-farm link-org ORG                              # prod (default)
+FARM_ENVIRONMENT=staging ms-farm link-org ORG  # staging (needs the staging OAuth secret)
 ```
 
 ## Local development
@@ -57,10 +54,10 @@ config dir and port:
 FARM_ENVIRONMENT=local \
 FARM_LOCAL_CONFIG_PATH=/tmp/ms-farm-local \
 FARM_API_LOCAL_PORT=8081 \
-  ms-farm get
+  ms-farm link-org ORG
 ```
 
-The local backend uses no-op auth, so `get`/`increment`/`decrement` work without
+The local backend uses no-op auth, so commands work without
 `login` (the CLI still attaches a token; the no-op decorator ignores it). A local
 build has no OAuth client secret baked in; set the per-env secret env var
 (`FARM_CLI_OAUTH_CLIENT_SECRET` for prod, `…_STAGING` for staging) if you need
@@ -72,5 +69,5 @@ Common tasks (via [Task](https://taskfile.dev)):
 task cli:compile      # compile
 task cli:test         # unit tests
 task cli:lint         # detekt
-task cli:run -- get   # build + run locally
+task cli:run -- --help   # build + run locally
 ```

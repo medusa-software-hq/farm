@@ -11,7 +11,6 @@ private const val maxPoolSize = 5
 
 /** The farm's stores over the one shared database. */
 class FarmStore(
-    val counter: CounterStore,
     val fibonacci: FibonacciStore,
     val linkedOrg: LinkedOrgStore,
 ) {
@@ -29,7 +28,6 @@ class FarmStore(
     private fun storesOver(dataSource: DataSource): FarmStore {
       val database = FarmDatabase(dataSource.asJdbcDriver())
       return FarmStore(
-          PostgresCounterStore(database),
           PostgresFibonacciStore(database),
           PostgresLinkedOrgStore(database),
       )

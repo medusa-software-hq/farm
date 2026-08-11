@@ -12,7 +12,6 @@ import software.medusa.farm.server.NoOpAuthDecorator
 import software.medusa.farm.server.TemporalFibonacciStarter
 import software.medusa.farm.server.buildServer
 import software.medusa.farm.shared.FarmStore
-import software.medusa.farm.shared.InMemoryCounterStore
 import software.medusa.farm.shared.InMemoryFibonacciStore
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.LinkedOrgStore
@@ -37,8 +36,7 @@ private val logger = LoggerFactory.getLogger("software.medusa.farm.local.Main")
  * [FarmStore]. Requires the local Temporal dev server (`task dev` starts it).
  */
 fun main() {
-  val farmStore =
-      FarmStore(InMemoryCounterStore(), InMemoryFibonacciStore(), InMemoryLinkedOrgStore())
+  val farmStore = FarmStore(InMemoryFibonacciStore(), InMemoryLinkedOrgStore())
 
   TemporalWorkerHost(
           address = localTemporalAddress,

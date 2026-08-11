@@ -43,7 +43,6 @@ fun buildServer(
           .apply {
             addService(
                 FarmServiceImpl(
-                    farmStore.counter,
                     farmStore.fibonacci,
                     fibonacciStarter,
                     gitHubOrgs,

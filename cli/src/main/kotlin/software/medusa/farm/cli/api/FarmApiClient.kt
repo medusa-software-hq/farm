@@ -8,11 +8,8 @@ import io.grpc.StatusRuntimeException
 import io.grpc.TlsChannelCredentials
 import java.util.concurrent.TimeUnit
 import software.medusa.farm.cli.auth.IdTokenProvider
-import software.medusa.farm.v1.DecrementRequest
 import software.medusa.farm.v1.FarmServiceGrpc
 import software.medusa.farm.v1.FarmServiceGrpc.FarmServiceBlockingStub
-import software.medusa.farm.v1.GetCountRequest
-import software.medusa.farm.v1.IncrementRequest
 import software.medusa.farm.v1.LinkOrgRequest
 
 /**
@@ -26,12 +23,6 @@ class FarmApiClient(endpoint: ApiEndpoint, idTokenProvider: IdTokenProvider) : A
   private val stub: FarmServiceBlockingStub =
       FarmServiceGrpc.newBlockingStub(channel)
           .withInterceptors(BearerTokenInterceptor(idTokenProvider))
-
-  fun getCount(): Int = call { stub.getCount(GetCountRequest.getDefaultInstance()).count }
-
-  fun increment(): Int = call { stub.increment(IncrementRequest.getDefaultInstance()).count }
-
-  fun decrement(): Int = call { stub.decrement(DecrementRequest.getDefaultInstance()).count }
 
   fun linkOrg(orgLogin: String): LinkOrgResult = call {
     val response = stub.linkOrg(LinkOrgRequest.newBuilder().setOrgLogin(orgLogin).build())

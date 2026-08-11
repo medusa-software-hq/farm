@@ -31,7 +31,6 @@ const socialLinks = [
 
 function AppContent({ token }: { token: string }) {
   const { handleUnauthorized } = useAuth();
-  const [count, setCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fibonacci, setFibonacci] = useState<{ index: number; value: string }[]>([]);
   const [through, setThrough] = useState<number>(20);
@@ -54,28 +53,6 @@ function AppContent({ token }: { token: string }) {
     },
     [handleUnauthorized]
   );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const response = await client.getCount({}, { headers });
-        if (!cancelled) {
-          setCount(response.count);
-        }
-      } catch (err: unknown) {
-        if (!cancelled) {
-          handleError(err);
-        }
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [headers, handleError]);
 
   // The worker computes Fibonacci numbers into the database out of band; poll so the list fills in.
   useEffect(() => {
@@ -132,26 +109,6 @@ function AppContent({ token }: { token: string }) {
     };
   }, [headers]);
 
-  async function increment() {
-    try {
-      const response = await client.increment({}, { headers });
-      setCount(response.count);
-      setError(null);
-    } catch (err: unknown) {
-      handleError(err);
-    }
-  }
-
-  async function decrement() {
-    try {
-      const response = await client.decrement({}, { headers });
-      setCount(response.count);
-      setError(null);
-    } catch (err: unknown) {
-      handleError(err);
-    }
-  }
-
   // Kicks off the Temporal workflow; the poll above then fills the list in as the worker persists.
   async function startFibonacci() {
     setComputing(true);
@@ -174,34 +131,11 @@ function AppContent({ token }: { token: string }) {
           <img src={reactLogo} className={classes.framework} alt="React logo" />
           <img src={viteLogo} className={classes.vite} alt="Vite logo" />
         </div>
-        <Stack align="center" gap="md">
-          <Title order={1} className={classes.count}>
-            {count ?? '…'}
-          </Title>
-          <Group justify="center" gap="xs">
-            <Button
-              variant="light"
-              size="md"
-              aria-label="Decrement"
-              onClick={() => void decrement()}
-            >
-              −
-            </Button>
-            <Button
-              variant="light"
-              size="md"
-              aria-label="Increment"
-              onClick={() => void increment()}
-            >
-              +
-            </Button>
-          </Group>
-          {error !== null && (
-            <Text c="red" size="sm">
-              Failed to reach the API: {error}
-            </Text>
-          )}
-        </Stack>
+        {error !== null && (
+          <Text c="red" size="sm">
+            Failed to reach the API: {error}
+          </Text>
+        )}
       </Box>
 
       <Stack align="center" gap="xs" mt="xl" mb="xl">

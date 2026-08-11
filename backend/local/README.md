@@ -6,8 +6,7 @@ in-process worker → shared store → `ListFibonacci`.
 
 It connects to Temporal in the insecure local mode (`localhost:7233`, namespace `default`, no API
 key). The Temporal dev server is optional: if it is not running, the worker connection fails, the
-stack logs it and keeps serving — the counter and `ListFibonacci` still work, only `StartFibonacci`
-degrades.
+stack logs it and keeps serving — `ListFibonacci` still works, only `StartFibonacci` degrades.
 
 Run the full stack (Temporal dev server, this backend, and the frontend) with `task dev` from the
 repo root; that needs the `temporal` CLI on PATH.

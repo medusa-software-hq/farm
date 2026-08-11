@@ -4,17 +4,9 @@ import io.grpc.Status
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import software.medusa.farm.github.GhOrgLogin
-import software.medusa.farm.shared.CounterId
-import software.medusa.farm.shared.CounterStore
 import software.medusa.farm.shared.FibonacciStore
-import software.medusa.farm.v1.DecrementRequest
-import software.medusa.farm.v1.DecrementResponse
 import software.medusa.farm.v1.FarmServiceGrpcKt
 import software.medusa.farm.v1.FibonacciNumber
-import software.medusa.farm.v1.GetCountRequest
-import software.medusa.farm.v1.GetCountResponse
-import software.medusa.farm.v1.IncrementRequest
-import software.medusa.farm.v1.IncrementResponse
 import software.medusa.farm.v1.Issue
 import software.medusa.farm.v1.LinkOrgRequest
 import software.medusa.farm.v1.LinkOrgResponse
@@ -26,10 +18,7 @@ import software.medusa.farm.v1.Repository
 import software.medusa.farm.v1.StartFibonacciRequest
 import software.medusa.farm.v1.StartFibonacciResponse
 
-private val mainCounterId = CounterId("main")
-
 class FarmServiceImpl(
-    private val counterStore: CounterStore,
     private val fibonacciStore: FibonacciStore,
     private val fibonacciStarter: FibonacciStarter,
     private val gitHubOrgs: GitHubOrgService?,
@@ -40,19 +29,6 @@ class FarmServiceImpl(
       gitHubOrgs
           ?: throw Status.UNIMPLEMENTED.withDescription("GitHub App not configured")
               .asRuntimeException()
-
-  override suspend fun getCount(request: GetCountRequest): GetCountResponse =
-      GetCountResponse.newBuilder().setCount(counterStore.getCount(mainCounterId)).build()
-
-  override suspend fun increment(request: IncrementRequest): IncrementResponse =
-      IncrementResponse.newBuilder()
-          .setCount(counterStore.incrementAndGetCount(mainCounterId))
-          .build()
-
-  override suspend fun decrement(request: DecrementRequest): DecrementResponse =
-      DecrementResponse.newBuilder()
-          .setCount(counterStore.decrementAndGetCount(mainCounterId))
-          .build()
 
   override suspend fun listFibonacci(request: ListFibonacciRequest): ListFibonacciResponse =
       ListFibonacciResponse.newBuilder()

@@ -1,10 +1,10 @@
-# Neon (serverless Postgres) project backing the counter store.
+# Neon (serverless Postgres) project backing the Farm's data stores.
 resource "neon_project" "main" {
   name      = "${module.common.project_base_name}-${module.common.project_variant}${module.common.resource_name_suffix}"
   region_id = "aws-eu-central-1"
 
   # The provider defaults this to 86400s (24h), which exceeds the Free plan's
-  # maximum of 21600s (6h). Point-in-time restore isn't needed for a counter, so
+  # maximum of 21600s (6h). Point-in-time restore isn't needed for this demo, so
   # pin it to the plan maximum to keep the project provisionable on the Free tier.
   history_retention_seconds = 21600
 }
