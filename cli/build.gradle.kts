@@ -135,6 +135,10 @@ tasks.shadowJar {
   archiveClassifier = ""
   archiveVersion = ""
   // gRPC discovers its transport/name-resolver/load-balancer providers via META-INF/services;
-  // merge those files so the shaded jar keeps a functional channel provider.
+  // merge those files so the shaded jar keeps a functional channel provider. INCLUDE lets every
+  // jar's copy of a given service file reach the merge transformer — otherwise Gradle's duplicate
+  // handling drops all but one (e.g. grpc-util's LoadBalancerProvider shadowing grpc-core's
+  // pick_first), leaving the channel unable to find its default load-balancer policy at runtime.
+  duplicatesStrategy = DuplicatesStrategy.INCLUDE
   mergeServiceFiles()
 }
