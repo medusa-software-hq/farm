@@ -7,31 +7,10 @@ option java_multiple_files = true;
 option java_package = "software.medusa.farm.v1";
 
 service FarmService {
-  rpc GetCount(GetCountRequest) returns (GetCountResponse);
-  rpc Increment(IncrementRequest) returns (IncrementResponse);
-  rpc Decrement(DecrementRequest) returns (DecrementResponse);
   rpc ListFibonacci(ListFibonacciRequest) returns (ListFibonacciResponse);
   rpc StartFibonacci(StartFibonacciRequest) returns (StartFibonacciResponse);
   rpc LinkOrg(LinkOrgRequest) returns (LinkOrgResponse);
   rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse);
-}
-
-message GetCountRequest {}
-
-message GetCountResponse {
-  int32 count = 1;
-}
-
-message IncrementRequest {}
-
-message IncrementResponse {
-  int32 count = 1;
-}
-
-message DecrementRequest {}
-
-message DecrementResponse {
-  int32 count = 1;
 }
 
 message ListFibonacciRequest {}
