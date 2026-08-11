@@ -17,6 +17,8 @@ dependencies {
   api(libs.armeria.grpc.kotlin)
   api(libs.armeria.kotlin)
   api(project(":backend:shared"))
+  // api() because the github-client types appear in the GitHubApp interface's public signature.
+  api(project(":backend:github-client"))
   api(libs.grpc.kotlin.stub)
   api(libs.grpc.protobuf)
   api(libs.grpc.stub)
@@ -28,6 +30,7 @@ dependencies {
   runtimeOnly(libs.postgresql)
 
   testImplementation(libs.kotlin.test)
+  testImplementation(testFixtures(project(":backend:github-client")))
 }
 
 val grpcJavaId = "grpc"

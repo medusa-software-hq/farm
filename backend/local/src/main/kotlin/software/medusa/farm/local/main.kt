@@ -2,11 +2,13 @@ package software.medusa.farm.local
 
 import org.slf4j.LoggerFactory
 import software.medusa.farm.server.NoOpAuthDecorator
+import software.medusa.farm.server.NoOpGitHubApp
 import software.medusa.farm.server.TemporalFibonacciStarter
 import software.medusa.farm.server.buildServer
 import software.medusa.farm.shared.FarmStore
 import software.medusa.farm.shared.InMemoryCounterStore
 import software.medusa.farm.shared.InMemoryFibonacciStore
+import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 import software.medusa.farm.worker.TemporalWorkerHost
 
@@ -26,7 +28,8 @@ private val logger = LoggerFactory.getLogger("software.medusa.farm.local.Main")
  * — only starting a workflow degrades.
  */
 fun main() {
-  val farmStore = FarmStore(InMemoryCounterStore(), InMemoryFibonacciStore())
+  val farmStore =
+      FarmStore(InMemoryCounterStore(), InMemoryFibonacciStore(), InMemoryLinkedOrgStore())
 
   try {
     TemporalWorkerHost(
@@ -56,6 +59,7 @@ fun main() {
                   localTemporalNamespace,
                   WorkflowServiceAuthConfig.Local,
               ),
+          gitHubApp = NoOpGitHubApp,
       )
       .start()
       .join()
