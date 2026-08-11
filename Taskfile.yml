@@ -111,9 +111,21 @@ tasks:
   dev:
     desc: Run the full local stack — Temporal dev server, the local backend, and the frontend
     deps:
+      - fetch-dev-github-key
       - temporal:dev
       - backend:local
       - web:app:run
+
+  fetch-dev-github-key:
+    desc: Fetch the Test GitHub App private key so backend:local can talk to real GitHub
+    vars:
+      KEY_PATH: '{{.HOME}}/.config/ms-farm/dev-github-app.pem'
+    status:
+      - test -f {{.KEY_PATH}}
+    cmds:
+      - mkdir -p {{.HOME}}/.config/ms-farm
+      - gcloud secrets versions access latest --secret dev-github-app-pem --project ms-farm-shared-c83577a8 > {{.KEY_PATH}}
+      - chmod 600 {{.KEY_PATH}}
 
   temporal:dev:
     # Needs the `temporal` CLI on PATH (https://docs.temporal.io/cli).
