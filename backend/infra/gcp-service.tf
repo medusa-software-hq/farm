@@ -56,6 +56,21 @@ resource "google_cloud_run_v2_service" "primary" {
         }
       }
 
+      env {
+        name  = "GITHUB_APP_CLIENT_ID"
+        value = var.github_app_client_id
+      }
+
+      env {
+        name = "GITHUB_APP_PEM"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.github_app_pem.secret_id
+            version = "latest"
+          }
+        }
+      }
+
       # The Temporal Cloud key that lets the API start Fibonacci workflows. It lives in the
       # cross-environment shared project, so it is referenced by its fully-qualified secret name.
       # Optional at the app level: without it the API still boots and only StartFibonacci degrades.
@@ -71,7 +86,10 @@ resource "google_cloud_run_v2_service" "primary" {
     }
   }
 
-  depends_on = [google_secret_manager_secret_version.database_url]
+  depends_on = [
+    google_secret_manager_secret_version.database_url,
+    google_secret_manager_secret_version.github_app_pem,
+  ]
 
   # The image is managed by CI/CD after initial creation.
   # Env vars are managed by Terraform and must not be overwritten by deploys.

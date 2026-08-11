@@ -43,6 +43,17 @@ variable "neon_api_key" {
   sensitive   = true
 }
 
+variable "github_app_pem" {
+  description = "PKCS#8 PEM content of the GitHub App private key, injected into Cloud Run."
+  type        = string
+  sensitive   = true
+}
+
+variable "github_app_client_id" {
+  description = "GitHub App client id (public, but per-environment)."
+  type        = string
+}
+
 # Primary Google provider
 provider "google" {
   project = module.common.gcp_meta_project_id
