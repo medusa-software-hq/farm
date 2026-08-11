@@ -8,6 +8,9 @@ dependencies {
   // api() (not implementation) so consumers get Hikari's transitive slf4j-api at compile time.
   api(libs.hikaricp)
   api(libs.kotlinx.coroutines.core)
+  // api() because WorkflowServiceAuthConfig exposes WorkflowServiceStubsOptions.Builder in its
+  // public signature; the API's starter and the worker's host consume it.
+  api(libs.temporal.sdk)
   implementation(libs.flyway.core)
   implementation(libs.sqldelight.jdbc.driver)
   runtimeOnly(libs.flyway.database.postgresql)

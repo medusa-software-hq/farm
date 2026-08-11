@@ -8,7 +8,7 @@ fun runTemporalWorker(config: WorkerConfig) {
   TemporalWorkerHost(
           config.temporalAddress,
           config.temporalNamespace,
-          config.temporalApiKey,
+          config.temporalAuth,
           store.fibonacci,
       )
       .start()

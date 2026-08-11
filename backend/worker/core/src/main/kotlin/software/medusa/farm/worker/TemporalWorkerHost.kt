@@ -6,36 +6,25 @@ import io.temporal.serviceclient.WorkflowServiceStubs
 import io.temporal.serviceclient.WorkflowServiceStubsOptions
 import io.temporal.worker.WorkerFactory
 import software.medusa.farm.shared.FibonacciStore
+import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 /**
- * Registers the Fibonacci workflow + activities and runs the worker.
- *
- * The connection mode follows [apiKey]: a non-blank key is the Temporal Cloud shape (API key over
- * TLS); a blank or null key is the local dev-server shape — plaintext, no TLS, no key
- * (`localhost:7233`, namespace `default`).
+ * Registers the Fibonacci workflow + activities and runs the worker. [authConfig] decides the
+ * connection shape (Temporal Cloud API key over TLS, or plaintext for a local dev server).
  */
 class TemporalWorkerHost(
     address: String,
     namespace: String,
-    apiKey: String?,
+    authConfig: WorkflowServiceAuthConfig,
     store: FibonacciStore,
 ) {
   private val client: WorkflowClient
   private val factory: WorkerFactory
 
   init {
-    val service =
-        WorkflowServiceStubs.newServiceStubs(
-            WorkflowServiceStubsOptions.newBuilder()
-                .setTarget(address)
-                .apply {
-                  if (!apiKey.isNullOrBlank()) {
-                    setEnableHttps(true)
-                    addApiKey { apiKey }
-                  }
-                }
-                .build()
-        )
+    val builder = WorkflowServiceStubsOptions.newBuilder().setTarget(address)
+    authConfig.configureBuilder(builder)
+    val service = WorkflowServiceStubs.newServiceStubs(builder.build())
     client =
         WorkflowClient.newInstance(
             service,

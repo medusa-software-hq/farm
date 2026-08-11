@@ -7,6 +7,7 @@ import software.medusa.farm.server.buildServer
 import software.medusa.farm.shared.FarmStore
 import software.medusa.farm.shared.InMemoryCounterStore
 import software.medusa.farm.shared.InMemoryFibonacciStore
+import software.medusa.farm.shared.WorkflowServiceAuthConfig
 import software.medusa.farm.worker.TemporalWorkerHost
 
 private const val localPort = 8081
@@ -34,7 +35,7 @@ fun main() {
     TemporalWorkerHost(
             address = localTemporalAddress,
             namespace = localTemporalNamespace,
-            apiKey = null,
+            authConfig = WorkflowServiceAuthConfig.None,
             store = farmStore.fibonacci,
         )
         .start()
@@ -56,7 +57,7 @@ fun main() {
               TemporalFibonacciStarter(
                   localTemporalAddress,
                   localTemporalNamespace,
-                  apiKey = null,
+                  WorkflowServiceAuthConfig.None,
               ),
       )
       .start()

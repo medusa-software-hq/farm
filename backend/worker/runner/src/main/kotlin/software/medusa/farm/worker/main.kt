@@ -3,6 +3,7 @@ package software.medusa.farm.worker
 import com.google.cloud.secretmanager.v1.SecretManagerServiceClient
 import com.google.cloud.secretmanager.v1.SecretVersionName
 import software.medusa.farm.shared.BakedConfig
+import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 private const val runnerEnvironmentEnvVarName = "FARM_RUNNER_ENVIRONMENT"
 private const val databaseUrlSecretId = "api-database-url"
@@ -23,7 +24,10 @@ fun main() {
             databaseUrl = client.read(environment.gcpProjectId, databaseUrlSecretId),
             temporalAddress = BakedConfig.TEMPORAL_ADDRESS,
             temporalNamespace = BakedConfig.TEMPORAL_NAMESPACE,
-            temporalApiKey = client.read(BakedConfig.TEMPORAL_KEY_PROJECT, temporalApiKeySecretId),
+            temporalAuth =
+                WorkflowServiceAuthConfig.ApiKey(
+                    client.read(BakedConfig.TEMPORAL_KEY_PROJECT, temporalApiKeySecretId)
+                ),
         )
       }
   runTemporalWorker(config)

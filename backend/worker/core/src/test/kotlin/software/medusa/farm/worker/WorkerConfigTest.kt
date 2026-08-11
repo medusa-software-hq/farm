@@ -3,6 +3,7 @@ package software.medusa.farm.worker
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 class WorkerConfigTest {
   private val full =
@@ -19,7 +20,7 @@ class WorkerConfigTest {
     assertEquals("jdbc:postgresql://localhost/farm", config.databaseUrl)
     assertEquals("farm.kr9zt.tmprl.cloud:7233", config.temporalAddress)
     assertEquals("farm.kr9zt", config.temporalNamespace)
-    assertEquals("secret-key", config.temporalApiKey)
+    assertEquals(WorkflowServiceAuthConfig.ApiKey("secret-key"), config.temporalAuth)
   }
 
   @Test

@@ -2,6 +2,7 @@ package software.medusa.farm.server
 
 import software.medusa.farm.shared.BakedConfig
 import software.medusa.farm.shared.FarmStore
+import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 private const val portEnvVarName = "PORT"
 private const val webClientIdEnvVarName = "GOOGLE_WEB_CLIENT_ID"
@@ -58,7 +59,7 @@ fun main() {
                 TemporalFibonacciStarter(
                     BakedConfig.TEMPORAL_ADDRESS,
                     BakedConfig.TEMPORAL_NAMESPACE,
-                    it,
+                    WorkflowServiceAuthConfig.ApiKey(it),
                 )
               } ?: NoOpFibonacciStarter,
       )

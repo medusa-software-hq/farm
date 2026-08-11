@@ -8,6 +8,7 @@ import io.temporal.client.WorkflowClientOptions
 import io.temporal.client.WorkflowOptions
 import io.temporal.serviceclient.WorkflowServiceStubs
 import io.temporal.serviceclient.WorkflowServiceStubsOptions
+import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 /**
  * Starts the Fibonacci workflow on Temporal via an **untyped** stub keyed by workflow type name
@@ -23,29 +24,20 @@ import io.temporal.serviceclient.WorkflowServiceStubsOptions
  * blocks server startup or other RPCs. A Temporal-unreachable start is mapped to gRPC UNAVAILABLE
  * and fails only that call.
  *
- * The connection mode follows [apiKey]: a non-blank key is the Temporal Cloud shape (API key over
- * TLS); a blank or null key is the local dev-server shape — plaintext, no TLS, no key.
+ * [authConfig] decides the connection shape (Temporal Cloud API key over TLS, or plaintext for a
+ * local dev server).
  */
 class TemporalFibonacciStarter(
     private val address: String,
     private val namespace: String,
-    private val apiKey: String?,
+    private val authConfig: WorkflowServiceAuthConfig,
 ) : FibonacciStarter {
   private val client: WorkflowClient by lazy { buildClient() }
 
   private fun buildClient(): WorkflowClient {
-    val service =
-        WorkflowServiceStubs.newServiceStubs(
-            WorkflowServiceStubsOptions.newBuilder()
-                .setTarget(address)
-                .apply {
-                  if (!apiKey.isNullOrBlank()) {
-                    setEnableHttps(true)
-                    addApiKey { apiKey }
-                  }
-                }
-                .build()
-        )
+    val builder = WorkflowServiceStubsOptions.newBuilder().setTarget(address)
+    authConfig.configureBuilder(builder)
+    val service = WorkflowServiceStubs.newServiceStubs(builder.build())
     return WorkflowClient.newInstance(
         service,
         WorkflowClientOptions.newBuilder().setNamespace(namespace).build(),
