@@ -5,6 +5,9 @@ version: '3'
 tasks:
   install:
     desc: Install dependencies
+    # Depended on by many tasks (often via `proto`); `once` avoids concurrent `yarn install` runs
+    # racing on node_modules (EEXIST on the `.bin` symlinks).
+    run: once
     sources:
       - package.json
       - yarn.lock
@@ -16,6 +19,7 @@ tasks:
 
   proto:
     desc: Generate code from protobuf definitions
+    run: once
     deps: [install]
     sources:
       - ../../proto/**/*.proto
