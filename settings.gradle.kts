@@ -7,6 +7,7 @@ rootProject.name = "farm"
 
 include(
     ":backend:shared",
+    ":backend:github-client",
     ":backend:worker:core",
     ":backend:worker:proper",
     ":backend:worker:runner",
