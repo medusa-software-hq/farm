@@ -13,6 +13,7 @@ private const val maxPoolSize = 5
 class FarmStore(
     val counter: CounterStore,
     val fibonacci: FibonacciStore,
+    val linkedOrg: LinkedOrgStore,
 ) {
   companion object {
     /** Builds the [FarmStore], applying runtime database schema migrations. */
@@ -27,7 +28,11 @@ class FarmStore(
 
     private fun storesOver(dataSource: DataSource): FarmStore {
       val database = FarmDatabase(dataSource.asJdbcDriver())
-      return FarmStore(PostgresCounterStore(database), PostgresFibonacciStore(database))
+      return FarmStore(
+          PostgresCounterStore(database),
+          PostgresFibonacciStore(database),
+          PostgresLinkedOrgStore(database),
+      )
     }
 
     private fun buildDataSource(jdbcUrl: String): DataSource =

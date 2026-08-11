@@ -1,0 +1,17 @@
+-- Mirror of the Flyway migration for this table; SQLDelight verifies the queries
+-- below against it at compile time, so the two must stay identical.
+CREATE TABLE linked_orgs (
+  installation_id BIGINT      NOT NULL PRIMARY KEY,
+  org_login       TEXT        NOT NULL UNIQUE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+link:
+INSERT INTO linked_orgs (installation_id, org_login) VALUES (?, ?)
+ON CONFLICT (installation_id) DO UPDATE SET org_login = EXCLUDED.org_login;
+
+list:
+SELECT installation_id, org_login FROM linked_orgs ORDER BY org_login;
+
+getByOrg:
+SELECT installation_id, org_login FROM linked_orgs WHERE org_login = ?;
