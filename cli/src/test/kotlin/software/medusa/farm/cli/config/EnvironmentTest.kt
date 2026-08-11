@@ -1,5 +1,6 @@
 package software.medusa.farm.cli.config
 
+import com.nimbusds.oauth2.sdk.id.ClientID
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -54,5 +55,22 @@ class EnvironmentTest {
     assertNotEquals(Environment.Prod.oauthClientId, Environment.Staging.oauthClientId)
     assertEquals(null, Environment.Prod.marker)
     assertEquals("[staging]", Environment.Staging.marker)
+  }
+
+  @Test
+  fun `prod and staging use the Farm environments, not another project's`() {
+    // The generated config comes from infra/environments' cache. These are Farm's
+    // Desktop OAuth clients and hosts; regression guard against the earlier drift
+    // where the CLI hardcoded a different project's client ids.
+    assertEquals(
+        ClientID("97246827152-d2e73hif1ckri70a6osh139v6jmaesag.apps.googleusercontent.com"),
+        Environment.Prod.oauthClientId,
+    )
+    assertEquals("api.farm-v1.medusa.software", Environment.Prod.apiEndpoint.host)
+    assertEquals(
+        ClientID("329509758995-cn8lk8fcuen0u813a14m6cmfls3an24e.apps.googleusercontent.com"),
+        Environment.Staging.oauthClientId,
+    )
+    assertEquals("api.farm-v1-staging.medusa.software", Environment.Staging.apiEndpoint.host)
   }
 }
