@@ -1,14 +1,14 @@
 # `ms-farm` — the Farm CLI
 
 A small Kotlin/JVM command-line client for the Farm service. It signs you in
-with your `medusa.software` Google account and drives the counter from a
-terminal.
+with your `medusa.software` Google account and drives Farm from a terminal.
 
 ```
 ms-farm login        # sign in (opens a browser) and cache the session
 ms-farm increment    # +1, prints the new count
 ms-farm decrement    # -1, prints the new count
 ms-farm get          # print the current count
+ms-farm link-org ORG # link a GitHub org to the Farm app; print its installation id + repos
 ms-farm logout       # forget the cached session on this machine
 ```
 
