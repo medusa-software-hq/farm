@@ -108,8 +108,21 @@ tasks:
       - cli:compile
       - cli:test
 
-  run:
-    desc: Run the frontend and the API locally
+  dev:
+    desc: Run the full local stack — Temporal dev server, the local backend, and the frontend
     deps:
+      - temporal:dev
+      - backend:local
       - web:app:run
-      - api:impl:run
+
+  temporal:dev:
+    # Needs the `temporal` CLI on PATH (https://docs.temporal.io/cli).
+    desc: Run a local Temporal dev server
+    cmds:
+      - temporal server start-dev
+
+  backend:local:
+    desc: Run the one-process local backend (API + in-process worker over one in-memory store)
+    cmds:
+      - ./gradlew :backend:local:run
+    interactive: true

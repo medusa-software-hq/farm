@@ -10,7 +10,7 @@ val containerPort = 8080
 val containerImageRef = findProperty("jib.imageRef")?.toString() ?: "api"
 val containerImageTag = findProperty("jib.imageTag")?.toString() ?: "local"
 
-dependencies { implementation(project(":backend:api:shared")) }
+dependencies { implementation(project(":backend:api:core")) }
 
 application { mainClass = "software.medusa.farm.server.MainKt" }
 

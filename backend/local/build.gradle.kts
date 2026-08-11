@@ -5,11 +5,10 @@ plugins {
 }
 
 dependencies {
+  implementation(project(":backend:api:core"))
   implementation(project(":backend:worker:core"))
-  runtimeOnly(libs.postgresql)
+  implementation(project(":backend:shared"))
   runtimeOnly(libs.logback.classic)
 }
 
-kotlin { jvmToolchain(21) }
-
-application { mainClass = "software.medusa.farm.worker.MainKt" }
+application { mainClass = "software.medusa.farm.local.MainKt" }
