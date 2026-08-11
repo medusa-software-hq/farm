@@ -37,6 +37,9 @@ function AppContent({ token }: { token: string }) {
   const [through, setThrough] = useState<number>(20);
   const [computing, setComputing] = useState(false);
   const [computeError, setComputeError] = useState<string | null>(null);
+  const [repositories, setRepositories] = useState<
+    { orgLogin: string; fullName: string; recentIssues: { number: number; title: string }[] }[]
+  >([]);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
@@ -98,6 +101,36 @@ function AppContent({ token }: { token: string }) {
       clearInterval(interval);
     };
   }, [headers, handleError]);
+
+  // Lands dark until the GitHub App is configured: an unavailable (UNIMPLEMENTED) or empty response
+  // degrades to a quiet empty state rather than an error banner or a broken view.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRepositories() {
+      try {
+        const response = await client.listRepositories({}, { headers });
+        if (!cancelled) {
+          setRepositories(
+            response.repositories.map((r) => ({
+              orgLogin: r.orgLogin,
+              fullName: r.fullName,
+              recentIssues: r.recentIssues.map((i) => ({ number: i.number, title: i.title })),
+            }))
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setRepositories([]);
+        }
+      }
+    }
+
+    void loadRepositories();
+    return () => {
+      cancelled = true;
+    };
+  }, [headers]);
 
   async function increment() {
     try {
@@ -210,6 +243,36 @@ function AppContent({ token }: { token: string }) {
               <Text key={n.index} size="sm" ff="monospace">
                 F({n.index}) = {n.value}
               </Text>
+            ))}
+          </Stack>
+        )}
+      </Stack>
+
+      <Stack align="center" gap="xs" mt="xl" mb="xl">
+        <Title order={2}>Repositories</Title>
+        <Text c="dimmed" size="sm">
+          Reachable through the Farm GitHub App.
+        </Text>
+        {repositories.length === 0 ? (
+          <Text c="dimmed" size="sm">
+            No repositories yet…
+          </Text>
+        ) : (
+          <Stack gap="xs" align="center">
+            {repositories.map((r) => (
+              <Stack key={`${r.orgLogin}:${r.fullName}`} gap={2} align="center">
+                <Text size="sm" ff="monospace">
+                  {r.fullName}{' '}
+                  <Text span c="dimmed">
+                    ({r.orgLogin})
+                  </Text>
+                </Text>
+                {r.recentIssues.map((i) => (
+                  <Text key={i.number} size="xs" c="dimmed">
+                    #{i.number} {i.title}
+                  </Text>
+                ))}
+              </Stack>
             ))}
           </Stack>
         )}
