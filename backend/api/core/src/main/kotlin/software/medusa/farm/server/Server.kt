@@ -15,7 +15,7 @@ fun buildServer(
     auth: DecoratingHttpServiceFunction,
     farmStore: FarmStore,
     fibonacciStarter: FibonacciStarter,
-    gitHubApp: GitHubApp,
+    gitHubOrgs: GitHubOrgService?,
 ): Server {
   val cors =
       CorsService.builderForOriginRegex(originRegex)
@@ -46,8 +46,7 @@ fun buildServer(
                     farmStore.counter,
                     farmStore.fibonacci,
                     fibonacciStarter,
-                    farmStore.linkedOrg,
-                    gitHubApp,
+                    gitHubOrgs,
                 )
             )
             enableUnframedRequests(true)

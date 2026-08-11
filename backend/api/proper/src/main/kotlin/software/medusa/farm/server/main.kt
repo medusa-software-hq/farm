@@ -73,10 +73,10 @@ fun main() {
                     WorkflowServiceAuthConfig.Cloud(it),
                 )
               } ?: NoOpFibonacciStarter,
-          gitHubApp =
+          gitHubOrgs =
               if (gitHubAppClientId != null && gitHubAppPem != null) {
                 val appApiClient = GhProperAppApiClient.build(gitHubAppClientId, gitHubAppPem)
-                MintingGitHubApp(
+                GitHubOrgService(
                     appApiClient,
                     GhCachingInstallationApiClientProvider(
                         GhProperInstallationApiClientProvider(appApiClient)
@@ -84,7 +84,7 @@ fun main() {
                     farmStore.linkedOrg,
                 )
               } else {
-                NoOpGitHubApp
+                null
               },
       )
       .start()

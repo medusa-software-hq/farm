@@ -2,7 +2,6 @@ package software.medusa.farm.local
 
 import org.slf4j.LoggerFactory
 import software.medusa.farm.server.NoOpAuthDecorator
-import software.medusa.farm.server.NoOpGitHubApp
 import software.medusa.farm.server.TemporalFibonacciStarter
 import software.medusa.farm.server.buildServer
 import software.medusa.farm.shared.FarmStore
@@ -59,7 +58,7 @@ fun main() {
                   localTemporalNamespace,
                   WorkflowServiceAuthConfig.Local,
               ),
-          gitHubApp = NoOpGitHubApp,
+          gitHubOrgs = null,
       )
       .start()
       .join()

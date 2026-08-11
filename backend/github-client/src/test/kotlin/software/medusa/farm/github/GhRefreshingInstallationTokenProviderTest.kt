@@ -14,7 +14,7 @@ class GhRefreshingInstallationTokenProviderTest {
       GhProperAppApiClient.build("Iv1.test", appKey.pkcs8Pem, baseUrl = server.baseUrl)
 
   @Test
-  fun `mints once across two resource calls through the installation client`() = runBlocking {
+  fun `mints once across two resource calls, resolving no installation`() = runBlocking {
     val repo = GhRepoFullName("acme/one")
     val fake =
         FakeGitHub(
@@ -24,20 +24,20 @@ class GhRefreshingInstallationTokenProviderTest {
         )
     FakeGitHubServer(fake.handler).use { server ->
       val tokenProvider =
-          GhRefreshingInstallationTokenProvider(appClientAgainst(server), GhOrgLogin("acme"))
+          GhRefreshingInstallationTokenProvider(appClientAgainst(server), GhInstallationId(100L))
       val client = GhProperInstallationApiClient.build(tokenProvider, baseUrl = server.baseUrl)
 
       client.listInstallationRepositories()
       client.listIssues(repo)
 
-      // The id is resolved once and the token minted once, then reused for the second call.
-      assertEquals(1, server.requests.count { it.pathAndQuery.endsWith("/installation") })
+      // Minted by id: the token is minted once and reused, and no installation lookup happens.
+      assertEquals(0, server.requests.count { it.pathAndQuery.endsWith("/installation") })
       assertEquals(1, server.requests.count { it.pathAndQuery.endsWith("/access_tokens") })
     }
   }
 
   @Test
-  fun `resolves once and re-mints only past the refresh margin`() = runBlocking {
+  fun `re-mints only past the refresh margin, never resolving an installation`() = runBlocking {
     val base = Instant.parse("2026-08-11T00:00:00Z")
     val resolves = AtomicInteger(0)
     val mints = AtomicInteger(0)
@@ -65,7 +65,7 @@ class GhRefreshingInstallationTokenProviderTest {
           val provider =
               GhRefreshingInstallationTokenProvider(
                   appClientAgainst(server),
-                  GhOrgLogin("acme"),
+                  GhInstallationId(7L),
                   refreshMargin = Duration.ofMinutes(5),
                   now = { current },
               )
@@ -73,17 +73,18 @@ class GhRefreshingInstallationTokenProviderTest {
           assertEquals("token-1", provider.provideToken())
           assertEquals(1, mints.get())
 
-          // Still before (expiry - margin): the cache holds, and the id is not re-resolved.
+          // Still before (expiry - margin): the cache holds.
           current = base.plus(Duration.ofMinutes(10))
           assertEquals("token-1", provider.provideToken())
           assertEquals(1, mints.get())
 
-          // Past (expiry - margin): re-mint, but still no second installation lookup.
+          // Past (expiry - margin): re-mint.
           current = base.plus(Duration.ofMinutes(56))
           assertEquals("token-2", provider.provideToken())
           assertEquals(2, mints.get())
 
-          assertEquals(1, resolves.get())
+          // The provider mints by id directly; it never resolves an installation.
+          assertEquals(0, resolves.get())
         }
   }
 }

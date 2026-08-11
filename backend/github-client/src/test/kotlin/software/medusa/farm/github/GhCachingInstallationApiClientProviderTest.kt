@@ -9,7 +9,7 @@ class GhCachingInstallationApiClientProviderTest {
   private val appKey = TestAppKey()
 
   @Test
-  fun `reuses one client per org, so an org resolves its installation once`() = runBlocking {
+  fun `reuses one client per installation, so its token is minted once`() = runBlocking {
     val repo = GhRepoFullName("acme/one")
     val fake =
         FakeGitHub(
@@ -24,15 +24,15 @@ class GhCachingInstallationApiClientProviderTest {
               GhProperInstallationApiClientProvider(appClient, baseUrl = server.baseUrl)
           )
 
-      val first = provider.provideForOrg(GhOrgLogin("acme"))
-      val second = provider.provideForOrg(GhOrgLogin("acme"))
+      val first = provider.provideForInstallation(GhInstallationId(100L))
+      val second = provider.provideForInstallation(GhInstallationId(100L))
       assertSame(first, second)
 
       first.listInstallationRepositories()
       second.listInstallationRepositories()
 
-      // One shared client, so the installation is resolved and the token minted exactly once.
-      assertEquals(1, server.requests.count { it.pathAndQuery.endsWith("/installation") })
+      // One shared client, so the token is minted exactly once and no id is resolved.
+      assertEquals(0, server.requests.count { it.pathAndQuery.endsWith("/installation") })
       assertEquals(1, server.requests.count { it.pathAndQuery.endsWith("/access_tokens") })
     }
   }

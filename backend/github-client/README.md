@@ -8,7 +8,8 @@ model, in three surfaces:
 - a **resources** surface that is *credential-agnostic*: it authenticates through a token seam, so the
   same code works whether the token is an installation token or (later) a user's PAT;
 - an **installation** surface — the resources plus the endpoints an installation token additionally
-  unlocks — handed out per org, each refreshing its own token behind the seam.
+  unlocks — handed out per installation id (the durable handle; org logins can be renamed), each
+  refreshing its own token behind the seam.
 
 The type names all begin `Gh`.
 

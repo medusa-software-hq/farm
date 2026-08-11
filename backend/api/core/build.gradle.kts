@@ -17,7 +17,7 @@ dependencies {
   api(libs.armeria.grpc.kotlin)
   api(libs.armeria.kotlin)
   api(project(":backend:shared"))
-  // api() because the github-client types appear in the GitHubApp interface's public signature.
+  // api() because the github-client types appear in GitHubOrgService's public signature.
   api(project(":backend:github-client"))
   api(libs.grpc.kotlin.stub)
   api(libs.grpc.protobuf)
