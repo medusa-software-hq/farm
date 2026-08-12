@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory
 import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.RepoSyncWorkflow
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
+import software.medusa.farm.shared.repoSyncWorkflowId
 
 /**
  * Starts [RepoSyncWorkflow] on Temporal via a **typed** stub over the shared interface, so the
@@ -58,7 +59,7 @@ class TemporalRepoSyncStarter(
               RepoSyncWorkflow::class.java,
               WorkflowOptions.newBuilder()
                   .setTaskQueue(FarmWorker.TASK_QUEUE)
-                  .setWorkflowId(workflowId(installationId))
+                  .setWorkflowId(repoSyncWorkflowId(installationId))
                   .setWorkflowIdReusePolicy(
                       WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE
                   )
@@ -73,10 +74,5 @@ class TemporalRepoSyncStarter(
     } catch (e: StatusRuntimeException) {
       logger.warn("Could not start repo sync for installation {}", installationId, e)
     }
-  }
-
-  companion object {
-    // Stable per installation so overlapping links collapse onto one run.
-    private fun workflowId(installationId: Long): String = "repo-sync:$installationId"
   }
 }

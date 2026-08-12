@@ -18,6 +18,7 @@ import software.medusa.farm.github.GhProperAppApiClient
 import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.github.TestAppKey
 import software.medusa.farm.shared.FarmWorker
+import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
 import software.medusa.farm.shared.RepoSyncWorkflow
 
@@ -53,7 +54,9 @@ class RepoSyncWorkflowTest {
         GhProperInstallationApiClientProvider(appApiClient, baseUrl = server.baseUrl)
     val worker = env.newWorker(FarmWorker.TASK_QUEUE)
     worker.registerWorkflowImplementationTypes(RepoSyncWorkflowImpl::class.java)
-    worker.registerActivitiesImplementations(RepoSyncActivitiesImpl(clientProvider, store))
+    worker.registerActivitiesImplementations(
+        RepoSyncActivitiesImpl(clientProvider, store, InMemoryLinkedOrgStore(), env.workflowClient)
+    )
     env.start()
   }
 

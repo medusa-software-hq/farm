@@ -16,4 +16,14 @@ interface RepoSyncActivities {
       repos: List<FetchedRepo>,
       syncStartedAtEpochMillis: Long,
   )
+
+  /** The installation ids of every linked org — the sweep's fan-out set. */
+  @ActivityMethod fun listLinkedInstallations(): List<Long>
+
+  /**
+   * Starts (fire-and-forget) the installation's [RepoSyncWorkflow] as a top-level workflow. With
+   * the shared stable id and USE_EXISTING, a start that races an in-flight on-link sync attaches to
+   * it rather than stacking a second run.
+   */
+  @ActivityMethod fun startRepoSync(installationId: Long)
 }

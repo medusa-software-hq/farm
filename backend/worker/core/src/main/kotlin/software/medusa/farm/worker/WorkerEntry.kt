@@ -15,6 +15,7 @@ fun runTemporalWorker(config: WorkerConfig) {
           config.temporalAuth,
           store.fibonacci,
           store.repo,
+          store.linkedOrg,
           gitHubClientProvider(config.gitHubApp),
       )
       .start()
