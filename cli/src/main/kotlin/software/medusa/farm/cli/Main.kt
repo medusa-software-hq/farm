@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.core.subcommands
 import software.medusa.farm.cli.command.LinkOrgCommand
 import software.medusa.farm.cli.command.LoginCommand
 import software.medusa.farm.cli.command.LogoutCommand
+import software.medusa.farm.cli.command.OrgsCommand
 
 class MainCommand : NoOpCliktCommand(name = "ms-farm") {
   override fun help(context: Context) =
@@ -21,6 +22,7 @@ fun main(args: Array<String>) {
           LoginCommand(),
           LogoutCommand(),
           LinkOrgCommand(),
+          OrgsCommand(),
       )
       .main(args)
 }

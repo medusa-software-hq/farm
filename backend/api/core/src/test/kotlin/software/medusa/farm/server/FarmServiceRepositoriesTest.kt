@@ -14,6 +14,7 @@ import software.medusa.farm.github.MintedGhInstallationToken
 import software.medusa.farm.shared.FetchedRepo
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
+import software.medusa.farm.v1.ListLinkedOrgsRequest
 import software.medusa.farm.v1.ListRepositoriesRequest
 
 /** Covers the read path, which serves the synced repos table with no live GitHub call. */
@@ -60,6 +61,20 @@ class FarmServiceRepositoriesTest {
     assertEquals(
         0,
         service.listRepositories(ListRepositoriesRequest.getDefaultInstance()).repositoriesCount,
+    )
+  }
+
+  // The link state surfaces on its own — an org reads as linked before any repo has synced.
+  @Test
+  fun `ListLinkedOrgs reports linked orgs with no repos synced`() = runBlocking {
+    linkedOrgs.link(100L, "acme")
+    linkedOrgs.link(200L, "beta")
+
+    val response = service.listLinkedOrgs(ListLinkedOrgsRequest.getDefaultInstance())
+
+    assertEquals(
+        setOf("acme" to 100L, "beta" to 200L),
+        response.orgsList.map { it.orgLogin to it.installationId }.toSet(),
     )
   }
 

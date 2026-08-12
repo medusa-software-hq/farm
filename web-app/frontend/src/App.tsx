@@ -1,7 +1,7 @@
 import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
 import { Box, Button, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import heroImg from './assets/hero.png';
 import reactLogo from './assets/react.svg';
 import viteLogo from './assets/vite.svg';
@@ -30,9 +30,53 @@ const socialLinks = [
 ];
 
 function AppContent({ token }: { token: string }) {
+  const { handleUnauthorized } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const [linkedOrgs, setLinkedOrgs] = useState<{ orgLogin: string; installationId: bigint }[]>([]);
   const [repositories, setRepositories] = useState<{ orgLogin: string; fullName: string }[]>([]);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
+
+  const handleError = useCallback(
+    (err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('401') || message.includes('unauthenticated')) {
+        handleUnauthorized();
+      } else {
+        setError(message);
+      }
+    },
+    [handleUnauthorized]
+  );
+
+  // The org-link state: which GitHub orgs are linked to the Farm app. Reads as linked before any
+  // repo has synced, so a fresh link shows up here even while Repositories is still empty.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLinkedOrgs() {
+      try {
+        const response = await client.listLinkedOrgs({}, { headers });
+        if (!cancelled) {
+          setLinkedOrgs(
+            response.orgs.map((o) => ({
+              orgLogin: o.orgLogin,
+              installationId: o.installationId,
+            }))
+          );
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          handleError(err);
+        }
+      }
+    }
+
+    void loadLinkedOrgs();
+    return () => {
+      cancelled = true;
+    };
+  }, [headers, handleError]);
 
   // Lands dark until the GitHub App is configured: an unavailable (UNIMPLEMENTED) or empty response
   // degrades to a quiet empty state rather than an error banner or a broken view.
@@ -71,7 +115,35 @@ function AppContent({ token }: { token: string }) {
           <img src={reactLogo} className={classes.framework} alt="React logo" />
           <img src={viteLogo} className={classes.vite} alt="Vite logo" />
         </div>
+        {error !== null && (
+          <Text c="red" size="sm">
+            Failed to reach the API: {error}
+          </Text>
+        )}
       </Box>
+
+      <Stack align="center" gap="xs" mt="xl" mb="xl">
+        <Title order={2}>Organizations</Title>
+        <Text c="dimmed" size="sm">
+          Linked to the Farm GitHub App.
+        </Text>
+        {linkedOrgs.length === 0 ? (
+          <Text c="dimmed" size="sm">
+            No organizations linked yet…
+          </Text>
+        ) : (
+          <Stack gap={2} align="center">
+            {linkedOrgs.map((o) => (
+              <Text key={o.orgLogin} size="sm" ff="monospace">
+                {o.orgLogin}{' '}
+                <Text span c="dimmed">
+                  (installation {o.installationId.toString()})
+                </Text>
+              </Text>
+            ))}
+          </Stack>
+        )}
+      </Stack>
 
       <Stack align="center" gap="xs" mt="xl" mb="xl">
         <Title order={2}>Repositories</Title>

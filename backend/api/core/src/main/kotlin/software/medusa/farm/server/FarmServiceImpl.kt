@@ -6,6 +6,9 @@ import software.medusa.farm.shared.RepoStore
 import software.medusa.farm.v1.FarmServiceGrpcKt
 import software.medusa.farm.v1.LinkOrgRequest
 import software.medusa.farm.v1.LinkOrgResponse
+import software.medusa.farm.v1.LinkedOrg as LinkedOrgProto
+import software.medusa.farm.v1.ListLinkedOrgsRequest
+import software.medusa.farm.v1.ListLinkedOrgsResponse
 import software.medusa.farm.v1.ListRepositoriesRequest
 import software.medusa.farm.v1.ListRepositoriesResponse
 import software.medusa.farm.v1.Repository
@@ -25,6 +28,20 @@ class FarmServiceImpl(
         .addAllRepositories(repositories.map { it.fullName })
         .build()
   }
+
+  // The link state itself: which orgs are linked and under which installation. Surfaced on its own
+  // so it reads as linked even before the first repo sync has populated the repos table.
+  override suspend fun listLinkedOrgs(request: ListLinkedOrgsRequest): ListLinkedOrgsResponse =
+      ListLinkedOrgsResponse.newBuilder()
+          .addAllOrgs(
+              linkedOrgStore.list().map { org ->
+                LinkedOrgProto.newBuilder()
+                    .setOrgLogin(org.orgLogin)
+                    .setInstallationId(org.installationId)
+                    .build()
+              }
+          )
+          .build()
 
   // Steady-state read straight from the synced repos table: active repos across every linked org,
   // no live GitHub call.
