@@ -42,9 +42,11 @@ fun main() {
       System.getenv(databaseUrlEnvVarName)
           ?: error("$databaseUrlEnvVarName environment variable must be set")
 
-  // Optional: without it the API still starts and only StartFibonacci degrades, so a missing or
-  // rotating Temporal key can never take the service down.
-  val temporalApiKey = System.getenv(temporalApiKeyEnvVarName)
+  // Required (every env configures Temporal): a missing key is a misconfiguration, so fail fast.
+  val temporalApiKey =
+      System.getenv(temporalApiKeyEnvVarName)
+          ?: error("$temporalApiKeyEnvVarName environment variable must be set")
+  val temporalAuth = WorkflowServiceAuthConfig.Cloud(temporalApiKey)
 
   // Required (every env configures the GitHub App): a missing or half-set pair is a
   // misconfiguration, so fail fast rather than silently disable GitHub. The PEM must be unencrypted
@@ -58,15 +60,13 @@ fun main() {
 
   val farmStore = FarmStore.buildWithMigrations(databaseUrl)
 
-  // One Temporal auth config drives both starters; absent -> both degrade to no-ops.
+  // One Temporal auth config drives both starters.
   val repoSyncStarter =
-      temporalApiKey?.let {
-        TemporalRepoSyncStarter(
-            BakedConfig.TEMPORAL_ADDRESS,
-            BakedConfig.TEMPORAL_NAMESPACE,
-            WorkflowServiceAuthConfig.Cloud(it),
-        )
-      } ?: NoOpRepoSyncStarter
+      TemporalRepoSyncStarter(
+          BakedConfig.TEMPORAL_ADDRESS,
+          BakedConfig.TEMPORAL_NAMESPACE,
+          temporalAuth,
+      )
 
   buildServer(
           originRegex = corsOriginRegex,
@@ -78,13 +78,11 @@ fun main() {
               ),
           farmStore = farmStore,
           fibonacciStarter =
-              temporalApiKey?.let {
-                TemporalFibonacciStarter(
-                    BakedConfig.TEMPORAL_ADDRESS,
-                    BakedConfig.TEMPORAL_NAMESPACE,
-                    WorkflowServiceAuthConfig.Cloud(it),
-                )
-              } ?: NoOpFibonacciStarter,
+              TemporalFibonacciStarter(
+                  BakedConfig.TEMPORAL_ADDRESS,
+                  BakedConfig.TEMPORAL_NAMESPACE,
+                  temporalAuth,
+              ),
           gitHubOrgs =
               GitHubOrgService(
                   GhProperAppApiClient.build(gitHubAppClientId, gitHubAppPem),

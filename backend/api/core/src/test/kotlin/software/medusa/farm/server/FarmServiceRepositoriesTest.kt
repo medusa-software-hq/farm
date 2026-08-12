@@ -40,6 +40,15 @@ class FarmServiceRepositoriesTest {
     ): MintedGhInstallationToken = error("the read path must not call GitHub")
   }
 
+  // The read path never starts a workflow; these stand in for the starters, unused here.
+  private object UnusedFibonacciStarter : FibonacciStarter {
+    override fun start(through: Int): String = error("the read path must not start a workflow")
+  }
+
+  private object UnusedRepoSyncStarter : RepoSyncStarter {
+    override fun start(installationId: Long) = error("the read path must not start a workflow")
+  }
+
   private val clock = MutableClock(Instant.parse("2020-01-01T00:00:00Z"))
   private val linkedOrgs = InMemoryLinkedOrgStore()
   private val repos = InMemoryRepoStore(clock)
@@ -47,10 +56,10 @@ class FarmServiceRepositoriesTest {
   private val service =
       FarmServiceImpl(
           InMemoryFibonacciStore(),
-          NoOpFibonacciStarter,
+          UnusedFibonacciStarter,
           linkedOrgs,
           repos,
-          GitHubOrgService(UnusedAppApiClient, linkedOrgs, NoOpRepoSyncStarter),
+          GitHubOrgService(UnusedAppApiClient, linkedOrgs, UnusedRepoSyncStarter),
       )
 
   // Prod-safe boot: ListRepositories serves an empty result with nothing linked yet.
