@@ -11,6 +11,7 @@ import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.server.GitHubOrgService
 import software.medusa.farm.server.NoOpAuthDecorator
 import software.medusa.farm.server.TemporalRepoSyncStarter
+import software.medusa.farm.server.TemporalSyncAllStarter
 import software.medusa.farm.server.buildServer
 import software.medusa.farm.shared.FarmStore
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
@@ -74,6 +75,12 @@ fun main() {
                       localTemporalNamespace,
                       WorkflowServiceAuthConfig.Local,
                   ),
+              ),
+          syncAllStarter =
+              TemporalSyncAllStarter(
+                  localTemporalAddress,
+                  localTemporalNamespace,
+                  WorkflowServiceAuthConfig.Local,
               ),
       )
       .start()

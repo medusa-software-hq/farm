@@ -1,5 +1,7 @@
 package software.medusa.farm.server
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import software.medusa.farm.github.GhOrgLogin
 import software.medusa.farm.shared.LinkedOrgStore
 import software.medusa.farm.shared.RepoStore
@@ -12,11 +14,14 @@ import software.medusa.farm.v1.ListLinkedOrgsResponse
 import software.medusa.farm.v1.ListRepositoriesRequest
 import software.medusa.farm.v1.ListRepositoriesResponse
 import software.medusa.farm.v1.Repository
+import software.medusa.farm.v1.SyncRepositoriesRequest
+import software.medusa.farm.v1.SyncRepositoriesResponse
 
 class FarmServiceImpl(
     private val linkedOrgStore: LinkedOrgStore,
     private val repoStore: RepoStore,
     private val gitHubOrgs: GitHubOrgService,
+    private val syncAllStarter: SyncAllStarter,
 ) : FarmServiceGrpcKt.FarmServiceCoroutineImplBase() {
   // Links an org to the Farm app: resolve and store its installation, kick off a background repo
   // sync, then report the repos already known for it (empty until the first sync lands).
@@ -60,4 +65,15 @@ class FarmServiceImpl(
               }
           )
           .build()
+
+  // Kicks the all-orgs sweep on demand — the same workflow the hourly schedule runs. The blocking
+  // Temporal start runs off the request thread; an unreachable Temporal surfaces as a gRPC error so
+  // the caller knows the sync did not start (unlike the best-effort on-link trigger). Returns as
+  // soon as the sweep is started; the repos land as the worker processes it.
+  override suspend fun syncRepositories(
+      request: SyncRepositoriesRequest
+  ): SyncRepositoriesResponse {
+    withContext(Dispatchers.IO) { syncAllStarter.start() }
+    return SyncRepositoriesResponse.getDefaultInstance()
+  }
 }

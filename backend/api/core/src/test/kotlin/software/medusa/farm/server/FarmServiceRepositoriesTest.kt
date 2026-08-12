@@ -16,6 +16,7 @@ import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
 import software.medusa.farm.v1.ListLinkedOrgsRequest
 import software.medusa.farm.v1.ListRepositoriesRequest
+import software.medusa.farm.v1.SyncRepositoriesRequest
 
 /** Covers the read path, which serves the synced repos table with no live GitHub call. */
 class FarmServiceRepositoriesTest {
@@ -44,15 +45,26 @@ class FarmServiceRepositoriesTest {
     override fun start(installationId: Long) = error("the read path must not start a workflow")
   }
 
+  // Records whether the manual sweep was triggered, so the SyncRepositories path can assert on it.
+  private class RecordingSyncAllStarter : SyncAllStarter {
+    var started = 0
+
+    override fun start() {
+      started++
+    }
+  }
+
   private val clock = MutableClock(Instant.parse("2020-01-01T00:00:00Z"))
   private val linkedOrgs = InMemoryLinkedOrgStore()
   private val repos = InMemoryRepoStore(clock)
+  private val syncAll = RecordingSyncAllStarter()
 
   private val service =
       FarmServiceImpl(
           linkedOrgs,
           repos,
           GitHubOrgService(UnusedAppApiClient, linkedOrgs, UnusedRepoSyncStarter),
+          syncAll,
       )
 
   // Prod-safe boot: ListRepositories serves an empty result with nothing linked yet.
@@ -62,6 +74,13 @@ class FarmServiceRepositoriesTest {
         0,
         service.listRepositories(ListRepositoriesRequest.getDefaultInstance()).repositoriesCount,
     )
+  }
+
+  // The manual "sync now" trigger starts the sweep.
+  @Test
+  fun `SyncRepositories starts the sweep`() = runBlocking {
+    service.syncRepositories(SyncRepositoriesRequest.getDefaultInstance())
+    assertEquals(1, syncAll.started)
   }
 
   // The link state surfaces on its own — an org reads as linked before any repo has synced.

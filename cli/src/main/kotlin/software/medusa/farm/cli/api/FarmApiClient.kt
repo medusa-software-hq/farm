@@ -12,6 +12,7 @@ import software.medusa.farm.v1.FarmServiceGrpc
 import software.medusa.farm.v1.FarmServiceGrpc.FarmServiceBlockingStub
 import software.medusa.farm.v1.LinkOrgRequest
 import software.medusa.farm.v1.ListLinkedOrgsRequest
+import software.medusa.farm.v1.SyncRepositoriesRequest
 
 /**
  * Talks to FarmService over gRPC. A [BearerTokenInterceptor] — attached to the stub once — puts the
@@ -33,6 +34,11 @@ class FarmApiClient(endpoint: ApiEndpoint, idTokenProvider: IdTokenProvider) : A
   fun listLinkedOrgs(): List<LinkedOrgResult> = call {
     val response = stub.listLinkedOrgs(ListLinkedOrgsRequest.getDefaultInstance())
     response.orgsList.map { LinkedOrgResult(it.orgLogin, it.installationId) }
+  }
+
+  fun syncRepositories() = call {
+    stub.syncRepositories(SyncRepositoriesRequest.getDefaultInstance())
+    Unit
   }
 
   private inline fun <T> call(block: () -> T): T =

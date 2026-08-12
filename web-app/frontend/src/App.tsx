@@ -34,6 +34,7 @@ function AppContent({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
   const [linkedOrgs, setLinkedOrgs] = useState<{ orgLogin: string; installationId: bigint }[]>([]);
   const [repositories, setRepositories] = useState<{ orgLogin: string; fullName: string }[]>([]);
+  const [syncing, setSyncing] = useState(false);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
@@ -51,61 +52,61 @@ function AppContent({ token }: { token: string }) {
 
   // The org-link state: which GitHub orgs are linked to the Farm app. Reads as linked before any
   // repo has synced, so a fresh link shows up here even while Repositories is still empty.
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadLinkedOrgs() {
-      try {
-        const response = await client.listLinkedOrgs({}, { headers });
-        if (!cancelled) {
-          setLinkedOrgs(
-            response.orgs.map((o) => ({
-              orgLogin: o.orgLogin,
-              installationId: o.installationId,
-            }))
-          );
-        }
-      } catch (err: unknown) {
-        if (!cancelled) {
-          handleError(err);
-        }
-      }
+  const loadLinkedOrgs = useCallback(async () => {
+    try {
+      const response = await client.listLinkedOrgs({}, { headers });
+      setLinkedOrgs(
+        response.orgs.map((o) => ({
+          orgLogin: o.orgLogin,
+          installationId: o.installationId,
+        }))
+      );
+    } catch (err: unknown) {
+      handleError(err);
     }
-
-    void loadLinkedOrgs();
-    return () => {
-      cancelled = true;
-    };
   }, [headers, handleError]);
 
   // Lands dark until the GitHub App is configured: an unavailable (UNIMPLEMENTED) or empty response
   // degrades to a quiet empty state rather than an error banner or a broken view.
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadRepositories() {
-      try {
-        const response = await client.listRepositories({}, { headers });
-        if (!cancelled) {
-          setRepositories(
-            response.repositories.map((r) => ({
-              orgLogin: r.orgLogin,
-              fullName: r.fullName,
-            }))
-          );
-        }
-      } catch {
-        if (!cancelled) {
-          setRepositories([]);
-        }
-      }
+  const loadRepositories = useCallback(async () => {
+    try {
+      const response = await client.listRepositories({}, { headers });
+      setRepositories(
+        response.repositories.map((r) => ({
+          orgLogin: r.orgLogin,
+          fullName: r.fullName,
+        }))
+      );
+    } catch {
+      setRepositories([]);
     }
-
-    void loadRepositories();
-    return () => {
-      cancelled = true;
-    };
   }, [headers]);
+
+  useEffect(() => {
+    void loadLinkedOrgs();
+  }, [loadLinkedOrgs]);
+
+  useEffect(() => {
+    void loadRepositories();
+  }, [loadRepositories]);
+
+  // Triggers the all-orgs sweep, then — after a short beat for the worker to run — refreshes the
+  // lists. The sweep is async, so this single refresh is best-effort: a slow sync surfaces on the
+  // next load rather than blocking the button.
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    setError(null);
+    try {
+      await client.syncRepositories({}, { headers });
+    } catch (err: unknown) {
+      handleError(err);
+      setSyncing(false);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await Promise.all([loadRepositories(), loadLinkedOrgs()]);
+    setSyncing(false);
+  }, [headers, handleError, loadRepositories, loadLinkedOrgs]);
 
   return (
     <>
@@ -150,6 +151,15 @@ function AppContent({ token }: { token: string }) {
         <Text c="dimmed" size="sm">
           Reachable through the Farm GitHub App.
         </Text>
+        <Button
+          variant="light"
+          size="sm"
+          loading={syncing}
+          disabled={linkedOrgs.length === 0}
+          onClick={() => void handleSync()}
+        >
+          Sync
+        </Button>
         {repositories.length === 0 ? (
           <Text c="dimmed" size="sm">
             No repositories yet…
