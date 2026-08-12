@@ -6,6 +6,7 @@ import io.temporal.serviceclient.WorkflowServiceStubs
 import io.temporal.serviceclient.WorkflowServiceStubsOptions
 import io.temporal.worker.WorkerFactory
 import software.medusa.farm.github.GhInstallationApiClientProvider
+import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.FibonacciStore
 import software.medusa.farm.shared.RepoStore
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
@@ -35,7 +36,7 @@ class TemporalWorkerHost(
                 .build(),
         )
     factory = WorkerFactory.newInstance(client)
-    val worker = factory.newWorker(TASK_QUEUE)
+    val worker = factory.newWorker(FarmWorker.TASK_QUEUE)
     worker.registerWorkflowImplementationTypes(
         FibonacciWorkflowImpl::class.java,
         RepoSyncWorkflowImpl::class.java,
@@ -48,8 +49,4 @@ class TemporalWorkerHost(
 
   /** Starts polling the task queue. Returns immediately; the factory runs in the background. */
   fun start() = factory.start()
-
-  companion object {
-    const val TASK_QUEUE = "farm-tasks"
-  }
 }

@@ -17,7 +17,9 @@ import software.medusa.farm.github.FakeGitHubServer
 import software.medusa.farm.github.GhProperAppApiClient
 import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.github.TestAppKey
+import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.InMemoryRepoStore
+import software.medusa.farm.shared.RepoSyncWorkflow
 
 /** Drives the repo-sync workflow against Temporal's in-memory test server and a fake GitHub. */
 class RepoSyncWorkflowTest {
@@ -49,7 +51,7 @@ class RepoSyncWorkflowTest {
         GhProperAppApiClient.build("Iv1.test", appKey.pkcs8Pem, baseUrl = server.baseUrl)
     val clientProvider =
         GhProperInstallationApiClientProvider(appApiClient, baseUrl = server.baseUrl)
-    val worker = env.newWorker(TemporalWorkerHost.TASK_QUEUE)
+    val worker = env.newWorker(FarmWorker.TASK_QUEUE)
     worker.registerWorkflowImplementationTypes(RepoSyncWorkflowImpl::class.java)
     worker.registerActivitiesImplementations(RepoSyncActivitiesImpl(clientProvider, store))
     env.start()
@@ -65,7 +67,7 @@ class RepoSyncWorkflowTest {
     env.workflowClient
         .newWorkflowStub(
             RepoSyncWorkflow::class.java,
-            WorkflowOptions.newBuilder().setTaskQueue(TemporalWorkerHost.TASK_QUEUE).build(),
+            WorkflowOptions.newBuilder().setTaskQueue(FarmWorker.TASK_QUEUE).build(),
         )
         .sync(installationId)
   }

@@ -7,11 +7,14 @@ import io.temporal.client.WorkflowClientOptions
 import io.temporal.client.WorkflowOptions
 import io.temporal.serviceclient.WorkflowServiceStubs
 import io.temporal.serviceclient.WorkflowServiceStubsOptions
+import software.medusa.farm.shared.FarmWorker
+import software.medusa.farm.shared.FibonacciWorkflow
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 /**
- * Starts the Fibonacci workflow on Temporal via an **untyped** stub keyed by workflow type name
- * ("FibonacciWorkflow"), so the API never depends on the worker module.
+ * Starts the Fibonacci workflow on Temporal via a **typed** stub over the shared
+ * [FibonacciWorkflow] interface, so the workflow type the API starts and the type the worker
+ * registers derive from the same contract and cannot drift.
  *
  * Single-flight: every start uses the stable workflow id [WORKFLOW_ID] with a conflict policy of
  * USE_EXISTING, so a click while a run is in flight attaches to that run instead of stacking a
@@ -45,10 +48,10 @@ class TemporalFibonacciStarter(
 
   override fun start(through: Int): String {
     val stub =
-        client.newUntypedWorkflowStub(
-            WORKFLOW_TYPE,
+        client.newWorkflowStub(
+            FibonacciWorkflow::class.java,
             WorkflowOptions.newBuilder()
-                .setTaskQueue(TASK_QUEUE)
+                .setTaskQueue(FarmWorker.TASK_QUEUE)
                 .setWorkflowId(WORKFLOW_ID)
                 .setWorkflowIdReusePolicy(
                     WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE
@@ -58,14 +61,10 @@ class TemporalFibonacciStarter(
                 )
                 .build(),
         )
-    return stub.start(through).workflowId
+    return WorkflowClient.start(stub::computeThrough, through).workflowId
   }
 
   companion object {
-    // The worker registers "FibonacciWorkflow" on this task queue (see the worker module's
-    // TemporalWorkerHost); referenced by name so the API stays decoupled from that module.
-    private const val WORKFLOW_TYPE = "FibonacciWorkflow"
-    private const val TASK_QUEUE = "farm-tasks"
     private const val WORKFLOW_ID = "farm-fibonacci"
   }
 }

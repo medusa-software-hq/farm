@@ -6,7 +6,9 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
+import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.FibonacciEntry
+import software.medusa.farm.shared.FibonacciWorkflow
 import software.medusa.farm.shared.InMemoryFibonacciStore
 
 /**
@@ -18,7 +20,7 @@ class FibonacciWorkflowTest {
   private val store = InMemoryFibonacciStore()
 
   private fun startWorker() {
-    val worker = env.newWorker(TemporalWorkerHost.TASK_QUEUE)
+    val worker = env.newWorker(FarmWorker.TASK_QUEUE)
     worker.registerWorkflowImplementationTypes(FibonacciWorkflowImpl::class.java)
     worker.registerActivitiesImplementations(FibonacciActivitiesImpl(store))
     env.start()
@@ -27,7 +29,7 @@ class FibonacciWorkflowTest {
   private fun newWorkflow(): FibonacciWorkflow =
       env.workflowClient.newWorkflowStub(
           FibonacciWorkflow::class.java,
-          WorkflowOptions.newBuilder().setTaskQueue(TemporalWorkerHost.TASK_QUEUE).build(),
+          WorkflowOptions.newBuilder().setTaskQueue(FarmWorker.TASK_QUEUE).build(),
       )
 
   @AfterTest fun tearDown() = env.close()

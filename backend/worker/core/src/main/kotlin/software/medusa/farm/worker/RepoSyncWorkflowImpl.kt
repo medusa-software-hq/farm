@@ -3,6 +3,7 @@ package software.medusa.farm.worker
 import io.temporal.activity.ActivityOptions
 import io.temporal.workflow.Workflow
 import java.time.Duration
+import software.medusa.farm.shared.RepoSyncWorkflow
 
 /**
  * Captures the sync watermark, fetches the installation's repos in full, then reconciles them. The

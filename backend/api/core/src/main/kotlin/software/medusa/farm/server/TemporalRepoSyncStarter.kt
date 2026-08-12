@@ -10,11 +10,14 @@ import io.temporal.client.WorkflowServiceException
 import io.temporal.serviceclient.WorkflowServiceStubs
 import io.temporal.serviceclient.WorkflowServiceStubsOptions
 import org.slf4j.LoggerFactory
+import software.medusa.farm.shared.FarmWorker
+import software.medusa.farm.shared.RepoSyncWorkflow
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 /**
- * Starts [software.medusa.farm.worker.RepoSyncWorkflow] on Temporal via an **untyped** stub keyed
- * by workflow type name, so the API never depends on the worker module.
+ * Starts [RepoSyncWorkflow] on Temporal via a **typed** stub over the shared interface, so the
+ * workflow type the API starts and the type the worker registers derive from the same contract and
+ * cannot drift.
  *
  * One in-flight sync per installation: the stable workflow id [workflowId] with USE_EXISTING makes
  * a link that arrives while a sync is running attach to it rather than stack a duplicate;
@@ -51,10 +54,10 @@ class TemporalRepoSyncStarter(
   override fun start(installationId: Long) {
     try {
       val stub =
-          client.newUntypedWorkflowStub(
-              WORKFLOW_TYPE,
+          client.newWorkflowStub(
+              RepoSyncWorkflow::class.java,
               WorkflowOptions.newBuilder()
-                  .setTaskQueue(TASK_QUEUE)
+                  .setTaskQueue(FarmWorker.TASK_QUEUE)
                   .setWorkflowId(workflowId(installationId))
                   .setWorkflowIdReusePolicy(
                       WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE
@@ -64,7 +67,7 @@ class TemporalRepoSyncStarter(
                   )
                   .build(),
           )
-      stub.start(installationId)
+      WorkflowClient.start(stub::sync, installationId)
     } catch (e: WorkflowServiceException) {
       logger.warn("Could not start repo sync for installation {}", installationId, e)
     } catch (e: StatusRuntimeException) {
@@ -73,11 +76,6 @@ class TemporalRepoSyncStarter(
   }
 
   companion object {
-    // The worker registers "RepoSyncWorkflow" on this queue (see the worker module's
-    // TemporalWorkerHost); referenced by name so the API stays decoupled from that module.
-    private const val WORKFLOW_TYPE = "RepoSyncWorkflow"
-    private const val TASK_QUEUE = "farm-tasks"
-
     // Stable per installation so overlapping links collapse onto one run.
     private fun workflowId(installationId: Long): String = "repo-sync:$installationId"
   }

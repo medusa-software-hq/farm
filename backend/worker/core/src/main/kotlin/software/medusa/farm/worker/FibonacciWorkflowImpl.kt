@@ -3,6 +3,7 @@ package software.medusa.farm.worker
 import io.temporal.activity.ActivityOptions
 import io.temporal.workflow.Workflow
 import java.time.Duration
+import software.medusa.farm.shared.FibonacciWorkflow
 
 /**
  * Resumes from the highest stored index, then computes the sequence deterministically (in-workflow,
