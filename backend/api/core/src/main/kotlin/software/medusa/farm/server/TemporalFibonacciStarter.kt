@@ -61,7 +61,7 @@ class TemporalFibonacciStarter(
     // The worker registers "FibonacciWorkflow" on this task queue (see the worker module's
     // TemporalWorkerHost); referenced by name so the API stays decoupled from that module.
     private const val WORKFLOW_TYPE = "FibonacciWorkflow"
-    private const val TASK_QUEUE = "farm-fibonacci"
+    private const val TASK_QUEUE = "farm-tasks"
     private const val WORKFLOW_ID = "farm-fibonacci"
   }
 }

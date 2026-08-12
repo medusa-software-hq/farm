@@ -1,8 +1,6 @@
 package software.medusa.farm.server
 
-import software.medusa.farm.github.GhCachingInstallationApiClientProvider
 import software.medusa.farm.github.GhProperAppApiClient
-import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.shared.BakedConfig
 import software.medusa.farm.shared.FarmStore
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
@@ -56,6 +54,16 @@ fun main() {
 
   val farmStore = FarmStore.buildWithMigrations(databaseUrl)
 
+  // One Temporal auth config drives both starters; absent -> both degrade to no-ops.
+  val repoSyncStarter =
+      temporalApiKey?.let {
+        TemporalRepoSyncStarter(
+            BakedConfig.TEMPORAL_ADDRESS,
+            BakedConfig.TEMPORAL_NAMESPACE,
+            WorkflowServiceAuthConfig.Cloud(it),
+        )
+      } ?: NoOpRepoSyncStarter
+
   buildServer(
           originRegex = corsOriginRegex,
           port = port,
@@ -76,13 +84,7 @@ fun main() {
           gitHubOrgs =
               if (gitHubAppClientId != null && gitHubAppPem != null) {
                 val appApiClient = GhProperAppApiClient.build(gitHubAppClientId, gitHubAppPem)
-                GitHubOrgService(
-                    appApiClient,
-                    GhCachingInstallationApiClientProvider(
-                        GhProperInstallationApiClientProvider(appApiClient)
-                    ),
-                    farmStore.linkedOrg,
-                )
+                GitHubOrgService(appApiClient, farmStore.linkedOrg, repoSyncStarter)
               } else {
                 null
               },

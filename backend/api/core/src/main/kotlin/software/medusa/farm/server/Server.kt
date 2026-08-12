@@ -45,6 +45,8 @@ fun buildServer(
                 FarmServiceImpl(
                     farmStore.fibonacci,
                     fibonacciStarter,
+                    farmStore.linkedOrg,
+                    farmStore.repo,
                     gitHubOrgs,
                 )
             )

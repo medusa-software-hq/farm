@@ -5,9 +5,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import software.medusa.farm.github.GhOrgLogin
 import software.medusa.farm.shared.FibonacciStore
+import software.medusa.farm.shared.LinkedOrgStore
+import software.medusa.farm.shared.RepoStore
 import software.medusa.farm.v1.FarmServiceGrpcKt
 import software.medusa.farm.v1.FibonacciNumber
-import software.medusa.farm.v1.Issue
 import software.medusa.farm.v1.LinkOrgRequest
 import software.medusa.farm.v1.LinkOrgResponse
 import software.medusa.farm.v1.ListFibonacciRequest
@@ -21,10 +22,12 @@ import software.medusa.farm.v1.StartFibonacciResponse
 class FarmServiceImpl(
     private val fibonacciStore: FibonacciStore,
     private val fibonacciStarter: FibonacciStarter,
+    private val linkedOrgStore: LinkedOrgStore,
+    private val repoStore: RepoStore,
     private val gitHubOrgs: GitHubOrgService?,
 ) : FarmServiceGrpcKt.FarmServiceCoroutineImplBase() {
-  // The GitHub RPCs' shared guard: absent app -> UNIMPLEMENTED, nothing stored, other RPCs
-  // unharmed.
+  // LinkOrg's guard: with no configured app there is no way to resolve an installation, so the RPC
+  // is UNIMPLEMENTED. The read path (ListRepositories) is unaffected — it never touches GitHub.
   private fun gitHubOrgs(): GitHubOrgService =
       gitHubOrgs
           ?: throw Status.UNIMPLEMENTED.withDescription("GitHub App not configured")
@@ -49,32 +52,31 @@ class FarmServiceImpl(
     return StartFibonacciResponse.newBuilder().setWorkflowId(workflowId).build()
   }
 
-  // Links an org to the Farm app: discover its installation, remember it, then report the repos the
-  // app can reach.
+  // Links an org to the Farm app: resolve and store its installation, kick off a background repo
+  // sync, then report the repos already known for it (empty until the first sync lands).
   override suspend fun linkOrg(request: LinkOrgRequest): LinkOrgResponse {
-    val link = gitHubOrgs().linkOrg(GhOrgLogin(request.orgLogin))
+    val installationId = gitHubOrgs().linkOrg(GhOrgLogin(request.orgLogin))
+    val repositories = repoStore.listActive(installationId.value)
     return LinkOrgResponse.newBuilder()
-        .setInstallationId(link.installationId.value)
-        .addAllRepositories(link.repositories.map { it.value })
+        .setInstallationId(installationId.value)
+        .addAllRepositories(repositories.map { it.fullName })
         .build()
   }
 
-  // Steady-state read across every linked org; the collaborator reuses cached installation clients.
+  // Steady-state read straight from the synced repos table: active repos across every linked org,
+  // no live GitHub call. Works even with the GitHub App unconfigured.
   override suspend fun listRepositories(
       request: ListRepositoriesRequest
   ): ListRepositoriesResponse =
       ListRepositoriesResponse.newBuilder()
           .addAllRepositories(
-              gitHubOrgs().listRepositories().map { repository ->
-                Repository.newBuilder()
-                    .setOrgLogin(repository.orgLogin.value)
-                    .setFullName(repository.fullName.value)
-                    .addAllRecentIssues(
-                        repository.recentIssues.map {
-                          Issue.newBuilder().setNumber(it.number).setTitle(it.title).build()
-                        }
-                    )
-                    .build()
+              linkedOrgStore.list().flatMap { org ->
+                repoStore.listActive(org.installationId).map { repo ->
+                  Repository.newBuilder()
+                      .setOrgLogin(org.orgLogin)
+                      .setFullName(repo.fullName)
+                      .build()
+                }
               }
           )
           .build()
