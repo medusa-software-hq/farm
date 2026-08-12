@@ -29,7 +29,15 @@ class FakeGitHub(
       path == "/installation/repositories" -> {
         val id = GhInstallationId(request.authorization!!.removePrefix("Bearer tok-").toLong())
         val repos = reposByInstallation.getValue(id)
-        val body = repos.joinToString(",") { """{"full_name": "${it.value}"}""" }
+        val body =
+            repos.joinToString(",") {
+              val name = it.value.substringAfter('/')
+              // A stable synthetic numeric id derived from the full name, so a repo keeps its id
+              // across fetches (only a rename would change it).
+              val repoId = it.value.hashCode().toLong() and 0x7fffffff
+              """{"id": $repoId, "full_name": "${it.value}", "name": "$name", """ +
+                  """"private": false, "default_branch": "main"}"""
+            }
         FakeGitHubServer.Response(
             200,
             """{"total_count": ${repos.size}, "repositories": [$body]}""",

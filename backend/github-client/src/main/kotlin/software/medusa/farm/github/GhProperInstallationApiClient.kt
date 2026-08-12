@@ -21,8 +21,8 @@ private constructor(
     GhResourcesApiClient by GhUniversalResourcesApiClient(tokenProvider, baseUrl, httpClient) {
   private val http = GhHttp(baseUrl, httpClient)
 
-  override suspend fun listInstallationRepositories(): List<GhRepoFullName> {
-    val fullNames = mutableListOf<GhRepoFullName>()
+  override suspend fun listInstallationRepositories(): List<GhRepo> {
+    val repos = mutableListOf<GhRepo>()
     var page = 1
     while (true) {
       val response =
@@ -34,11 +34,20 @@ private constructor(
         "GitHub repository listing failed: ${response.statusCode()} ${response.body()}"
       }
       val decoded = gitHubJson.decodeFromString<RepositoriesPageDto>(response.body())
-      fullNames += decoded.repositories.map { GhRepoFullName(it.fullName) }
-      if (decoded.repositories.isEmpty() || fullNames.size >= decoded.totalCount) break
+      repos +=
+          decoded.repositories.map {
+            GhRepo(
+                id = GhRepoId(it.id),
+                fullName = GhRepoFullName(it.fullName),
+                name = it.name,
+                isPrivate = it.private,
+                defaultBranch = it.defaultBranch,
+            )
+          }
+      if (decoded.repositories.isEmpty() || repos.size >= decoded.totalCount) break
       page++
     }
-    return fullNames
+    return repos
   }
 
   companion object {
@@ -57,4 +66,11 @@ private class RepositoriesPageDto(
     val repositories: List<RepositoryDto>,
 )
 
-@Serializable private class RepositoryDto(@SerialName("full_name") val fullName: String)
+@Serializable
+private class RepositoryDto(
+    val id: Long,
+    @SerialName("full_name") val fullName: String,
+    val name: String,
+    val private: Boolean,
+    @SerialName("default_branch") val defaultBranch: String,
+)
