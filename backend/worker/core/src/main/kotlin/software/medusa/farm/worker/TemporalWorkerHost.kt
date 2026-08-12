@@ -21,6 +21,7 @@ import software.medusa.farm.shared.LinkedOrgStore
 import software.medusa.farm.shared.RepoStore
 import software.medusa.farm.shared.SyncAllReposWorkflow
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
+import software.medusa.farm.shared.syncAllReposWorkflowId
 
 /** Registers the farm's workflows and activities on one task queue and runs the worker. */
 class TemporalWorkerHost(
@@ -78,7 +79,7 @@ class TemporalWorkerHost(
                     .setWorkflowType(SyncAllReposWorkflow::class.java)
                     .setOptions(
                         WorkflowOptions.newBuilder()
-                            .setWorkflowId(SYNC_ALL_REPOS_WORKFLOW_ID)
+                            .setWorkflowId(syncAllReposWorkflowId())
                             .setTaskQueue(FarmWorker.TASK_QUEUE)
                             .build()
                     )
@@ -103,9 +104,6 @@ class TemporalWorkerHost(
 
   companion object {
     private const val REPO_SYNC_ALL_SCHEDULE_ID = "repo-sync-all"
-
-    // The scheduled sweep's base workflow id; Temporal appends each run's nominal time.
-    private const val SYNC_ALL_REPOS_WORKFLOW_ID = "sync-all-repos"
 
     // How often the sweep fires. One hour backstops the on-link sync without hammering GitHub; bump
     // it here to change the cadence.

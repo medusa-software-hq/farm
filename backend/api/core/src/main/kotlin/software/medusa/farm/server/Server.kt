@@ -15,6 +15,7 @@ fun buildServer(
     auth: DecoratingHttpServiceFunction,
     farmStore: FarmStore,
     gitHubOrgs: GitHubOrgService,
+    syncAllStarter: SyncAllStarter,
 ): Server {
   val cors =
       CorsService.builderForOriginRegex(originRegex)
@@ -45,6 +46,7 @@ fun buildServer(
                     farmStore.linkedOrg,
                     farmStore.repo,
                     gitHubOrgs,
+                    syncAllStarter,
                 )
             )
             enableUnframedRequests(true)

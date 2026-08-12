@@ -60,9 +60,15 @@ fun main() {
 
   val farmStore = FarmStore.buildWithMigrations(databaseUrl)
 
-  // One Temporal auth config drives both starters.
+  // One Temporal auth config drives every starter.
   val repoSyncStarter =
       TemporalRepoSyncStarter(
+          BakedConfig.TEMPORAL_ADDRESS,
+          BakedConfig.TEMPORAL_NAMESPACE,
+          temporalAuth,
+      )
+  val syncAllStarter =
+      TemporalSyncAllStarter(
           BakedConfig.TEMPORAL_ADDRESS,
           BakedConfig.TEMPORAL_NAMESPACE,
           temporalAuth,
@@ -83,6 +89,7 @@ fun main() {
                   farmStore.linkedOrg,
                   repoSyncStarter,
               ),
+          syncAllStarter = syncAllStarter,
       )
       .start()
       .join()

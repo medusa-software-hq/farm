@@ -10,6 +10,7 @@ service FarmService {
   rpc LinkOrg(LinkOrgRequest) returns (LinkOrgResponse);
   rpc ListLinkedOrgs(ListLinkedOrgsRequest) returns (ListLinkedOrgsResponse);
   rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse);
+  rpc SyncRepositories(SyncRepositoriesRequest) returns (SyncRepositoriesResponse);
 }
 
 message LinkOrgRequest {
@@ -42,3 +43,7 @@ message Repository {
   string org_login = 1;
   string full_name = 2;
 }
+
+message SyncRepositoriesRequest {}
+
+message SyncRepositoriesResponse {}
