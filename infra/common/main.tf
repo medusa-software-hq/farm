@@ -69,8 +69,7 @@ locals {
   # releases + the Homebrew formula. Flavor constants — one app, one releases
   # repo, shared across environments.
   gh_releases_repo_name = "farm-releases"
-  # 🎨 TEMPLATE POST-EJECT: Create a GitHub App and change its client id here 👇
-  gh_releases_client_id = "Iv23liqPdxH2VoWlrH7c" # "Medusa Farm Releaser"
+  gh_releases_client_id = "Iv23liqPdxH2VoWlrH7c"
 
   project_base_name = "farm"
   project_variant   = "v1"
