@@ -19,18 +19,22 @@ import software.medusa.farm.shared.WorkflowServiceAuthConfig
  * workflow itself resumes from the highest stored index, so overlapping requests never
  * double-write.
  *
- * The [WorkflowClient] is built lazily and connects lazily, so construction never blocks server
- * startup or other RPCs.
+ * The [WorkflowClient] is built eagerly but the startup health check is disabled, so construction
+ * never blocks on Temporal reachability; the gRPC channel connects lazily on the first RPC.
  */
 class TemporalFibonacciStarter(
-    private val address: String,
+    address: String,
     private val namespace: String,
-    private val authConfig: WorkflowServiceAuthConfig,
+    authConfig: WorkflowServiceAuthConfig,
 ) : FibonacciStarter {
-  private val client: WorkflowClient by lazy { buildClient() }
+  private val client: WorkflowClient = buildClient(address, authConfig)
 
-  private fun buildClient(): WorkflowClient {
-    val builder = WorkflowServiceStubsOptions.newBuilder().setTarget(address)
+  private fun buildClient(
+      address: String,
+      authConfig: WorkflowServiceAuthConfig,
+  ): WorkflowClient {
+    val builder =
+        WorkflowServiceStubsOptions.newBuilder().setTarget(address).setDisableHealthCheck(true)
     authConfig.configureBuilder(builder)
     val service = WorkflowServiceStubs.newServiceStubs(builder.build())
     return WorkflowClient.newInstance(

@@ -21,22 +21,25 @@ import software.medusa.farm.shared.WorkflowServiceAuthConfig
  * ALLOW_DUPLICATE reuse lets a fresh sync start once the previous one finishes.
  *
  * Best-effort per the [RepoSyncStarter] contract: a start that cannot reach Temporal is logged and
- * swallowed so it never fails the link that triggered it. The [WorkflowClient] is built and
- * connected lazily, and rebuilt on the next attempt if the last build failed.
+ * swallowed so it never fails the link that triggered it. The [WorkflowClient] is built eagerly but
+ * with the startup health check disabled, so construction never blocks on Temporal reachability;
+ * the gRPC channel connects lazily on the first RPC.
  */
 class TemporalRepoSyncStarter(
-    private val address: String,
+    address: String,
     private val namespace: String,
-    private val authConfig: WorkflowServiceAuthConfig,
+    authConfig: WorkflowServiceAuthConfig,
 ) : RepoSyncStarter {
   private val logger = LoggerFactory.getLogger(TemporalRepoSyncStarter::class.java)
 
-  @Volatile private var client: WorkflowClient? = null
+  private val client: WorkflowClient = buildClient(address, authConfig)
 
-  private fun client(): WorkflowClient = client ?: buildClient().also { client = it }
-
-  private fun buildClient(): WorkflowClient {
-    val builder = WorkflowServiceStubsOptions.newBuilder().setTarget(address)
+  private fun buildClient(
+      address: String,
+      authConfig: WorkflowServiceAuthConfig,
+  ): WorkflowClient {
+    val builder =
+        WorkflowServiceStubsOptions.newBuilder().setTarget(address).setDisableHealthCheck(true)
     authConfig.configureBuilder(builder)
     val service = WorkflowServiceStubs.newServiceStubs(builder.build())
     return WorkflowClient.newInstance(
@@ -48,20 +51,19 @@ class TemporalRepoSyncStarter(
   override fun start(installationId: Long) {
     try {
       val stub =
-          client()
-              .newUntypedWorkflowStub(
-                  WORKFLOW_TYPE,
-                  WorkflowOptions.newBuilder()
-                      .setTaskQueue(TASK_QUEUE)
-                      .setWorkflowId(workflowId(installationId))
-                      .setWorkflowIdReusePolicy(
-                          WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE
-                      )
-                      .setWorkflowIdConflictPolicy(
-                          WorkflowIdConflictPolicy.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING
-                      )
-                      .build(),
-              )
+          client.newUntypedWorkflowStub(
+              WORKFLOW_TYPE,
+              WorkflowOptions.newBuilder()
+                  .setTaskQueue(TASK_QUEUE)
+                  .setWorkflowId(workflowId(installationId))
+                  .setWorkflowIdReusePolicy(
+                      WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE
+                  )
+                  .setWorkflowIdConflictPolicy(
+                      WorkflowIdConflictPolicy.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING
+                  )
+                  .build(),
+          )
       stub.start(installationId)
     } catch (e: WorkflowServiceException) {
       logger.warn("Could not start repo sync for installation {}", installationId, e)
