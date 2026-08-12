@@ -13,6 +13,7 @@ private const val maxPoolSize = 5
 class FarmStore(
     val fibonacci: FibonacciStore,
     val linkedOrg: LinkedOrgStore,
+    val repo: RepoStore,
 ) {
   companion object {
     /** Builds the [FarmStore], applying runtime database schema migrations. */
@@ -30,6 +31,7 @@ class FarmStore(
       return FarmStore(
           PostgresFibonacciStore(database),
           PostgresLinkedOrgStore(database),
+          PostgresRepoStore(database),
       )
     }
 
