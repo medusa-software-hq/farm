@@ -71,9 +71,9 @@ resource "google_cloud_run_v2_service" "primary" {
         }
       }
 
-      # The Temporal Cloud key that lets the API start Fibonacci workflows. It lives in the
+      # The Temporal Cloud key the API uses to start repo-sync workflows on org link. It lives in the
       # cross-environment shared project, so it is referenced by its fully-qualified secret name.
-      # Optional at the app level: without it the API still boots and only StartFibonacci degrades.
+      # Required: a missing key fails the API at startup rather than silently disabling sync.
       env {
         name = "TEMPORAL_API_KEY"
         value_source {

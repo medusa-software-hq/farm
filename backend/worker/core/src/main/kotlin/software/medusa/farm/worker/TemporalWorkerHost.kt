@@ -17,7 +17,6 @@ import io.temporal.worker.WorkerFactory
 import java.time.Duration
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.shared.FarmWorker
-import software.medusa.farm.shared.FibonacciStore
 import software.medusa.farm.shared.LinkedOrgStore
 import software.medusa.farm.shared.RepoStore
 import software.medusa.farm.shared.SyncAllReposWorkflow
@@ -28,7 +27,6 @@ class TemporalWorkerHost(
     address: String,
     namespace: String,
     authConfig: WorkflowServiceAuthConfig,
-    fibonacciStore: FibonacciStore,
     repoStore: RepoStore,
     linkedOrgStore: LinkedOrgStore,
     gitHubClientProvider: GhInstallationApiClientProvider,
@@ -51,13 +49,11 @@ class TemporalWorkerHost(
     factory = WorkerFactory.newInstance(client)
     val worker = factory.newWorker(FarmWorker.TASK_QUEUE)
     worker.registerWorkflowImplementationTypes(
-        FibonacciWorkflowImpl::class.java,
         RepoSyncWorkflowImpl::class.java,
         SyncAllReposWorkflowImpl::class.java,
     )
     worker.registerActivitiesImplementations(
-        FibonacciActivitiesImpl(fibonacciStore),
-        RepoSyncActivitiesImpl(gitHubClientProvider, repoStore, linkedOrgStore, client),
+        RepoSyncActivitiesImpl(gitHubClientProvider, repoStore, linkedOrgStore, client)
     )
     ensureRepoSyncSchedule(service, namespace)
   }

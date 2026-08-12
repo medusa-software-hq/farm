@@ -12,10 +12,8 @@ import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhOrgLogin
 import software.medusa.farm.github.MintedGhInstallationToken
 import software.medusa.farm.shared.FetchedRepo
-import software.medusa.farm.shared.InMemoryFibonacciStore
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
-import software.medusa.farm.v1.ListFibonacciRequest
 import software.medusa.farm.v1.ListRepositoriesRequest
 
 /** Covers the read path, which serves the synced repos table with no live GitHub call. */
@@ -40,11 +38,7 @@ class FarmServiceRepositoriesTest {
     ): MintedGhInstallationToken = error("the read path must not call GitHub")
   }
 
-  // The read path never starts a workflow; these stand in for the starters, unused here.
-  private object UnusedFibonacciStarter : FibonacciStarter {
-    override fun start(through: Int): String = error("the read path must not start a workflow")
-  }
-
+  // The read path never starts a workflow; this stands in for the starter, unused here.
   private object UnusedRepoSyncStarter : RepoSyncStarter {
     override fun start(installationId: Long) = error("the read path must not start a workflow")
   }
@@ -55,8 +49,6 @@ class FarmServiceRepositoriesTest {
 
   private val service =
       FarmServiceImpl(
-          InMemoryFibonacciStore(),
-          UnusedFibonacciStarter,
           linkedOrgs,
           repos,
           GitHubOrgService(UnusedAppApiClient, linkedOrgs, UnusedRepoSyncStarter),
@@ -68,14 +60,6 @@ class FarmServiceRepositoriesTest {
     assertEquals(
         0,
         service.listRepositories(ListRepositoriesRequest.getDefaultInstance()).repositoriesCount,
-    )
-  }
-
-  @Test
-  fun `ListFibonacci is unaffected by the repos read path`() = runBlocking {
-    assertEquals(
-        0,
-        service.listFibonacci(ListFibonacciRequest.getDefaultInstance()).numbersCount,
     )
   }
 
