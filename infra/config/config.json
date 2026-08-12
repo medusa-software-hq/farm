@@ -1,16 +1,28 @@
 {
-  "prod": {
-    "api_host": "api.farm-v1.medusa.software",
-    "cli_client_id": "97246827152-d2e73hif1ckri70a6osh139v6jmaesag.apps.googleusercontent.com",
-    "gh_environment_name": "production",
-    "resource_name_suffix": "",
-    "web_client_id": "97246827152-5s18i6k7atkq7j1mm8j19s6tk443ednu.apps.googleusercontent.com"
+  "domain": "medusa.software",
+  "environments": {
+    "prod": {
+      "api_host": "api.farm-v1.medusa.software",
+      "cli_client_id": "97246827152-d2e73hif1ckri70a6osh139v6jmaesag.apps.googleusercontent.com",
+      "gh_environment_name": "production",
+      "github_app_client_id": "Iv23liqulmJ6FLb48pE5",
+      "resource_name_suffix": "",
+      "web_client_id": "97246827152-5s18i6k7atkq7j1mm8j19s6tk443ednu.apps.googleusercontent.com"
+    },
+    "staging": {
+      "api_host": "api.farm-v1-staging.medusa.software",
+      "cli_client_id": "329509758995-cn8lk8fcuen0u813a14m6cmfls3an24e.apps.googleusercontent.com",
+      "gh_environment_name": "staging",
+      "github_app_client_id": "Iv23liUa4I1Mh1CZwWaH",
+      "resource_name_suffix": "-staging",
+      "web_client_id": "329509758995-8pqmbc01jp0lm3gilesi0g4ljcnh1cob.apps.googleusercontent.com"
+    }
   },
-  "staging": {
-    "api_host": "api.farm-v1-staging.medusa.software",
-    "cli_client_id": "329509758995-cn8lk8fcuen0u813a14m6cmfls3an24e.apps.googleusercontent.com",
-    "gh_environment_name": "staging",
-    "resource_name_suffix": "-staging",
-    "web_client_id": "329509758995-8pqmbc01jp0lm3gilesi0g4ljcnh1cob.apps.googleusercontent.com"
-  }
+  "project": "farm",
+  "temporal": {
+    "address": "us-east-1.aws.api.temporal.io:7233",
+    "key_project": "ms-farm-shared-c83577a8",
+    "namespace": "farm.kr9zt"
+  },
+  "variant": "v1"
 }
