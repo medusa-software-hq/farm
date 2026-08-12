@@ -58,7 +58,7 @@ resource "google_cloud_run_v2_service" "primary" {
 
       env {
         name  = "GITHUB_APP_CLIENT_ID"
-        value = var.github_app_client_id
+        value = module.common.github_app_client_id
       }
 
       env {

@@ -70,7 +70,6 @@ jobs:
           TF_VAR_gcp_project_id: ${{ vars.GCP_PROJECT_ID }}
           TF_VAR_neon_api_key: ${{ secrets.NEON_API_KEY }}
           TF_VAR_github_app_pem: ${{ secrets.GH_APP_PEM }}
-          TF_VAR_github_app_client_id: ${{ vars.GH_APP_CLIENT_ID }}
         run: |
           terraform init
           terraform workspace select -or-create=true ${{ matrix.workspace }}

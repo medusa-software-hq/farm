@@ -49,11 +49,6 @@ variable "github_app_pem" {
   sensitive   = true
 }
 
-variable "github_app_client_id" {
-  description = "GitHub App client id (public, but per-environment)."
-  type        = string
-}
-
 # Primary Google provider
 provider "google" {
   project = module.common.gcp_meta_project_id
