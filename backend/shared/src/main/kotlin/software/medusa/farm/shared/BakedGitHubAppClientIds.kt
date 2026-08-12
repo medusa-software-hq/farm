@@ -2,8 +2,7 @@
 // Do not edit by hand — re-run the task after editing the config and commit the diff.
 package software.medusa.farm.shared
 
-object BakedConfig {
-  const val TEMPORAL_ADDRESS = "us-east-1.aws.api.temporal.io:7233"
-  const val TEMPORAL_NAMESPACE = "farm.kr9zt"
-  const val TEMPORAL_KEY_PROJECT = "ms-farm-shared-c83577a8"
+object BakedGitHubAppClientIds {
+  const val PROD = "Iv23liqulmJ6FLb48pE5"
+  const val STAGING = "Iv23liUa4I1Mh1CZwWaH"
 }
