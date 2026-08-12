@@ -57,7 +57,7 @@ class TemporalWorkerHost(
     )
     worker.registerActivitiesImplementations(
         FibonacciActivitiesImpl(fibonacciStore),
-        RepoSyncActivitiesImpl(gitHubClientProvider, repoStore, linkedOrgStore),
+        RepoSyncActivitiesImpl(gitHubClientProvider, repoStore, linkedOrgStore, client),
     )
     ensureRepoSyncSchedule(service, namespace)
   }

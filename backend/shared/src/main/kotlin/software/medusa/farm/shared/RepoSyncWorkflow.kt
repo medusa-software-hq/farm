@@ -12,3 +12,10 @@ import io.temporal.workflow.WorkflowMethod
 interface RepoSyncWorkflow {
   @WorkflowMethod fun sync(installationId: Long)
 }
+
+/**
+ * The stable Temporal workflow id for an installation's sync. Shared so the on-link starter and the
+ * periodic sweep target the SAME id — with USE_EXISTING they dedupe against each other rather than
+ * running two syncs for one org — and the id lives in exactly one place.
+ */
+fun repoSyncWorkflowId(installationId: Long): String = "repo-sync:$installationId"

@@ -55,7 +55,7 @@ class RepoSyncWorkflowTest {
     val worker = env.newWorker(FarmWorker.TASK_QUEUE)
     worker.registerWorkflowImplementationTypes(RepoSyncWorkflowImpl::class.java)
     worker.registerActivitiesImplementations(
-        RepoSyncActivitiesImpl(clientProvider, store, InMemoryLinkedOrgStore())
+        RepoSyncActivitiesImpl(clientProvider, store, InMemoryLinkedOrgStore(), env.workflowClient)
     )
     env.start()
   }

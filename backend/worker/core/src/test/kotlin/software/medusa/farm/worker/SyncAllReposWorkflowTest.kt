@@ -18,31 +18,28 @@ class SyncAllReposWorkflowTest {
   private val installationIds = listOf(100L, 200L, 300L)
   private val failingId = 200L
 
-  private val fetched = CopyOnWriteArrayList<Long>()
-  private val reconciled = CopyOnWriteArrayList<Long>()
+  private val started = CopyOnWriteArrayList<Long>()
 
-  // Scripted activities: every org is listed, one org's fetch fails non-retryably (so its child
-  // workflow fails fast instead of retrying forever), the rest reconcile normally.
+  // Scripted activities: every org is listed, one org's startRepoSync fails non-retryably (so the
+  // activity fails fast instead of retrying forever), the rest start normally.
   private inner class ScriptedActivities : RepoSyncActivities {
     override fun listLinkedInstallations(): List<Long> = installationIds
 
-    override fun fetchInstallationRepos(installationId: Long): List<FetchedRepo> {
-      fetched += installationId
+    override fun startRepoSync(installationId: Long) {
       if (installationId == failingId) {
         throw ApplicationFailure.newNonRetryableFailure("boom for $installationId", "TestFailure")
       }
-      return listOf(
-          FetchedRepo(installationId, "acme/$installationId", "$installationId", false, "main")
-      )
+      started += installationId
     }
+
+    override fun fetchInstallationRepos(installationId: Long): List<FetchedRepo> =
+        error("not exercised by the sweep")
 
     override fun reconcileRepos(
         installationId: Long,
         repos: List<FetchedRepo>,
         syncStartedAtEpochMillis: Long,
-    ) {
-      reconciled += installationId
-    }
+    ) = error("not exercised by the sweep")
   }
 
   private val env =
@@ -58,10 +55,7 @@ class SyncAllReposWorkflowTest {
 
   init {
     val worker = env.newWorker(FarmWorker.TASK_QUEUE)
-    worker.registerWorkflowImplementationTypes(
-        SyncAllReposWorkflowImpl::class.java,
-        RepoSyncWorkflowImpl::class.java,
-    )
+    worker.registerWorkflowImplementationTypes(SyncAllReposWorkflowImpl::class.java)
     worker.registerActivitiesImplementations(ScriptedActivities())
     env.start()
   }
@@ -78,16 +72,10 @@ class SyncAllReposWorkflowTest {
   }
 
   @Test
-  fun `fans out a child sync per linked installation`() {
+  fun `starts a repo sync for every linked installation, isolating one failure`() {
     syncAll()
-    assertEquals(installationIds.toSet(), fetched.toSet())
-  }
-
-  @Test
-  fun `one failing org does not abort the sweep`() {
-    syncAll()
-    // The sweep completed (no exception) and every non-failing org was reconciled; only the failing
-    // one is missing.
-    assertEquals(setOf(100L, 300L), reconciled.toSet())
+    // The sweep completed (no exception) and started every non-failing org; only the failing one is
+    // missing, proving one org's failure does not abort the others.
+    assertEquals(setOf(100L, 300L), started.toSet())
   }
 }
