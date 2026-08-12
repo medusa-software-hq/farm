@@ -13,7 +13,6 @@ fun runTemporalWorker(config: WorkerConfig) {
           config.temporalAddress,
           config.temporalNamespace,
           config.temporalAuth,
-          store.fibonacci,
           store.repo,
           store.linkedOrg,
           gitHubClientProvider(config.gitHubApp),

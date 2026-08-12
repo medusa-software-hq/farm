@@ -77,12 +77,6 @@ fun main() {
                   allowedDomain = allowedDomain,
               ),
           farmStore = farmStore,
-          fibonacciStarter =
-              TemporalFibonacciStarter(
-                  BakedConfig.TEMPORAL_ADDRESS,
-                  BakedConfig.TEMPORAL_NAMESPACE,
-                  temporalAuth,
-              ),
           gitHubOrgs =
               GitHubOrgService(
                   GhProperAppApiClient.build(gitHubAppClientId, gitHubAppPem),

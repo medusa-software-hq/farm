@@ -14,7 +14,6 @@ fun buildServer(
     port: Int,
     auth: DecoratingHttpServiceFunction,
     farmStore: FarmStore,
-    fibonacciStarter: FibonacciStarter,
     gitHubOrgs: GitHubOrgService,
 ): Server {
   val cors =
@@ -43,8 +42,6 @@ fun buildServer(
           .apply {
             addService(
                 FarmServiceImpl(
-                    farmStore.fibonacci,
-                    fibonacciStarter,
                     farmStore.linkedOrg,
                     farmStore.repo,
                     gitHubOrgs,

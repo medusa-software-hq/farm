@@ -2,8 +2,8 @@
 
 Terraform provisions a Temporal Cloud namespace + a namespace-scoped service account and API key, then
 publishes that key into **GCP Secret Manager** so the real worker (Farm's `backend/worker`) can read it
-uniformly. Uses **API-key auth over TLS** (not mTLS). The worker runs a Fibonacci workflow against the
-namespace; there is no longer a throwaway demo module.
+uniformly. Uses **API-key auth over TLS** (not mTLS). The worker runs Farm's repo-sync workflows
+against the namespace.
 
 ## 1. Where you fill the API key
 

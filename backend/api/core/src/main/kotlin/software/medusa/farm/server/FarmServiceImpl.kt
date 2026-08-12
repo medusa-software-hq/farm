@@ -1,49 +1,23 @@
 package software.medusa.farm.server
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import software.medusa.farm.github.GhOrgLogin
-import software.medusa.farm.shared.FibonacciStore
 import software.medusa.farm.shared.LinkedOrgStore
 import software.medusa.farm.shared.RepoStore
 import software.medusa.farm.v1.FarmServiceGrpcKt
-import software.medusa.farm.v1.FibonacciNumber
 import software.medusa.farm.v1.LinkOrgRequest
 import software.medusa.farm.v1.LinkOrgResponse
-import software.medusa.farm.v1.ListFibonacciRequest
-import software.medusa.farm.v1.ListFibonacciResponse
+import software.medusa.farm.v1.LinkedOrg as LinkedOrgProto
+import software.medusa.farm.v1.ListLinkedOrgsRequest
+import software.medusa.farm.v1.ListLinkedOrgsResponse
 import software.medusa.farm.v1.ListRepositoriesRequest
 import software.medusa.farm.v1.ListRepositoriesResponse
 import software.medusa.farm.v1.Repository
-import software.medusa.farm.v1.StartFibonacciRequest
-import software.medusa.farm.v1.StartFibonacciResponse
 
 class FarmServiceImpl(
-    private val fibonacciStore: FibonacciStore,
-    private val fibonacciStarter: FibonacciStarter,
     private val linkedOrgStore: LinkedOrgStore,
     private val repoStore: RepoStore,
     private val gitHubOrgs: GitHubOrgService,
 ) : FarmServiceGrpcKt.FarmServiceCoroutineImplBase() {
-  override suspend fun listFibonacci(request: ListFibonacciRequest): ListFibonacciResponse =
-      ListFibonacciResponse.newBuilder()
-          .addAllNumbers(
-              fibonacciStore.list().map {
-                FibonacciNumber.newBuilder()
-                    .setIndex(it.index)
-                    .setValue(it.value.toString())
-                    .build()
-              }
-          )
-          .build()
-
-  // The blocking Temporal client call runs off the request thread; a Temporal-unreachable start is
-  // surfaced as a gRPC error by the starter, failing only this call.
-  override suspend fun startFibonacci(request: StartFibonacciRequest): StartFibonacciResponse {
-    val workflowId = withContext(Dispatchers.IO) { fibonacciStarter.start(request.through) }
-    return StartFibonacciResponse.newBuilder().setWorkflowId(workflowId).build()
-  }
-
   // Links an org to the Farm app: resolve and store its installation, kick off a background repo
   // sync, then report the repos already known for it (empty until the first sync lands).
   override suspend fun linkOrg(request: LinkOrgRequest): LinkOrgResponse {
@@ -55,8 +29,22 @@ class FarmServiceImpl(
         .build()
   }
 
+  // The link state itself: which orgs are linked and under which installation. Surfaced on its own
+  // so it reads as linked even before the first repo sync has populated the repos table.
+  override suspend fun listLinkedOrgs(request: ListLinkedOrgsRequest): ListLinkedOrgsResponse =
+      ListLinkedOrgsResponse.newBuilder()
+          .addAllOrgs(
+              linkedOrgStore.list().map { org ->
+                LinkedOrgProto.newBuilder()
+                    .setOrgLogin(org.orgLogin)
+                    .setInstallationId(org.installationId)
+                    .build()
+              }
+          )
+          .build()
+
   // Steady-state read straight from the synced repos table: active repos across every linked org,
-  // no live GitHub call. Works even with the GitHub App unconfigured.
+  // no live GitHub call.
   override suspend fun listRepositories(
       request: ListRepositoriesRequest
   ): ListRepositoriesResponse =

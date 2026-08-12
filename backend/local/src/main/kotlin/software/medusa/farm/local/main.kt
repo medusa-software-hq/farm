@@ -10,11 +10,9 @@ import software.medusa.farm.github.GhProperAppApiClient
 import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.server.GitHubOrgService
 import software.medusa.farm.server.NoOpAuthDecorator
-import software.medusa.farm.server.TemporalFibonacciStarter
 import software.medusa.farm.server.TemporalRepoSyncStarter
 import software.medusa.farm.server.buildServer
 import software.medusa.farm.shared.FarmStore
-import software.medusa.farm.shared.InMemoryFibonacciStore
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
@@ -46,7 +44,6 @@ private class DevGitHubApp(
 fun main() {
   val farmStore =
       FarmStore(
-          InMemoryFibonacciStore(),
           InMemoryLinkedOrgStore(),
           InMemoryRepoStore(Clock.systemUTC()),
       )
@@ -57,7 +54,6 @@ fun main() {
           address = localTemporalAddress,
           namespace = localTemporalNamespace,
           authConfig = WorkflowServiceAuthConfig.Local,
-          fibonacciStore = farmStore.fibonacci,
           repoStore = farmStore.repo,
           linkedOrgStore = farmStore.linkedOrg,
           gitHubClientProvider = devGitHubApp.clientProvider,
@@ -69,12 +65,6 @@ fun main() {
           port = localPort,
           auth = NoOpAuthDecorator,
           farmStore = farmStore,
-          fibonacciStarter =
-              TemporalFibonacciStarter(
-                  localTemporalAddress,
-                  localTemporalNamespace,
-                  WorkflowServiceAuthConfig.Local,
-              ),
           gitHubOrgs =
               GitHubOrgService(
                   devGitHubApp.appApiClient,

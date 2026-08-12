@@ -1,6 +1,6 @@
 import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
-import { Box, Button, Group, NumberInput, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Box, Button, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import heroImg from './assets/hero.png';
 import reactLogo from './assets/react.svg';
@@ -32,10 +32,7 @@ const socialLinks = [
 function AppContent({ token }: { token: string }) {
   const { handleUnauthorized } = useAuth();
   const [error, setError] = useState<string | null>(null);
-  const [fibonacci, setFibonacci] = useState<{ index: number; value: string }[]>([]);
-  const [through, setThrough] = useState<number>(20);
-  const [computing, setComputing] = useState(false);
-  const [computeError, setComputeError] = useState<string | null>(null);
+  const [linkedOrgs, setLinkedOrgs] = useState<{ orgLogin: string; installationId: bigint }[]>([]);
   const [repositories, setRepositories] = useState<{ orgLogin: string; fullName: string }[]>([]);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
@@ -52,15 +49,21 @@ function AppContent({ token }: { token: string }) {
     [handleUnauthorized]
   );
 
-  // The worker computes Fibonacci numbers into the database out of band; poll so the list fills in.
+  // The org-link state: which GitHub orgs are linked to the Farm app. Reads as linked before any
+  // repo has synced, so a fresh link shows up here even while Repositories is still empty.
   useEffect(() => {
     let cancelled = false;
 
-    async function loadFibonacci() {
+    async function loadLinkedOrgs() {
       try {
-        const response = await client.listFibonacci({}, { headers });
+        const response = await client.listLinkedOrgs({}, { headers });
         if (!cancelled) {
-          setFibonacci(response.numbers.map((n) => ({ index: n.index, value: n.value })));
+          setLinkedOrgs(
+            response.orgs.map((o) => ({
+              orgLogin: o.orgLogin,
+              installationId: o.installationId,
+            }))
+          );
         }
       } catch (err: unknown) {
         if (!cancelled) {
@@ -69,11 +72,9 @@ function AppContent({ token }: { token: string }) {
       }
     }
 
-    void loadFibonacci();
-    const interval = setInterval(() => void loadFibonacci(), 2000);
+    void loadLinkedOrgs();
     return () => {
       cancelled = true;
-      clearInterval(interval);
     };
   }, [headers, handleError]);
 
@@ -106,20 +107,6 @@ function AppContent({ token }: { token: string }) {
     };
   }, [headers]);
 
-  // Kicks off the Temporal workflow; the poll above then fills the list in as the worker persists.
-  async function startFibonacci() {
-    setComputing(true);
-    setComputeError(null);
-    try {
-      await client.startFibonacci({ through }, { headers });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      setComputeError(message);
-    } finally {
-      setComputing(false);
-    }
-  }
-
   return (
     <>
       <Box className={classes.center}>
@@ -136,43 +123,22 @@ function AppContent({ token }: { token: string }) {
       </Box>
 
       <Stack align="center" gap="xs" mt="xl" mb="xl">
-        <Title order={2}>Fibonacci</Title>
+        <Title order={2}>Organizations</Title>
         <Text c="dimmed" size="sm">
-          Computed by the worker, stored in the database.
+          Linked to the Farm GitHub App.
         </Text>
-        <Group justify="center" gap="xs" align="flex-end">
-          <NumberInput
-            aria-label="Compute through index"
-            value={through}
-            onChange={(value) => setThrough(typeof value === 'number' ? value : 0)}
-            min={0}
-            max={100}
-            allowDecimal={false}
-            w={120}
-          />
-          <Button
-            variant="light"
-            size="sm"
-            loading={computing}
-            onClick={() => void startFibonacci()}
-          >
-            Compute
-          </Button>
-        </Group>
-        {computeError !== null && (
-          <Text c="red" size="sm">
-            Failed to start the computation: {computeError}
-          </Text>
-        )}
-        {fibonacci.length === 0 ? (
+        {linkedOrgs.length === 0 ? (
           <Text c="dimmed" size="sm">
-            No numbers yet…
+            No organizations linked yet…
           </Text>
         ) : (
           <Stack gap={2} align="center">
-            {fibonacci.map((n) => (
-              <Text key={n.index} size="sm" ff="monospace">
-                F({n.index}) = {n.value}
+            {linkedOrgs.map((o) => (
+              <Text key={o.orgLogin} size="sm" ff="monospace">
+                {o.orgLogin}{' '}
+                <Text span c="dimmed">
+                  (installation {o.installationId.toString()})
+                </Text>
               </Text>
             ))}
           </Stack>

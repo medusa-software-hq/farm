@@ -13,7 +13,7 @@ locals {
   shared_project_id = data.terraform_remote_state.shared.outputs.shared_project_id
 }
 
-# Each environment's API service account (which starts Fibonacci workflows) needs read access to the
+# Each environment's API service account (which starts repo-sync workflows) needs read access to the
 # worker key. Its email is published by that env's backend/api/foundation root. Those two states share
 # one gcs prefix and are separated by workspace: prod is the default workspace (default.tfstate),
 # staging is the "staging" workspace (staging.tfstate). Reading them here keeps the grant's members
