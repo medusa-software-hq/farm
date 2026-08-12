@@ -13,23 +13,23 @@ plugins {
 // blocking gRPC stub from the same contract the server implements.
 sourceSets { main { proto { srcDir(rootDir.resolve("proto")) } } }
 
-// The per-environment backend host + OAuth client id are generated from the resolved cache in
-// infra/environments — the single source shared with Terraform — so the CLI can't drift from the
+// The per-environment backend host + OAuth client id are generated from the resolved config in
+// infra/config — the single source shared with Terraform — so the CLI can't drift from the
 // deployed environments (the bug this replaced: hardcoded ids from a different project). Nothing is
-// committed; it regenerates whenever the cache changes.
-val environmentsCacheFile = rootDir.resolve("infra/environments/environments.cache.json")
+// committed; it regenerates whenever the config changes.
+val environmentsConfigFile = rootDir.resolve("infra/config/config.json")
 val generatedEnvironmentsDir = layout.buildDirectory.dir("generated/environments/kotlin")
 
 val generateEnvironments by tasks.registering {
-  inputs.file(environmentsCacheFile)
+  inputs.file(environmentsConfigFile)
   outputs.dir(generatedEnvironmentsDir)
   doLast {
     @Suppress("UNCHECKED_CAST")
     val cache =
-        groovy.json.JsonSlurper().parse(environmentsCacheFile) as Map<String, Map<String, Any?>>
+        groovy.json.JsonSlurper().parse(environmentsConfigFile) as Map<String, Map<String, Any?>>
 
     fun value(env: String, key: String): String =
-        cache[env]?.get(key)?.toString() ?: error("environments.cache.json is missing $env.$key")
+        cache[env]?.get(key)?.toString() ?: error("config.json is missing $env.$key")
 
     fun block(property: String, env: String): String =
         """
@@ -42,7 +42,7 @@ val generateEnvironments by tasks.registering {
             .trimMargin()
 
     val content = buildString {
-      appendLine("// Generated from infra/environments/environments.cache.json — do not edit.")
+      appendLine("// Generated from infra/config/config.json — do not edit.")
       appendLine("package software.medusa.farm.cli.config")
       appendLine()
       appendLine("internal object GeneratedEnvironments {")
@@ -108,7 +108,7 @@ application {
 // to
 // its `oauthClientSecretEnvVar`, so dev builds still work. Backend hosts + client ids are NOT baked
 // —
-// they're public values generated from the environments cache. Neither secret is ever committed.
+// they're public values generated from the config. Neither secret is ever committed.
 val cliBuildConfigDir = layout.buildDirectory.dir("generated/cliBuildConfig")
 
 val generateCliBuildConfig by tasks.registering {

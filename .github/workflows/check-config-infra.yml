@@ -1,4 +1,4 @@
-name: Check environments config
+name: Check config
 
 on:
   workflow_call:
@@ -30,18 +30,18 @@ jobs:
       - uses: terraform-linters/setup-tflint@v6.2.2
 
       - name: Check formatting
-        working-directory: infra/environments
+        working-directory: infra/config
         run: terraform fmt -check -recursive
 
       - name: Lint Terraform configuration
-        working-directory: infra/environments
+        working-directory: infra/config
         run: tflint --recursive
 
       # No cloud auth: this root is pure locals plus a builtin resource. The plan
       # runs the drift guard, failing the PR when the committed cache disagrees
       # with what the input derives.
       - name: Check cache is not stale
-        working-directory: infra/environments
+        working-directory: infra/config
         run: |
           terraform init -backend=false
           terraform validate

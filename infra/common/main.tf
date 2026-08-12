@@ -38,12 +38,12 @@ locals {
   }
   selected_environment = local.environment_config[local.environment]
 
-  # Per-environment OAuth client ids come from the resolved cache in
-  # infra/environments — the one place they're defined, shared with the CLI so
-  # the two can't drift (its guard aborts the plan on a stale cache). `path.module`
+  # Per-environment OAuth client ids come from the resolved config in
+  # infra/config — the one place they're defined, shared with the CLI so
+  # the two can't drift (its guard aborts the plan on a stale file). `path.module`
   # keeps this relative to infra/common regardless of which root imports it.
-  environments_cache  = jsondecode(file("${path.module}/../environments/environments.cache.json"))
-  selected_env_config = local.environments_cache[local.environment]
+  config              = jsondecode(file("${path.module}/../config/config.json"))
+  selected_env_config = local.config[local.environment]
 
   organization_domain = "medusa.software"
 

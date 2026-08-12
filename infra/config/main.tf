@@ -7,7 +7,7 @@ locals {
   # suffix, GitHub Environment name) plus the shared project/variant/domain they
   # combine into derived values. The single source of truth for values that must
   # stay identical between Terraform and the CLI.
-  input = jsondecode(file("${path.module}/environments.input.json"))
+  input = jsondecode(file("${path.module}/config.input.json"))
 
   # The fully resolved per-environment bundle: every input field plus the API
   # host, derived from project/variant/suffix/domain exactly as the deployed
@@ -20,7 +20,7 @@ locals {
 
   # The committed copy of `derived` that non-Terraform consumers read. Kept
   # honest by the guard below.
-  cache = jsondecode(file("${path.module}/environments.cache.json"))
+  cache = jsondecode(file("${path.module}/config.json"))
 }
 
 # The guard: two representations of the same bundle must agree, or the plan
@@ -33,7 +33,7 @@ resource "terraform_data" "cache_guard" {
   lifecycle {
     precondition {
       condition     = local.derived == local.cache
-      error_message = "environments.cache.json is stale — regenerate it with `task environments:regenerate`."
+      error_message = "config.json is stale — regenerate it with `task config:regenerate`."
     }
   }
 }

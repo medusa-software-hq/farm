@@ -15,9 +15,9 @@ jobs:
     name: Infra (root)
     uses: ./.github/workflows/check-infra.yml
 
-  check-environments-infra:
-    name: Environments (config)
-    uses: ./.github/workflows/check-environments-infra.yml
+  check-config-infra:
+    name: Config
+    uses: ./.github/workflows/check-config-infra.yml
 
   check-web-app-infra:
     name: Web app (infra)

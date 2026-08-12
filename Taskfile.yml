@@ -5,9 +5,9 @@ includes:
     taskfile: infra/Taskfile.yml
     dir: infra
 
-  environments:
-    taskfile: infra/environments/Taskfile.yml
-    dir: infra/environments
+  config:
+    taskfile: infra/config/Taskfile.yml
+    dir: infra/config
 
   web:app:
     taskfile: web-app/Taskfile.yml
@@ -66,7 +66,7 @@ tasks:
     deps:
       - github-ci:lint
       - infra:checkFormatting
-      - environments:checkFormatting
+      - config:checkFormatting
       - web:app:checkFormatting
       - web:infra:checkFormatting
       - web:domain-mapping:checkFormatting
@@ -80,7 +80,7 @@ tasks:
     deps:
       - github-ci:fixLint
       - infra:fixFormatting
-      - environments:fixFormatting
+      - config:fixFormatting
       - web:app:fixFormatting
       - web:infra:fixFormatting
       - web:domain-mapping:fixFormatting
@@ -94,7 +94,7 @@ tasks:
     deps:
       - github-ci:lint
       - infra:lint
-      - environments:lint
+      - config:lint
       - web:app:lint
       - web:infra:lint
       - web:domain-mapping:lint
@@ -106,7 +106,7 @@ tasks:
   analyze-all:
     desc: Analyze the entire codebase
     deps:
-      - environments:check
+      - config:check
       - infra:validate
       - web:app:analyze
       - web:infra:validate
