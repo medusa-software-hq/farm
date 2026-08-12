@@ -81,7 +81,10 @@ class TemporalWorkerHost(
                 ScheduleActionStartWorkflow.newBuilder()
                     .setWorkflowType(SyncAllReposWorkflow::class.java)
                     .setOptions(
-                        WorkflowOptions.newBuilder().setTaskQueue(FarmWorker.TASK_QUEUE).build()
+                        WorkflowOptions.newBuilder()
+                            .setWorkflowId(SYNC_ALL_REPOS_WORKFLOW_ID)
+                            .setTaskQueue(FarmWorker.TASK_QUEUE)
+                            .build()
                     )
                     .build()
             )
@@ -104,6 +107,9 @@ class TemporalWorkerHost(
 
   companion object {
     private const val REPO_SYNC_ALL_SCHEDULE_ID = "repo-sync-all"
+
+    // The scheduled sweep's base workflow id; Temporal appends each run's nominal time.
+    private const val SYNC_ALL_REPOS_WORKFLOW_ID = "sync-all-repos"
 
     // How often the sweep fires. One hour backstops the on-link sync without hammering GitHub; bump
     // it here to change the cadence.
