@@ -25,11 +25,14 @@ val generateEnvironments by tasks.registering {
   outputs.dir(generatedEnvironmentsDir)
   doLast {
     @Suppress("UNCHECKED_CAST")
-    val cache =
-        groovy.json.JsonSlurper().parse(environmentsConfigFile) as Map<String, Map<String, Any?>>
+    val config = groovy.json.JsonSlurper().parse(environmentsConfigFile) as Map<String, Any?>
+
+    @Suppress("UNCHECKED_CAST")
+    val environments = config["environments"] as Map<String, Map<String, Any?>>
 
     fun value(env: String, key: String): String =
-        cache[env]?.get(key)?.toString() ?: error("config.json is missing $env.$key")
+        environments[env]?.get(key)?.toString()
+            ?: error("config.json is missing environments.$env.$key")
 
     fun block(property: String, env: String): String =
         """

@@ -43,7 +43,7 @@ locals {
   # the two can't drift (its guard aborts the plan on a stale file). `path.module`
   # keeps this relative to infra/common regardless of which root imports it.
   config              = jsondecode(file("${path.module}/../config/config.json"))
-  selected_env_config = local.config[local.environment]
+  selected_env_config = local.config.environments[local.environment]
 
   organization_domain = "medusa.software"
 
@@ -100,6 +100,11 @@ locals {
   # Google OAuth 2.0 Desktop client ID — per environment; the CLI's audience and
   # the client it signs in with (loopback + PKCE).
   google_cli_client_id = local.selected_env_config.cli_client_id
+
+  # GitHub App client id — per environment (from the shared config). The public
+  # half of the App this environment's API and worker authenticate as; injected
+  # into the API's Cloud Run env.
+  github_app_client_id = local.selected_env_config.github_app_client_id
 }
 
 output "organization_domain" {
@@ -172,6 +177,10 @@ output "google_web_client_id" {
 
 output "google_cli_client_id" {
   value = local.google_cli_client_id
+}
+
+output "github_app_client_id" {
+  value = local.github_app_client_id
 }
 
 output "gh_releases_repo_name" {
