@@ -15,6 +15,7 @@ fun runTemporalWorker(config: WorkerConfig) {
           config.temporalAuth,
           store.repo,
           store.issue,
+          store.session,
           store.linkedOrg,
           gitHubClientProvider(config.gitHubApp),
       )

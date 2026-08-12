@@ -55,6 +55,8 @@ message Issue {
   string repo_full_name = 1;
   int32 number = 2;
   string title = 3;
+  // Latest processing session state: "", "RUNNING", or "COMPLETED".
+  string session_state = 4;
 }
 
 message SyncRepositoriesRequest {}

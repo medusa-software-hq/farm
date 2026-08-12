@@ -14,6 +14,7 @@ class FarmStore(
     val linkedOrg: LinkedOrgStore,
     val repo: RepoStore,
     val issue: IssueStore,
+    val session: SessionStore,
 ) {
   companion object {
     /** Builds the [FarmStore], applying runtime database schema migrations. */
@@ -32,6 +33,7 @@ class FarmStore(
           PostgresLinkedOrgStore(database),
           PostgresRepoStore(database),
           PostgresIssueStore(database),
+          PostgresSessionStore(database),
       )
     }
 

@@ -3,6 +3,7 @@ package software.medusa.farm.worker
 import io.temporal.api.enums.v1.WorkflowIdConflictPolicy
 import io.temporal.api.enums.v1.WorkflowIdReusePolicy
 import io.temporal.client.WorkflowClient
+import io.temporal.client.WorkflowExecutionAlreadyStarted
 import io.temporal.client.WorkflowOptions
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
@@ -14,8 +15,10 @@ import software.medusa.farm.shared.FetchedIssue
 import software.medusa.farm.shared.FetchedRepo
 import software.medusa.farm.shared.IssueStore
 import software.medusa.farm.shared.LinkedOrgStore
+import software.medusa.farm.shared.ProcessIssueWorkflow
 import software.medusa.farm.shared.RepoStore
 import software.medusa.farm.shared.RepoSyncWorkflow
+import software.medusa.farm.shared.processIssueWorkflowId
 import software.medusa.farm.shared.repoSyncWorkflowId
 
 /** Runs the fetch against GitHub and the reconcile against the store on the activity thread. */
@@ -95,5 +98,29 @@ class RepoSyncActivitiesImpl(
     // Fire-and-forget: start (or attach to a running sync via USE_EXISTING) and return; the sweep
     // does not await the sync itself.
     WorkflowClient.start(stub::sync, installationId)
+  }
+
+  override fun startIssueProcessing(
+      installationId: Long,
+      githubRepoId: Long,
+      repoFullName: String,
+      number: Int,
+  ) {
+    val stub =
+        workflowClient.newWorkflowStub(
+            ProcessIssueWorkflow::class.java,
+            WorkflowOptions.newBuilder()
+                .setTaskQueue(FarmWorker.TASK_QUEUE)
+                .setWorkflowId(processIssueWorkflowId(githubRepoId, number))
+                .setWorkflowIdReusePolicy(
+                    WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE
+                )
+                .build(),
+        )
+    try {
+      WorkflowClient.start(stub::process, installationId, githubRepoId, repoFullName, number)
+    } catch (ignored: WorkflowExecutionAlreadyStarted) {
+      // Already processed (or in flight): process each issue once. Nothing to do.
+    }
   }
 }

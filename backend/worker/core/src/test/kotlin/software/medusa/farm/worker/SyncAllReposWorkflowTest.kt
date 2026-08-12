@@ -52,6 +52,13 @@ class SyncAllReposWorkflowTest {
         issues: List<FetchedIssue>,
         syncStartedAtEpochMillis: Long,
     ) = error("not exercised by the sweep")
+
+    override fun startIssueProcessing(
+        installationId: Long,
+        githubRepoId: Long,
+        repoFullName: String,
+        number: Int,
+    ) = error("not exercised by the sweep")
   }
 
   private val env =

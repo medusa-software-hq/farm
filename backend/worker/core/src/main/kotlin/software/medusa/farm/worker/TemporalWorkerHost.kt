@@ -20,6 +20,7 @@ import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.IssueStore
 import software.medusa.farm.shared.LinkedOrgStore
 import software.medusa.farm.shared.RepoStore
+import software.medusa.farm.shared.SessionStore
 import software.medusa.farm.shared.SyncAllReposWorkflow
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 import software.medusa.farm.shared.syncAllReposWorkflowId
@@ -31,6 +32,7 @@ class TemporalWorkerHost(
     authConfig: WorkflowServiceAuthConfig,
     repoStore: RepoStore,
     issueStore: IssueStore,
+    sessionStore: SessionStore,
     linkedOrgStore: LinkedOrgStore,
     gitHubClientProvider: GhInstallationApiClientProvider,
 ) {
@@ -54,9 +56,11 @@ class TemporalWorkerHost(
     worker.registerWorkflowImplementationTypes(
         RepoSyncWorkflowImpl::class.java,
         SyncAllReposWorkflowImpl::class.java,
+        ProcessIssueWorkflowImpl::class.java,
     )
     worker.registerActivitiesImplementations(
-        RepoSyncActivitiesImpl(gitHubClientProvider, repoStore, issueStore, linkedOrgStore, client)
+        RepoSyncActivitiesImpl(gitHubClientProvider, repoStore, issueStore, linkedOrgStore, client),
+        ProcessIssueActivitiesImpl(gitHubClientProvider, sessionStore),
     )
     ensureRepoSyncSchedule(service, namespace)
   }

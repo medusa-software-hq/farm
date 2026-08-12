@@ -46,6 +46,7 @@ fun buildServer(
                     farmStore.linkedOrg,
                     farmStore.repo,
                     farmStore.issue,
+                    farmStore.session,
                     gitHubOrgs,
                     syncAllStarter,
                 )

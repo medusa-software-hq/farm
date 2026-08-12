@@ -12,7 +12,10 @@ class IssuesCommand : ManagementCommand(name = "issues") {
     if (issues.isEmpty()) {
       echo("No issues synced.")
     } else {
-      issues.forEach { echo("${it.repoFullName}#${it.number}  ${it.title}") }
+      issues.forEach {
+        val state = if (it.sessionState.isEmpty()) "" else " [${it.sessionState.lowercase()}]"
+        echo("${it.repoFullName}#${it.number}$state  ${it.title}")
+      }
     }
   }
 }
