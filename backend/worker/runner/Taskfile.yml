@@ -30,10 +30,11 @@ tasks:
       - ../../../gradlew :backend:worker:runner:compileKotlin
 
   install:
+    # No Task-level `sources`/`generates` fingerprint: it can only see this module's files, so a
+    # change in a dependency module (worker:core, backend:shared) wouldn't invalidate it and the
+    # installed binary would silently go stale. Always invoke Gradle and let its cross-module
+    # up-to-date check decide whether to actually rebuild.
     desc: Install the runner locally (build/install/runner/bin/runner)
-    sources: *kotlinSources
-    generates:
-      - ./build/install/runner/bin/runner
     cmds:
       - ../../../gradlew :backend:worker:runner:installDist
 
