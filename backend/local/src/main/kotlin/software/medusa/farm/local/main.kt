@@ -59,7 +59,13 @@ fun main() {
           authConfig = WorkflowServiceAuthConfig.Local,
           fibonacciStore = farmStore.fibonacci,
           repoStore = farmStore.repo,
+          linkedOrgStore = farmStore.linkedOrg,
           gitHubClientProvider = devGitHubApp.clientProvider,
+          // Skip the periodic sweep locally: the Temporal dev server is ephemeral (reset every
+          // `task dev`) and local testing drives the on-link sync directly, so an hourly schedule
+          // would just be noise. The sweep is covered by SyncAllReposWorkflowTest and in deployed
+          // envs.
+          installRepoSyncSchedule = false,
       )
       .start()
 
