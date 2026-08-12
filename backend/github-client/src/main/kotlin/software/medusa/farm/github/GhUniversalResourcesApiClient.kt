@@ -6,7 +6,11 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 private const val httpOk = 200
-private const val issuesPageSize = 5
+
+// One page of open issues. The soft-orphan reconcile treats the fetched set as complete, so this
+// must cover a repo's open issues; 100 is GitHub's max page size and ample at current scale. A repo
+// with more open issues would need Link-header pagination (see GhHttp.getPaged).
+private const val issuesPageSize = 100
 
 /**
  * The resource surface over whatever bearer token [tokenProvider] yields. Works the same whether
@@ -19,8 +23,7 @@ class GhUniversalResourcesApiClient(
 ) : GhResourcesApiClient {
   private val http = GhHttp(baseUrl, httpClient)
 
-  // Bounded to a handful of recent issues; the demo call is per-repo, so this is deliberately
-  // small.
+  // One repo's open issues, feeding the per-repo sync reconcile (see [issuesPageSize]).
   override suspend fun listIssues(repo: GhRepoFullName): List<GhIssue> {
     val response =
         http.get(

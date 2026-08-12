@@ -11,6 +11,7 @@ import software.medusa.farm.cli.auth.IdTokenProvider
 import software.medusa.farm.v1.FarmServiceGrpc
 import software.medusa.farm.v1.FarmServiceGrpc.FarmServiceBlockingStub
 import software.medusa.farm.v1.LinkOrgRequest
+import software.medusa.farm.v1.ListIssuesRequest
 import software.medusa.farm.v1.ListLinkedOrgsRequest
 import software.medusa.farm.v1.SyncRepositoriesRequest
 
@@ -34,6 +35,11 @@ class FarmApiClient(endpoint: ApiEndpoint, idTokenProvider: IdTokenProvider) : A
   fun listLinkedOrgs(): List<LinkedOrgResult> = call {
     val response = stub.listLinkedOrgs(ListLinkedOrgsRequest.getDefaultInstance())
     response.orgsList.map { LinkedOrgResult(it.orgLogin, it.installationId) }
+  }
+
+  fun listIssues(): List<IssueResult> = call {
+    val response = stub.listIssues(ListIssuesRequest.getDefaultInstance())
+    response.issuesList.map { IssueResult(it.repoFullName, it.number, it.title) }
   }
 
   fun syncRepositories() = call {

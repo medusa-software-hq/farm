@@ -11,9 +11,12 @@ import software.medusa.farm.github.GhAppApiClient
 import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhOrgLogin
 import software.medusa.farm.github.MintedGhInstallationToken
+import software.medusa.farm.shared.FetchedIssue
 import software.medusa.farm.shared.FetchedRepo
+import software.medusa.farm.shared.InMemoryIssueStore
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
+import software.medusa.farm.v1.ListIssuesRequest
 import software.medusa.farm.v1.ListLinkedOrgsRequest
 import software.medusa.farm.v1.ListRepositoriesRequest
 import software.medusa.farm.v1.SyncRepositoriesRequest
@@ -57,12 +60,14 @@ class FarmServiceRepositoriesTest {
   private val clock = MutableClock(Instant.parse("2020-01-01T00:00:00Z"))
   private val linkedOrgs = InMemoryLinkedOrgStore()
   private val repos = InMemoryRepoStore(clock)
+  private val issues = InMemoryIssueStore(clock)
   private val syncAll = RecordingSyncAllStarter()
 
   private val service =
       FarmServiceImpl(
           linkedOrgs,
           repos,
+          issues,
           GitHubOrgService(UnusedAppApiClient, linkedOrgs, UnusedRepoSyncStarter),
           syncAll,
       )
@@ -81,6 +86,26 @@ class FarmServiceRepositoriesTest {
   fun `SyncRepositories starts the sweep`() = runBlocking {
     service.syncRepositories(SyncRepositoriesRequest.getDefaultInstance())
     assertEquals(1, syncAll.started)
+  }
+
+  // ListIssues serves the synced issues of every linked org, tagged with their repo's full name.
+  @Test
+  fun `ListIssues reports active issues across linked orgs`() = runBlocking {
+    linkedOrgs.link(100L, "acme")
+    issues.reconcile(
+        installationId = 100L,
+        githubRepoId = 1L,
+        repoFullName = "acme/one",
+        fetched = listOf(FetchedIssue(7, "Fix the thing"), FetchedIssue(9, "Docs")),
+        syncStartedAt = clock.current,
+    )
+
+    val response = service.listIssues(ListIssuesRequest.getDefaultInstance())
+
+    assertEquals(
+        setOf("acme/one" to 7, "acme/one" to 9),
+        response.issuesList.map { it.repoFullName to it.number }.toSet(),
+    )
   }
 
   // The link state surfaces on its own — an org reads as linked before any repo has synced.

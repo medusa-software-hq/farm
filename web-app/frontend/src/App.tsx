@@ -34,6 +34,9 @@ function AppContent({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
   const [linkedOrgs, setLinkedOrgs] = useState<{ orgLogin: string; installationId: bigint }[]>([]);
   const [repositories, setRepositories] = useState<{ orgLogin: string; fullName: string }[]>([]);
+  const [issues, setIssues] = useState<{ repoFullName: string; number: number; title: string }[]>(
+    []
+  );
   const [syncing, setSyncing] = useState(false);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
@@ -82,6 +85,23 @@ function AppContent({ token }: { token: string }) {
     }
   }, [headers]);
 
+  // The open issues Farm has synced across every linked org's repos. Same quiet-empty degrade as
+  // repositories — it fills in once a sync lands.
+  const loadIssues = useCallback(async () => {
+    try {
+      const response = await client.listIssues({}, { headers });
+      setIssues(
+        response.issues.map((i) => ({
+          repoFullName: i.repoFullName,
+          number: i.number,
+          title: i.title,
+        }))
+      );
+    } catch {
+      setIssues([]);
+    }
+  }, [headers]);
+
   useEffect(() => {
     void loadLinkedOrgs();
   }, [loadLinkedOrgs]);
@@ -89,6 +109,10 @@ function AppContent({ token }: { token: string }) {
   useEffect(() => {
     void loadRepositories();
   }, [loadRepositories]);
+
+  useEffect(() => {
+    void loadIssues();
+  }, [loadIssues]);
 
   // Triggers the all-orgs sweep, then — after a short beat for the worker to run — refreshes the
   // lists. The sweep is async, so this single refresh is best-effort: a slow sync surfaces on the
@@ -104,9 +128,9 @@ function AppContent({ token }: { token: string }) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 2000));
-    await Promise.all([loadRepositories(), loadLinkedOrgs()]);
+    await Promise.all([loadRepositories(), loadLinkedOrgs(), loadIssues()]);
     setSyncing(false);
-  }, [headers, handleError, loadRepositories, loadLinkedOrgs]);
+  }, [headers, handleError, loadRepositories, loadLinkedOrgs, loadIssues]);
 
   return (
     <>
@@ -175,6 +199,29 @@ function AppContent({ token }: { token: string }) {
                   </Text>
                 </Text>
               </Stack>
+            ))}
+          </Stack>
+        )}
+      </Stack>
+
+      <Stack align="center" gap="xs" mt="xl" mb="xl">
+        <Title order={2}>Issues</Title>
+        <Text c="dimmed" size="sm">
+          Open issues synced from the linked repos.
+        </Text>
+        {issues.length === 0 ? (
+          <Text c="dimmed" size="sm">
+            No issues yet…
+          </Text>
+        ) : (
+          <Stack gap={2} align="center">
+            {issues.map((i) => (
+              <Text key={`${i.repoFullName}#${i.number}`} size="sm" ff="monospace">
+                <Text span c="dimmed">
+                  {i.repoFullName}#{i.number}
+                </Text>{' '}
+                {i.title}
+              </Text>
             ))}
           </Stack>
         )}

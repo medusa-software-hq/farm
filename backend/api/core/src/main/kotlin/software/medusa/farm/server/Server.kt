@@ -45,6 +45,7 @@ fun buildServer(
                 FarmServiceImpl(
                     farmStore.linkedOrg,
                     farmStore.repo,
+                    farmStore.issue,
                     gitHubOrgs,
                     syncAllStarter,
                 )
