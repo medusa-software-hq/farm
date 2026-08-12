@@ -2,11 +2,16 @@ plugins { alias(libs.plugins.kotlin.jvm) }
 
 dependencies {
   implementation(project(":backend:shared"))
+  implementation(project(":backend:github-client"))
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.temporal.sdk)
+  // Lets Temporal's Jackson converter (de)serialize the Kotlin types crossing the activity
+  // boundary.
+  implementation(libs.jackson.module.kotlin)
 
   testImplementation(libs.kotlin.test)
   testImplementation(libs.temporal.testing)
+  testImplementation(testFixtures(project(":backend:github-client")))
 }
 
 kotlin { jvmToolchain(21) }

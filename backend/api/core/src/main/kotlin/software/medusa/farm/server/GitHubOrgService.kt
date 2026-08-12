@@ -1,37 +1,28 @@
 package software.medusa.farm.server
 
 import software.medusa.farm.github.GhAppApiClient
-import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhOrgLogin
 import software.medusa.farm.shared.LinkedOrgStore
 
 /**
- * Farm's GitHub App collaborator: the App client, the per-installation client provider, and the
- * linked-org store as one unit, with the org-linking and repository-listing orchestration over
- * them. An org's installation id is resolved exactly once, at link time; every later read keys the
- * provider off the stored id, so steady state never touches the App-management endpoints.
+ * Farm's GitHub App collaborator for org linking: resolves an org's installation id once, at link
+ * time, remembers it, then triggers a background sync of that installation's repos into the
+ * Farm-owned repos table. The repo fetch itself lives in the worker (see the worker module's
+ * repo-sync activity), so steady-state reads never touch GitHub — they read the synced table.
  */
 class GitHubOrgService(
     private val appApiClient: GhAppApiClient,
-    private val clientProvider: GhInstallationApiClientProvider,
     private val linkedOrgStore: LinkedOrgStore,
+    private val repoSyncStarter: RepoSyncStarter,
 ) {
-  suspend fun linkOrg(orgLogin: GhOrgLogin): OrgLink {
+  /** Resolves and stores the org's installation, kicks off its repo sync, and returns the id. */
+  suspend fun linkOrg(orgLogin: GhOrgLogin): GhInstallationId {
     val installationId = appApiClient.resolveInstallationId(orgLogin)
     linkedOrgStore.link(installationId.value, orgLogin.value)
-    val repositories =
-        clientProvider.provideForInstallation(installationId).listInstallationRepositories()
-    return OrgLink(installationId, repositories)
+    // Best-effort: the starter swallows a Temporal/worker outage, so a down worker never fails the
+    // link. The org is already stored; the next sync will populate its repos.
+    repoSyncStarter.start(installationId.value)
+    return installationId
   }
-
-  // N+1: one issue call per repository. Fine at demo scale, where each org has a handful of repos
-  // and each issue call is bounded to a few recent issues.
-  suspend fun listRepositories(): List<OrgRepository> =
-      linkedOrgStore.list().flatMap { org ->
-        val client = clientProvider.provideForInstallation(GhInstallationId(org.installationId))
-        client.listInstallationRepositories().map { repo ->
-          OrgRepository(GhOrgLogin(org.orgLogin), repo, client.listIssues(repo))
-        }
-      }
 }

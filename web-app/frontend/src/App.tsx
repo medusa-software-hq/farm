@@ -36,9 +36,7 @@ function AppContent({ token }: { token: string }) {
   const [through, setThrough] = useState<number>(20);
   const [computing, setComputing] = useState(false);
   const [computeError, setComputeError] = useState<string | null>(null);
-  const [repositories, setRepositories] = useState<
-    { orgLogin: string; fullName: string; recentIssues: { number: number; title: string }[] }[]
-  >([]);
+  const [repositories, setRepositories] = useState<{ orgLogin: string; fullName: string }[]>([]);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
@@ -92,7 +90,6 @@ function AppContent({ token }: { token: string }) {
             response.repositories.map((r) => ({
               orgLogin: r.orgLogin,
               fullName: r.fullName,
-              recentIssues: r.recentIssues.map((i) => ({ number: i.number, title: i.title })),
             }))
           );
         }
@@ -201,11 +198,6 @@ function AppContent({ token }: { token: string }) {
                     ({r.orgLogin})
                   </Text>
                 </Text>
-                {r.recentIssues.map((i) => (
-                  <Text key={i.number} size="xs" c="dimmed">
-                    #{i.number} {i.title}
-                  </Text>
-                ))}
               </Stack>
             ))}
           </Stack>

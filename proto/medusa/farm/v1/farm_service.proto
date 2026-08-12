@@ -50,10 +50,4 @@ message ListRepositoriesResponse {
 message Repository {
   string org_login = 1;
   string full_name = 2;
-  repeated Issue recent_issues = 3;
-}
-
-message Issue {
-  int32 number = 1;
-  string title = 2;
 }

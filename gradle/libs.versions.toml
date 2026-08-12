@@ -6,6 +6,7 @@ google-cloud-bom = "26.83.0"
 grpc = "1.80.0"
 grpc-kotlin = "1.5.0"
 hikari = "7.0.2"
+jackson = "2.19.1"
 jib = "3.5.3"
 kotlin = "2.3.20"
 kotlin-coroutines = "1.10.2"
@@ -38,6 +39,7 @@ grpc-okhttp = { module = "io.grpc:grpc-okhttp", version.ref = "grpc" }
 grpc-protobuf = { module = "io.grpc:grpc-protobuf", version.ref = "grpc" }
 grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
 hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
+jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlin-coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }

@@ -12,6 +12,8 @@ class WorkerConfigTest {
           "TEMPORAL_ADDRESS" to "farm.kr9zt.tmprl.cloud:7233",
           "TEMPORAL_NAMESPACE" to "farm.kr9zt",
           "TEMPORAL_API_KEY" to "secret-key",
+          "GITHUB_APP_CLIENT_ID" to "Iv1.test",
+          "GITHUB_APP_PEM" to "-----BEGIN PRIVATE KEY-----",
       )
 
   @Test
@@ -21,6 +23,8 @@ class WorkerConfigTest {
     assertEquals("farm.kr9zt.tmprl.cloud:7233", config.temporalAddress)
     assertEquals("farm.kr9zt", config.temporalNamespace)
     assertEquals(WorkflowServiceAuthConfig.Cloud("secret-key"), config.temporalAuth)
+    assertEquals("Iv1.test", config.gitHubApp.clientId)
+    assertEquals("-----BEGIN PRIVATE KEY-----", config.gitHubApp.pem)
   }
 
   @Test

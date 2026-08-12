@@ -1,8 +1,6 @@
 package software.medusa.farm.server
 
-import software.medusa.farm.github.GhCachingInstallationApiClientProvider
 import software.medusa.farm.github.GhProperAppApiClient
-import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.shared.BakedConfig
 import software.medusa.farm.shared.FarmStore
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
@@ -44,17 +42,31 @@ fun main() {
       System.getenv(databaseUrlEnvVarName)
           ?: error("$databaseUrlEnvVarName environment variable must be set")
 
-  // Optional: without it the API still starts and only StartFibonacci degrades, so a missing or
-  // rotating Temporal key can never take the service down.
-  val temporalApiKey = System.getenv(temporalApiKeyEnvVarName)
+  // Required (every env configures Temporal): a missing key is a misconfiguration, so fail fast.
+  val temporalApiKey =
+      System.getenv(temporalApiKeyEnvVarName)
+          ?: error("$temporalApiKeyEnvVarName environment variable must be set")
+  val temporalAuth = WorkflowServiceAuthConfig.Cloud(temporalApiKey)
 
-  // Optional, same contract as the Temporal key: absent -> only the GitHub RPCs degrade. Both
-  // halves are required together; the PEM must be unencrypted PKCS#8 (see the github-client
-  // module).
-  val gitHubAppClientId = System.getenv(gitHubAppClientIdEnvVarName)
-  val gitHubAppPem = System.getenv(gitHubAppPemEnvVarName)
+  // Required (every env configures the GitHub App): a missing or half-set pair is a
+  // misconfiguration, so fail fast rather than silently disable GitHub. The PEM must be unencrypted
+  // PKCS#8 (see the github-client module).
+  val gitHubAppClientId =
+      System.getenv(gitHubAppClientIdEnvVarName)
+          ?: error("$gitHubAppClientIdEnvVarName environment variable must be set")
+  val gitHubAppPem =
+      System.getenv(gitHubAppPemEnvVarName)
+          ?: error("$gitHubAppPemEnvVarName environment variable must be set")
 
   val farmStore = FarmStore.buildWithMigrations(databaseUrl)
+
+  // One Temporal auth config drives both starters.
+  val repoSyncStarter =
+      TemporalRepoSyncStarter(
+          BakedConfig.TEMPORAL_ADDRESS,
+          BakedConfig.TEMPORAL_NAMESPACE,
+          temporalAuth,
+      )
 
   buildServer(
           originRegex = corsOriginRegex,
@@ -66,26 +78,17 @@ fun main() {
               ),
           farmStore = farmStore,
           fibonacciStarter =
-              temporalApiKey?.let {
-                TemporalFibonacciStarter(
-                    BakedConfig.TEMPORAL_ADDRESS,
-                    BakedConfig.TEMPORAL_NAMESPACE,
-                    WorkflowServiceAuthConfig.Cloud(it),
-                )
-              } ?: NoOpFibonacciStarter,
+              TemporalFibonacciStarter(
+                  BakedConfig.TEMPORAL_ADDRESS,
+                  BakedConfig.TEMPORAL_NAMESPACE,
+                  temporalAuth,
+              ),
           gitHubOrgs =
-              if (gitHubAppClientId != null && gitHubAppPem != null) {
-                val appApiClient = GhProperAppApiClient.build(gitHubAppClientId, gitHubAppPem)
-                GitHubOrgService(
-                    appApiClient,
-                    GhCachingInstallationApiClientProvider(
-                        GhProperInstallationApiClientProvider(appApiClient)
-                    ),
-                    farmStore.linkedOrg,
-                )
-              } else {
-                null
-              },
+              GitHubOrgService(
+                  GhProperAppApiClient.build(gitHubAppClientId, gitHubAppPem),
+                  farmStore.linkedOrg,
+                  repoSyncStarter,
+              ),
       )
       .start()
       .join()
