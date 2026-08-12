@@ -3,10 +3,7 @@
 # infrastructure for the CLI, alongside the Actions variables the Publish CLI
 # workflow reads. The Homebrew *tap* is shared org-wide (medusa-software-hq/
 # homebrew-tap) and is NOT managed here — this project only pushes farm.rb to
-# it via the "Medusa Counter Releaser" GitHub App.
-#
-# 🎨 TEMPLATE POST-EJECT: install the releaser GitHub App on this repo, on the
-# releases repo below, and on the shared homebrew-tap.
+# it via the releases GitHub App.
 resource "github_repository" "farm_releases" {
   # Account-level and shared across environments (one releases bucket for the
   # CLI, per the flavor-constant note above), so it is owned by the prod
