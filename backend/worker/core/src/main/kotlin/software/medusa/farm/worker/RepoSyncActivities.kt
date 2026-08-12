@@ -16,4 +16,7 @@ interface RepoSyncActivities {
       repos: List<FetchedRepo>,
       syncStartedAtEpochMillis: Long,
   )
+
+  /** The installation ids of every linked org — the sweep's fan-out set. */
+  @ActivityMethod fun listLinkedInstallations(): List<Long>
 }
