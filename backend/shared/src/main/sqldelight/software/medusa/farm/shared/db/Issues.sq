@@ -1,0 +1,36 @@
+-- Mirror of the Flyway migration for this table; SQLDelight verifies the queries
+-- below against it at compile time, so the two must stay identical.
+CREATE TABLE issues (
+  github_repo_id  BIGINT      NOT NULL,
+  number          INTEGER     NOT NULL,
+  installation_id BIGINT      NOT NULL,
+  repo_full_name  TEXT        NOT NULL,
+  title           TEXT        NOT NULL,
+  last_seen_at    TIMESTAMPTZ NOT NULL,
+  orphaned_at     TIMESTAMPTZ,
+  PRIMARY KEY (github_repo_id, number)
+);
+
+-- Records a fetched issue as seen now and active; reactivates it if it was orphaned.
+upsert:
+INSERT INTO issues (
+  github_repo_id, number, installation_id, repo_full_name, title, last_seen_at, orphaned_at
+) VALUES (:githubRepoId, :number, :installationId, :repoFullName, :title, now(), NULL)
+ON CONFLICT (github_repo_id, number) DO UPDATE SET
+  installation_id = EXCLUDED.installation_id,
+  repo_full_name = EXCLUDED.repo_full_name,
+  title = EXCLUDED.title,
+  last_seen_at = now(),
+  orphaned_at = NULL;
+
+-- Soft-orphans this repo's issues that the sync did not touch: rows last seen before the sync
+-- started (the watermark) that are still active. Issues upserted in the same sync survive.
+orphanMissing:
+UPDATE issues SET orphaned_at = now()
+WHERE github_repo_id = :githubRepoId AND last_seen_at < :syncStartedAt AND orphaned_at IS NULL;
+
+listActiveForOrg:
+SELECT github_repo_id, number, installation_id, repo_full_name, title
+FROM issues
+WHERE installation_id = :installationId AND orphaned_at IS NULL
+ORDER BY repo_full_name, number;

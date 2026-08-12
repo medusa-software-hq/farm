@@ -8,8 +8,11 @@ import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationId
+import software.medusa.farm.github.GhRepoFullName
 import software.medusa.farm.shared.FarmWorker
+import software.medusa.farm.shared.FetchedIssue
 import software.medusa.farm.shared.FetchedRepo
+import software.medusa.farm.shared.IssueStore
 import software.medusa.farm.shared.LinkedOrgStore
 import software.medusa.farm.shared.RepoStore
 import software.medusa.farm.shared.RepoSyncWorkflow
@@ -19,6 +22,7 @@ import software.medusa.farm.shared.repoSyncWorkflowId
 class RepoSyncActivitiesImpl(
     private val clientProvider: GhInstallationApiClientProvider,
     private val repoStore: RepoStore,
+    private val issueStore: IssueStore,
     private val linkedOrgStore: LinkedOrgStore,
     private val workflowClient: WorkflowClient,
 ) : RepoSyncActivities {
@@ -43,6 +47,30 @@ class RepoSyncActivitiesImpl(
       syncStartedAtEpochMillis: Long,
   ) = runBlocking {
     repoStore.reconcile(installationId, repos, Instant.ofEpochMilli(syncStartedAtEpochMillis))
+  }
+
+  override fun fetchRepoIssues(installationId: Long, repoFullName: String): List<FetchedIssue> =
+      runBlocking {
+        clientProvider
+            .provideForInstallation(GhInstallationId(installationId))
+            .listIssues(GhRepoFullName(repoFullName))
+            .map { FetchedIssue(number = it.number, title = it.title) }
+      }
+
+  override fun reconcileIssues(
+      installationId: Long,
+      githubRepoId: Long,
+      repoFullName: String,
+      issues: List<FetchedIssue>,
+      syncStartedAtEpochMillis: Long,
+  ) = runBlocking {
+    issueStore.reconcile(
+        installationId,
+        githubRepoId,
+        repoFullName,
+        issues,
+        Instant.ofEpochMilli(syncStartedAtEpochMillis),
+    )
   }
 
   override fun listLinkedInstallations(): List<Long> = runBlocking {

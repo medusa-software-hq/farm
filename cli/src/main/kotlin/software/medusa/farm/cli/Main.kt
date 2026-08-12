@@ -4,6 +4,7 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.NoOpCliktCommand
 import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
+import software.medusa.farm.cli.command.IssuesCommand
 import software.medusa.farm.cli.command.LinkOrgCommand
 import software.medusa.farm.cli.command.LoginCommand
 import software.medusa.farm.cli.command.LogoutCommand
@@ -24,6 +25,7 @@ fun main(args: Array<String>) {
           LogoutCommand(),
           LinkOrgCommand(),
           OrgsCommand(),
+          IssuesCommand(),
           SyncCommand(),
       )
       .main(args)

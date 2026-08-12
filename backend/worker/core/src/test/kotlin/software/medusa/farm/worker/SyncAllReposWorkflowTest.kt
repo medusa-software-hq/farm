@@ -10,6 +10,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import software.medusa.farm.shared.FarmWorker
+import software.medusa.farm.shared.FetchedIssue
 import software.medusa.farm.shared.FetchedRepo
 import software.medusa.farm.shared.SyncAllReposWorkflow
 
@@ -38,6 +39,17 @@ class SyncAllReposWorkflowTest {
     override fun reconcileRepos(
         installationId: Long,
         repos: List<FetchedRepo>,
+        syncStartedAtEpochMillis: Long,
+    ) = error("not exercised by the sweep")
+
+    override fun fetchRepoIssues(installationId: Long, repoFullName: String): List<FetchedIssue> =
+        error("not exercised by the sweep")
+
+    override fun reconcileIssues(
+        installationId: Long,
+        githubRepoId: Long,
+        repoFullName: String,
+        issues: List<FetchedIssue>,
         syncStartedAtEpochMillis: Long,
     ) = error("not exercised by the sweep")
   }

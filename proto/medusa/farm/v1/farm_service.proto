@@ -10,6 +10,7 @@ service FarmService {
   rpc LinkOrg(LinkOrgRequest) returns (LinkOrgResponse);
   rpc ListLinkedOrgs(ListLinkedOrgsRequest) returns (ListLinkedOrgsResponse);
   rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse);
+  rpc ListIssues(ListIssuesRequest) returns (ListIssuesResponse);
   rpc SyncRepositories(SyncRepositoriesRequest) returns (SyncRepositoriesResponse);
 }
 
@@ -42,6 +43,18 @@ message ListRepositoriesResponse {
 message Repository {
   string org_login = 1;
   string full_name = 2;
+}
+
+message ListIssuesRequest {}
+
+message ListIssuesResponse {
+  repeated Issue issues = 1;
+}
+
+message Issue {
+  string repo_full_name = 1;
+  int32 number = 2;
+  string title = 3;
 }
 
 message SyncRepositoriesRequest {}

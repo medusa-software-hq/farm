@@ -2,6 +2,7 @@ package software.medusa.farm.worker
 
 import io.temporal.activity.ActivityInterface
 import io.temporal.activity.ActivityMethod
+import software.medusa.farm.shared.FetchedIssue
 import software.medusa.farm.shared.FetchedRepo
 
 /** The GitHub fetch and the store reconcile the [RepoSyncWorkflow] delegates to. */
@@ -14,6 +15,19 @@ interface RepoSyncActivities {
   fun reconcileRepos(
       installationId: Long,
       repos: List<FetchedRepo>,
+      syncStartedAtEpochMillis: Long,
+  )
+
+  /** Fetches one repo's open issues, or throws so the fetch is retried. */
+  @ActivityMethod
+  fun fetchRepoIssues(installationId: Long, repoFullName: String): List<FetchedIssue>
+
+  @ActivityMethod
+  fun reconcileIssues(
+      installationId: Long,
+      githubRepoId: Long,
+      repoFullName: String,
+      issues: List<FetchedIssue>,
       syncStartedAtEpochMillis: Long,
   )
 

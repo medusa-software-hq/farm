@@ -6,10 +6,15 @@ import java.time.Duration
 import software.medusa.farm.shared.RepoSyncWorkflow
 
 /**
- * Captures the sync watermark, fetches the installation's repos in full, then reconciles them. The
- * watermark is taken before the fetch so a repo seen mid-fetch still counts as present. An
- * empty-but-successful fetch is left un-reconciled: never mass-orphan on a fetch that returned
- * nothing (a real removal of the last repo simply waits for the next non-empty sync).
+ * Captures the sync watermark, fetches the installation's repos in full, then reconciles them, then
+ * syncs each repo's open issues. The watermark is taken before the fetch so a repo seen mid-fetch
+ * still counts as present. An empty-but-successful repo fetch is left un-reconciled: never
+ * mass-orphan on a fetch that returned nothing (a real removal of the last repo simply waits for
+ * the next non-empty sync).
+ *
+ * Issues are synced per repo off the just-fetched list, so a repo's issues follow its repo row in
+ * the same pass. An empty issue fetch *is* reconciled — no open issues is a valid state that should
+ * orphan any that were open — since the fetch throws rather than returning empty on failure.
  */
 class RepoSyncWorkflowImpl : RepoSyncWorkflow {
   private val activities =
@@ -23,5 +28,17 @@ class RepoSyncWorkflowImpl : RepoSyncWorkflow {
     val repos = activities.fetchInstallationRepos(installationId)
     if (repos.isEmpty()) return
     activities.reconcileRepos(installationId, repos, syncStartedAtEpochMillis)
+
+    for (repo in repos) {
+      val issuesStartedAtEpochMillis = Workflow.currentTimeMillis()
+      val issues = activities.fetchRepoIssues(installationId, repo.fullName)
+      activities.reconcileIssues(
+          installationId,
+          repo.githubRepoId,
+          repo.fullName,
+          issues,
+          issuesStartedAtEpochMillis,
+      )
+    }
   }
 }

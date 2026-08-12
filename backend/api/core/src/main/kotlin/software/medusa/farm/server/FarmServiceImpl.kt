@@ -3,12 +3,16 @@ package software.medusa.farm.server
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import software.medusa.farm.github.GhOrgLogin
+import software.medusa.farm.shared.IssueStore
 import software.medusa.farm.shared.LinkedOrgStore
 import software.medusa.farm.shared.RepoStore
 import software.medusa.farm.v1.FarmServiceGrpcKt
+import software.medusa.farm.v1.Issue as IssueProto
 import software.medusa.farm.v1.LinkOrgRequest
 import software.medusa.farm.v1.LinkOrgResponse
 import software.medusa.farm.v1.LinkedOrg as LinkedOrgProto
+import software.medusa.farm.v1.ListIssuesRequest
+import software.medusa.farm.v1.ListIssuesResponse
 import software.medusa.farm.v1.ListLinkedOrgsRequest
 import software.medusa.farm.v1.ListLinkedOrgsResponse
 import software.medusa.farm.v1.ListRepositoriesRequest
@@ -20,6 +24,7 @@ import software.medusa.farm.v1.SyncRepositoriesResponse
 class FarmServiceImpl(
     private val linkedOrgStore: LinkedOrgStore,
     private val repoStore: RepoStore,
+    private val issueStore: IssueStore,
     private val gitHubOrgs: GitHubOrgService,
     private val syncAllStarter: SyncAllStarter,
 ) : FarmServiceGrpcKt.FarmServiceCoroutineImplBase() {
@@ -65,6 +70,23 @@ class FarmServiceImpl(
               }
           )
           .build()
+
+  // Steady-state read from the synced issues table: active (open) issues across every linked org,
+  // no live GitHub call. Each row carries its repo's full name, so no repo join is needed.
+  override suspend fun listIssues(request: ListIssuesRequest): ListIssuesResponse {
+    val installationIds = linkedOrgStore.list().map { it.installationId }
+    return ListIssuesResponse.newBuilder()
+        .addAllIssues(
+            issueStore.listActiveForOrgs(installationIds).map { issue ->
+              IssueProto.newBuilder()
+                  .setRepoFullName(issue.repoFullName)
+                  .setNumber(issue.number)
+                  .setTitle(issue.title)
+                  .build()
+            }
+        )
+        .build()
+  }
 
   // Kicks the all-orgs sweep on demand — the same workflow the hourly schedule runs. The blocking
   // Temporal start runs off the request thread; an unreachable Temporal surfaces as a gRPC error so

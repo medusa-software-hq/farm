@@ -14,6 +14,7 @@ import software.medusa.farm.server.TemporalRepoSyncStarter
 import software.medusa.farm.server.TemporalSyncAllStarter
 import software.medusa.farm.server.buildServer
 import software.medusa.farm.shared.FarmStore
+import software.medusa.farm.shared.InMemoryIssueStore
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
@@ -47,6 +48,7 @@ fun main() {
       FarmStore(
           InMemoryLinkedOrgStore(),
           InMemoryRepoStore(Clock.systemUTC()),
+          InMemoryIssueStore(Clock.systemUTC()),
       )
 
   val devGitHubApp = buildDevGitHubApp()
@@ -56,6 +58,7 @@ fun main() {
           namespace = localTemporalNamespace,
           authConfig = WorkflowServiceAuthConfig.Local,
           repoStore = farmStore.repo,
+          issueStore = farmStore.issue,
           linkedOrgStore = farmStore.linkedOrg,
           gitHubClientProvider = devGitHubApp.clientProvider,
       )
