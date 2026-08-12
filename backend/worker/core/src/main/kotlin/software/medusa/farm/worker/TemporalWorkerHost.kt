@@ -32,7 +32,6 @@ class TemporalWorkerHost(
     repoStore: RepoStore,
     linkedOrgStore: LinkedOrgStore,
     gitHubClientProvider: GhInstallationApiClientProvider,
-    installRepoSyncSchedule: Boolean,
 ) {
   private val client: WorkflowClient
   private val factory: WorkerFactory
@@ -60,9 +59,7 @@ class TemporalWorkerHost(
         FibonacciActivitiesImpl(fibonacciStore),
         RepoSyncActivitiesImpl(gitHubClientProvider, repoStore, linkedOrgStore),
     )
-    if (installRepoSyncSchedule) {
-      ensureRepoSyncSchedule(service, namespace)
-    }
+    ensureRepoSyncSchedule(service, namespace)
   }
 
   /** Starts polling the task queue. Returns immediately; the factory runs in the background. */

@@ -17,8 +17,6 @@ fun runTemporalWorker(config: WorkerConfig) {
           store.repo,
           store.linkedOrg,
           gitHubClientProvider(config.gitHubApp),
-          // The deployed worker owns the periodic-sweep schedule in Temporal Cloud.
-          installRepoSyncSchedule = true,
       )
       .start()
   // Stay up; the worker factory polls on background threads.
