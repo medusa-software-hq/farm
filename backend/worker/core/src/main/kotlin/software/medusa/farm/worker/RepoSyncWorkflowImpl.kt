@@ -15,6 +15,10 @@ import software.medusa.farm.shared.RepoSyncWorkflow
  * Issues are synced per repo off the just-fetched list, so a repo's issues follow its repo row in
  * the same pass. An empty issue fetch *is* reconciled — no open issues is a valid state that should
  * orphan any that were open — since the fetch throws rather than returning empty on failure.
+ *
+ * After reconciling a repo's issues, processing is kicked for each open issue. The start is
+ * once-per-issue (REJECT_DUPLICATE), so re-running the sweep never re-processes an issue already
+ * handled — it only picks up ones that are newly open.
  */
 class RepoSyncWorkflowImpl : RepoSyncWorkflow {
   private val activities =
@@ -39,6 +43,14 @@ class RepoSyncWorkflowImpl : RepoSyncWorkflow {
           issues,
           issuesStartedAtEpochMillis,
       )
+      for (issue in issues) {
+        activities.startIssueProcessing(
+            installationId,
+            repo.githubRepoId,
+            repo.fullName,
+            issue.number,
+        )
+      }
     }
   }
 }

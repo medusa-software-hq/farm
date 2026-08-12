@@ -1,6 +1,6 @@
 import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
-import { Box, Button, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Badge, Box, Button, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import heroImg from './assets/hero.png';
 import reactLogo from './assets/react.svg';
@@ -34,9 +34,9 @@ function AppContent({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
   const [linkedOrgs, setLinkedOrgs] = useState<{ orgLogin: string; installationId: bigint }[]>([]);
   const [repositories, setRepositories] = useState<{ orgLogin: string; fullName: string }[]>([]);
-  const [issues, setIssues] = useState<{ repoFullName: string; number: number; title: string }[]>(
-    []
-  );
+  const [issues, setIssues] = useState<
+    { repoFullName: string; number: number; title: string; sessionState: string }[]
+  >([]);
   const [syncing, setSyncing] = useState(false);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
@@ -95,6 +95,7 @@ function AppContent({ token }: { token: string }) {
           repoFullName: i.repoFullName,
           number: i.number,
           title: i.title,
+          sessionState: i.sessionState,
         }))
       );
     } catch {
@@ -216,12 +217,23 @@ function AppContent({ token }: { token: string }) {
         ) : (
           <Stack gap={2} align="center">
             {issues.map((i) => (
-              <Text key={`${i.repoFullName}#${i.number}`} size="sm" ff="monospace">
-                <Text span c="dimmed">
-                  {i.repoFullName}#{i.number}
-                </Text>{' '}
-                {i.title}
-              </Text>
+              <Group key={`${i.repoFullName}#${i.number}`} gap="xs" align="center">
+                <Text size="sm" ff="monospace">
+                  <Text span c="dimmed">
+                    {i.repoFullName}#{i.number}
+                  </Text>{' '}
+                  {i.title}
+                </Text>
+                {i.sessionState !== '' && (
+                  <Badge
+                    size="sm"
+                    variant="light"
+                    color={i.sessionState === 'COMPLETED' ? 'green' : 'blue'}
+                  >
+                    {i.sessionState.toLowerCase()}
+                  </Badge>
+                )}
+              </Group>
             ))}
           </Stack>
         )}

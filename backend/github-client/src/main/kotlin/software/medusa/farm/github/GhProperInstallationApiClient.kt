@@ -4,6 +4,9 @@ import java.net.http.HttpClient
 import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+
+private const val httpCreated = 201
 
 /**
  * The installation surface for one org: its installation-only endpoints, with the resource surface
@@ -28,6 +31,18 @@ private constructor(
           }
           .toList()
 
+  override suspend fun createIssueComment(repo: GhRepoFullName, number: Int, body: String) {
+    val response =
+        http.post(
+            "/repos/${repo.value}/issues/$number/comments",
+            bearer = tokenProvider.provideToken(),
+            body = gitHubJson.encodeToString(CommentDto(body)),
+        )
+    check(response.statusCode() == httpCreated) {
+      "GitHub issue comment failed: ${response.statusCode()} ${response.body()}"
+    }
+  }
+
   companion object {
     fun build(
         tokenProvider: GhTokenProvider,
@@ -37,6 +52,8 @@ private constructor(
         GhProperInstallationApiClient(tokenProvider, baseUrl, httpClient)
   }
 }
+
+@Serializable private class CommentDto(val body: String)
 
 @Serializable private class RepositoriesPageDto(val repositories: List<RepositoryDto>)
 

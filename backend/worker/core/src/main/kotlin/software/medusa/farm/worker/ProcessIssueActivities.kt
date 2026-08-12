@@ -1,0 +1,20 @@
+package software.medusa.farm.worker
+
+import io.temporal.activity.ActivityInterface
+import io.temporal.activity.ActivityMethod
+
+/**
+ * The store writes and GitHub calls the [software.medusa.farm.shared.ProcessIssueWorkflow] drives.
+ */
+@ActivityInterface
+interface ProcessIssueActivities {
+  /** Opens a running session with the workflow-supplied id (idempotent, so retries are safe). */
+  @ActivityMethod
+  fun createSession(sessionId: String, installationId: Long, githubRepoId: Long, number: Int)
+
+  /** Posts a comment on the issue, or throws so the post is retried. */
+  @ActivityMethod
+  fun postIssueComment(installationId: Long, repoFullName: String, number: Int, body: String)
+
+  @ActivityMethod fun completeSession(sessionId: String)
+}

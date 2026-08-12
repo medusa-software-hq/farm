@@ -30,6 +30,14 @@ internal class GhHttp(
   suspend fun post(url: String, bearer: String): HttpResponse<String> =
       send(request(url, bearer).POST(HttpRequest.BodyPublishers.noBody()).build())
 
+  suspend fun post(url: String, bearer: String, body: String): HttpResponse<String> =
+      send(
+          request(url, bearer)
+              .header("Content-Type", "application/json")
+              .POST(HttpRequest.BodyPublishers.ofString(body))
+              .build()
+      )
+
   /**
    * Walks a paginated GitHub collection as a [Flow], following the response's `Link: …; rel="next"`
    * header (universal across endpoints, so no per-endpoint page arithmetic) until it is absent.

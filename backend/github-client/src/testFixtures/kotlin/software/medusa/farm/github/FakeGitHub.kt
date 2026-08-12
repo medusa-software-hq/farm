@@ -64,6 +64,8 @@ class FakeGitHub(
             issues.joinToString(",") { """{"number": ${it.number}, "title": "${it.title}"}""" }
         FakeGitHubServer.Response(200, "[$body]")
       }
+      path.startsWith("/repos/") && path.endsWith("/comments") ->
+          FakeGitHubServer.Response(201, """{"id": 1}""")
       else -> FakeGitHubServer.Response(404, "unexpected ${request.pathAndQuery}")
     }
   }

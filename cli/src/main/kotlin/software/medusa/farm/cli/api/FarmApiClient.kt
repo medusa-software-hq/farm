@@ -39,7 +39,7 @@ class FarmApiClient(endpoint: ApiEndpoint, idTokenProvider: IdTokenProvider) : A
 
   fun listIssues(): List<IssueResult> = call {
     val response = stub.listIssues(ListIssuesRequest.getDefaultInstance())
-    response.issuesList.map { IssueResult(it.repoFullName, it.number, it.title) }
+    response.issuesList.map { IssueResult(it.repoFullName, it.number, it.title, it.sessionState) }
   }
 
   fun syncRepositories() = call {

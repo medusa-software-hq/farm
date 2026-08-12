@@ -1,0 +1,27 @@
+-- Mirror of the Flyway migration for this table; SQLDelight verifies the queries
+-- below against it at compile time, so the two must stay identical.
+CREATE TABLE sessions (
+  id              TEXT        NOT NULL PRIMARY KEY,
+  installation_id BIGINT      NOT NULL,
+  github_repo_id  BIGINT      NOT NULL,
+  number          INTEGER     NOT NULL,
+  state           TEXT        NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL,
+  updated_at      TIMESTAMPTZ NOT NULL
+);
+
+-- Opens a session for an issue. Idempotent on the id so an activity retry never double-inserts.
+create:
+INSERT INTO sessions (id, installation_id, github_repo_id, number, state, created_at, updated_at)
+VALUES (:id, :installationId, :githubRepoId, :number, :state, now(), now())
+ON CONFLICT (id) DO NOTHING;
+
+-- Moves a session to a terminal state.
+complete:
+UPDATE sessions SET state = :state, updated_at = now() WHERE id = :id;
+
+listForOrg:
+SELECT id, installation_id, github_repo_id, number, state
+FROM sessions
+WHERE installation_id = :installationId
+ORDER BY created_at;

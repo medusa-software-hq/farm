@@ -16,6 +16,7 @@ import software.medusa.farm.shared.FetchedRepo
 import software.medusa.farm.shared.InMemoryIssueStore
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
+import software.medusa.farm.shared.InMemorySessionStore
 import software.medusa.farm.v1.ListIssuesRequest
 import software.medusa.farm.v1.ListLinkedOrgsRequest
 import software.medusa.farm.v1.ListRepositoriesRequest
@@ -61,6 +62,7 @@ class FarmServiceRepositoriesTest {
   private val linkedOrgs = InMemoryLinkedOrgStore()
   private val repos = InMemoryRepoStore(clock)
   private val issues = InMemoryIssueStore(clock)
+  private val sessions = InMemorySessionStore()
   private val syncAll = RecordingSyncAllStarter()
 
   private val service =
@@ -68,6 +70,7 @@ class FarmServiceRepositoriesTest {
           linkedOrgs,
           repos,
           issues,
+          sessions,
           GitHubOrgService(UnusedAppApiClient, linkedOrgs, UnusedRepoSyncStarter),
           syncAll,
       )
@@ -106,6 +109,27 @@ class FarmServiceRepositoriesTest {
         setOf("acme/one" to 7, "acme/one" to 9),
         response.issuesList.map { it.repoFullName to it.number }.toSet(),
     )
+  }
+
+  // An issue carries its latest processing session's state; one with no session reads as empty.
+  @Test
+  fun `ListIssues tags issues with their session state`() = runBlocking {
+    linkedOrgs.link(100L, "acme")
+    issues.reconcile(
+        installationId = 100L,
+        githubRepoId = 1L,
+        repoFullName = "acme/one",
+        fetched = listOf(FetchedIssue(7, "Processed"), FetchedIssue(9, "Untouched")),
+        syncStartedAt = clock.current,
+    )
+    sessions.create(id = "s1", installationId = 100L, githubRepoId = 1L, number = 7)
+    sessions.complete("s1")
+
+    val response = service.listIssues(ListIssuesRequest.getDefaultInstance())
+    val stateByNumber = response.issuesList.associate { it.number to it.sessionState }
+
+    assertEquals("COMPLETED", stateByNumber[7])
+    assertEquals("", stateByNumber[9])
   }
 
   // The link state surfaces on its own — an org reads as linked before any repo has synced.

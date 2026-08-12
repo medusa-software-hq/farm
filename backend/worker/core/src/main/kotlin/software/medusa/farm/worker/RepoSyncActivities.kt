@@ -40,4 +40,17 @@ interface RepoSyncActivities {
    * it rather than stacking a second run.
    */
   @ActivityMethod fun startRepoSync(installationId: Long)
+
+  /**
+   * Starts (fire-and-forget) processing for one issue. With the per-issue stable id and
+   * REJECT_DUPLICATE, an issue that was already processed (or is in flight) is a no-op, so the
+   * sweep can attempt every open issue every run without re-processing.
+   */
+  @ActivityMethod
+  fun startIssueProcessing(
+      installationId: Long,
+      githubRepoId: Long,
+      repoFullName: String,
+      number: Int,
+  )
 }

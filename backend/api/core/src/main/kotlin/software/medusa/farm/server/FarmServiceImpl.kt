@@ -6,6 +6,7 @@ import software.medusa.farm.github.GhOrgLogin
 import software.medusa.farm.shared.IssueStore
 import software.medusa.farm.shared.LinkedOrgStore
 import software.medusa.farm.shared.RepoStore
+import software.medusa.farm.shared.SessionStore
 import software.medusa.farm.v1.FarmServiceGrpcKt
 import software.medusa.farm.v1.Issue as IssueProto
 import software.medusa.farm.v1.LinkOrgRequest
@@ -25,6 +26,7 @@ class FarmServiceImpl(
     private val linkedOrgStore: LinkedOrgStore,
     private val repoStore: RepoStore,
     private val issueStore: IssueStore,
+    private val sessionStore: SessionStore,
     private val gitHubOrgs: GitHubOrgService,
     private val syncAllStarter: SyncAllStarter,
 ) : FarmServiceGrpcKt.FarmServiceCoroutineImplBase() {
@@ -72,17 +74,27 @@ class FarmServiceImpl(
           .build()
 
   // Steady-state read from the synced issues table: active (open) issues across every linked org,
-  // no live GitHub call. Each row carries its repo's full name, so no repo join is needed.
+  // no live GitHub call. Each row carries its repo's full name, so no repo join is needed. Each
+  // issue is tagged with its latest processing session's state, if any.
   override suspend fun listIssues(request: ListIssuesRequest): ListIssuesResponse {
     val installationIds = linkedOrgStore.list().map { it.installationId }
+    // Sessions come back ordered oldest-first, so associate keeps the latest per issue.
+    val stateByIssue =
+        sessionStore.listForOrgs(installationIds).associate {
+          (it.githubRepoId to it.number) to it.state
+        }
     return ListIssuesResponse.newBuilder()
         .addAllIssues(
             issueStore.listActiveForOrgs(installationIds).map { issue ->
-              IssueProto.newBuilder()
-                  .setRepoFullName(issue.repoFullName)
-                  .setNumber(issue.number)
-                  .setTitle(issue.title)
-                  .build()
+              val builder =
+                  IssueProto.newBuilder()
+                      .setRepoFullName(issue.repoFullName)
+                      .setNumber(issue.number)
+                      .setTitle(issue.title)
+              stateByIssue[issue.githubRepoId to issue.number]?.let {
+                builder.setSessionState(it.name)
+              }
+              builder.build()
             }
         )
         .build()
