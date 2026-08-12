@@ -2,7 +2,6 @@ version: '3'
 
 .sources: &sources
   - '**/*.tf'
-  - config.input.json
   - config.json
 
 tasks:
@@ -37,23 +36,25 @@ tasks:
     cmds:
       - terraform validate
 
-  check:
-    desc: Fail if config.json is stale (the drift guard)
-    deps: [init]
-    sources: *sources
-    cmds:
-      - terraform plan
-
   regenerate:
-    desc: Rewrite config.json from Terraform's own derivation (single source)
+    desc: Rewrite config.json from the locals in main.tf (the single source)
     deps: [init]
     sources:
       - '**/*.tf'
-      - config.input.json
     generates:
       - config.json
     cmds:
       # Write to a temp file first: the shell truncates the redirect target before
-      # terraform reads it, and the config loads the current cache.
-      - echo 'jsonencode(local.derived)' | terraform console -no-color | jq 'fromjson' > config.json.tmp
+      # terraform reads it, and the config re-reads it as it loads.
+      - echo 'jsonencode(local.config)' | terraform console -no-color | jq 'fromjson' > config.json.tmp
       - mv config.json.tmp config.json
+
+  check:
+    desc: Fail if config.json is stale — re-emit it and diff against the committed copy
+    deps: [init]
+    cmds:
+      # Inline (not the regenerate task) so the emit always runs — the drift check
+      # must never be skipped by task's up-to-date fingerprinting.
+      - echo 'jsonencode(local.config)' | terraform console -no-color | jq 'fromjson' > config.json.tmp
+      - mv config.json.tmp config.json
+      - git diff --exit-code config.json

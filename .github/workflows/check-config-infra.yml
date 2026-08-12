@@ -26,6 +26,9 @@ jobs:
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ~> ${{ env.TERRAFORM_VERSION }}
+          # The default stdout wrapper doesn't forward piped stdin, which hangs
+          # `terraform console` in the drift check below.
+          terraform_wrapper: false
 
       - uses: terraform-linters/setup-tflint@v6.2.2
 
@@ -37,12 +40,13 @@ jobs:
         working-directory: infra/config
         run: tflint --recursive
 
-      # No cloud auth: this root is pure locals plus a builtin resource. The plan
-      # runs the drift guard, failing the PR when the committed cache disagrees
-      # with what the input derives.
-      - name: Check cache is not stale
+      # No cloud auth: this root is pure locals. Re-emit config.json from them and
+      # fail the PR on any diff, so the committed copy can't go stale.
+      - name: Check config.json is not stale
         working-directory: infra/config
         run: |
           terraform init -backend=false
           terraform validate
-          terraform plan
+          echo 'jsonencode(local.config)' | terraform console | jq 'fromjson' > config.json.tmp
+          mv config.json.tmp config.json
+          git diff --exit-code config.json
