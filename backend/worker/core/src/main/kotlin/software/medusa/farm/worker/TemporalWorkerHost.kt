@@ -10,18 +10,14 @@ import software.medusa.farm.shared.FibonacciStore
 import software.medusa.farm.shared.RepoStore
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
-/**
- * Registers the farm's workflows and activities on one task queue and runs the worker. Repo sync is
- * hosted only when a GitHub client provider is supplied, since its fetch activity needs one to mint
- * installation tokens; without it the worker still hosts the rest.
- */
+/** Registers the farm's workflows and activities on one task queue and runs the worker. */
 class TemporalWorkerHost(
     address: String,
     namespace: String,
     authConfig: WorkflowServiceAuthConfig,
     fibonacciStore: FibonacciStore,
     repoStore: RepoStore,
-    gitHubClientProvider: GhInstallationApiClientProvider?,
+    gitHubClientProvider: GhInstallationApiClientProvider,
 ) {
   private val client: WorkflowClient
   private val factory: WorkerFactory
@@ -40,14 +36,14 @@ class TemporalWorkerHost(
         )
     factory = WorkerFactory.newInstance(client)
     val worker = factory.newWorker(TASK_QUEUE)
-    worker.registerWorkflowImplementationTypes(FibonacciWorkflowImpl::class.java)
-    worker.registerActivitiesImplementations(FibonacciActivitiesImpl(fibonacciStore))
-    if (gitHubClientProvider != null) {
-      worker.registerWorkflowImplementationTypes(RepoSyncWorkflowImpl::class.java)
-      worker.registerActivitiesImplementations(
-          RepoSyncActivitiesImpl(gitHubClientProvider, repoStore)
-      )
-    }
+    worker.registerWorkflowImplementationTypes(
+        FibonacciWorkflowImpl::class.java,
+        RepoSyncWorkflowImpl::class.java,
+    )
+    worker.registerActivitiesImplementations(
+        FibonacciActivitiesImpl(fibonacciStore),
+        RepoSyncActivitiesImpl(gitHubClientProvider, repoStore),
+    )
   }
 
   /** Starts polling the task queue. Returns immediately; the factory runs in the background. */

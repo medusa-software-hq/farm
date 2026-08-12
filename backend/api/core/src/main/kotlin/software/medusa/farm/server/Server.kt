@@ -15,7 +15,7 @@ fun buildServer(
     auth: DecoratingHttpServiceFunction,
     farmStore: FarmStore,
     fibonacciStarter: FibonacciStarter,
-    gitHubOrgs: GitHubOrgService?,
+    gitHubOrgs: GitHubOrgService,
 ): Server {
   val cors =
       CorsService.builderForOriginRegex(originRegex)

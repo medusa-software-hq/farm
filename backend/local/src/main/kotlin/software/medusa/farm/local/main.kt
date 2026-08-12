@@ -4,7 +4,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.time.Clock
-import org.slf4j.LoggerFactory
 import software.medusa.farm.github.GhCachingInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhProperAppApiClient
@@ -31,8 +30,6 @@ private const val localTemporalNamespace = "default"
 private const val testGitHubAppClientId = "Iv23liUa4I1Mh1CZwWaH"
 
 private const val devGitHubAppPemPathEnvVarName = "FARM_DEV_GITHUB_APP_PEM_PATH"
-
-private val logger = LoggerFactory.getLogger("software.medusa.farm.local.Main")
 
 /** The App client for the Test app plus a per-installation client provider derived from it. */
 private class DevGitHubApp(
@@ -62,7 +59,7 @@ fun main() {
           authConfig = WorkflowServiceAuthConfig.Local,
           fibonacciStore = farmStore.fibonacci,
           repoStore = farmStore.repo,
-          gitHubClientProvider = devGitHubApp?.clientProvider,
+          gitHubClientProvider = devGitHubApp.clientProvider,
       )
       .start()
 
@@ -78,36 +75,30 @@ fun main() {
                   WorkflowServiceAuthConfig.Local,
               ),
           gitHubOrgs =
-              devGitHubApp?.let {
-                GitHubOrgService(
-                    it.appApiClient,
-                    farmStore.linkedOrg,
-                    TemporalRepoSyncStarter(
-                        localTemporalAddress,
-                        localTemporalNamespace,
-                        WorkflowServiceAuthConfig.Local,
-                    ),
-                )
-              },
+              GitHubOrgService(
+                  devGitHubApp.appApiClient,
+                  farmStore.linkedOrg,
+                  TemporalRepoSyncStarter(
+                      localTemporalAddress,
+                      localTemporalNamespace,
+                      WorkflowServiceAuthConfig.Local,
+                  ),
+              ),
       )
       .start()
       .join()
 }
 
 /**
- * The Test app when its private key is on disk (fetched by the dev task), else null so offline dev
- * with no key still runs — the API's guard degrades the GitHub RPCs and the worker skips repo sync.
+ * The Test app, from its private key on disk (fetched by the dev task). Required: `task dev`
+ * fetches the key, so a missing one is a setup slip — fail fast rather than run a half-working
+ * stack.
  */
-private fun buildDevGitHubApp(): DevGitHubApp? {
+private fun buildDevGitHubApp(): DevGitHubApp {
   val pemPath =
       System.getenv(devGitHubAppPemPathEnvVarName)?.let { Paths.get(it) } ?: defaultDevPemPath()
-  if (!Files.isRegularFile(pemPath)) {
-    logger.info(
-        "No Test GitHub App key at {}; serving without it (GitHub RPCs degrade, no repo sync). " +
-            "Run `task dev` (or `task fetch-dev-github-key`) to fetch it.",
-        pemPath,
-    )
-    return null
+  require(Files.isRegularFile(pemPath)) {
+    "No Test GitHub App key at $pemPath. Run `task dev` (or `task fetch-dev-github-key`) to fetch it."
   }
   val appApiClient = GhProperAppApiClient.build(testGitHubAppClientId, Files.readString(pemPath))
   return DevGitHubApp(

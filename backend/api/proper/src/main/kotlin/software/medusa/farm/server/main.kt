@@ -46,11 +46,15 @@ fun main() {
   // rotating Temporal key can never take the service down.
   val temporalApiKey = System.getenv(temporalApiKeyEnvVarName)
 
-  // Optional, same contract as the Temporal key: absent -> only the GitHub RPCs degrade. Both
-  // halves are required together; the PEM must be unencrypted PKCS#8 (see the github-client
-  // module).
-  val gitHubAppClientId = System.getenv(gitHubAppClientIdEnvVarName)
-  val gitHubAppPem = System.getenv(gitHubAppPemEnvVarName)
+  // Required (every env configures the GitHub App): a missing or half-set pair is a
+  // misconfiguration, so fail fast rather than silently disable GitHub. The PEM must be unencrypted
+  // PKCS#8 (see the github-client module).
+  val gitHubAppClientId =
+      System.getenv(gitHubAppClientIdEnvVarName)
+          ?: error("$gitHubAppClientIdEnvVarName environment variable must be set")
+  val gitHubAppPem =
+      System.getenv(gitHubAppPemEnvVarName)
+          ?: error("$gitHubAppPemEnvVarName environment variable must be set")
 
   val farmStore = FarmStore.buildWithMigrations(databaseUrl)
 
@@ -82,12 +86,11 @@ fun main() {
                 )
               } ?: NoOpFibonacciStarter,
           gitHubOrgs =
-              if (gitHubAppClientId != null && gitHubAppPem != null) {
-                val appApiClient = GhProperAppApiClient.build(gitHubAppClientId, gitHubAppPem)
-                GitHubOrgService(appApiClient, farmStore.linkedOrg, repoSyncStarter)
-              } else {
-                null
-              },
+              GitHubOrgService(
+                  GhProperAppApiClient.build(gitHubAppClientId, gitHubAppPem),
+                  farmStore.linkedOrg,
+                  repoSyncStarter,
+              ),
       )
       .start()
       .join()

@@ -1,24 +1,25 @@
 package software.medusa.farm.server
 
-import io.grpc.Status
-import io.grpc.StatusRuntimeException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlinx.coroutines.runBlocking
+import software.medusa.farm.github.GhAppApiClient
+import software.medusa.farm.github.GhInstallationId
+import software.medusa.farm.github.GhOrgLogin
+import software.medusa.farm.github.MintedGhInstallationToken
 import software.medusa.farm.shared.FetchedRepo
 import software.medusa.farm.shared.InMemoryFibonacciStore
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
-import software.medusa.farm.v1.LinkOrgRequest
 import software.medusa.farm.v1.ListFibonacciRequest
 import software.medusa.farm.v1.ListRepositoriesRequest
 
-class FarmServiceLinkOrgTest {
+/** Covers the read path, which serves the synced repos table with no live GitHub call. */
+class FarmServiceRepositoriesTest {
   // A clock the test advances so the store's soft-orphan watermark is meaningful.
   private class MutableClock(var current: Instant) : Clock() {
     override fun instant(): Instant = current
@@ -26,6 +27,17 @@ class FarmServiceLinkOrgTest {
     override fun getZone(): ZoneId = ZoneOffset.UTC
 
     override fun withZone(zone: ZoneId?): Clock = this
+  }
+
+  // The read path never touches GitHub; this stands in for the App client and fails if it is
+  // called.
+  private object UnusedAppApiClient : GhAppApiClient {
+    override suspend fun resolveInstallationId(orgLogin: GhOrgLogin): GhInstallationId =
+        error("the read path must not call GitHub")
+
+    override suspend fun mintInstallationToken(
+        installationId: GhInstallationId
+    ): MintedGhInstallationToken = error("the read path must not call GitHub")
   }
 
   private val clock = MutableClock(Instant.parse("2020-01-01T00:00:00Z"))
@@ -38,32 +50,23 @@ class FarmServiceLinkOrgTest {
           NoOpFibonacciStarter,
           linkedOrgs,
           repos,
-          gitHubOrgs = null,
+          GitHubOrgService(UnusedAppApiClient, linkedOrgs, NoOpRepoSyncStarter),
       )
 
-  @Test
-  fun `without a configured app, LinkOrg is UNIMPLEMENTED`() = runBlocking {
-    val failure =
-        assertFailsWith<StatusRuntimeException> {
-          service.linkOrg(LinkOrgRequest.newBuilder().setOrgLogin("acme").build())
-        }
-    assertEquals(Status.Code.UNIMPLEMENTED, failure.status.code)
-  }
-
-  @Test
-  fun `an unconfigured app leaves the other RPCs working`() = runBlocking {
-    assertEquals(
-        0,
-        service.listFibonacci(ListFibonacciRequest.getDefaultInstance()).numbersCount,
-    )
-  }
-
-  // Prod-safe boot: ListRepositories serves an empty result with no repos and GitHub unconfigured.
+  // Prod-safe boot: ListRepositories serves an empty result with nothing linked yet.
   @Test
   fun `ListRepositories is empty when nothing is linked`() = runBlocking {
     assertEquals(
         0,
         service.listRepositories(ListRepositoriesRequest.getDefaultInstance()).repositoriesCount,
+    )
+  }
+
+  @Test
+  fun `ListFibonacci is unaffected by the repos read path`() = runBlocking {
+    assertEquals(
+        0,
+        service.listFibonacci(ListFibonacciRequest.getDefaultInstance()).numbersCount,
     )
   }
 

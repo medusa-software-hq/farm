@@ -1,6 +1,5 @@
 package software.medusa.farm.server
 
-import io.grpc.Status
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import software.medusa.farm.github.GhOrgLogin
@@ -24,15 +23,8 @@ class FarmServiceImpl(
     private val fibonacciStarter: FibonacciStarter,
     private val linkedOrgStore: LinkedOrgStore,
     private val repoStore: RepoStore,
-    private val gitHubOrgs: GitHubOrgService?,
+    private val gitHubOrgs: GitHubOrgService,
 ) : FarmServiceGrpcKt.FarmServiceCoroutineImplBase() {
-  // LinkOrg's guard: with no configured app there is no way to resolve an installation, so the RPC
-  // is UNIMPLEMENTED. The read path (ListRepositories) is unaffected — it never touches GitHub.
-  private fun gitHubOrgs(): GitHubOrgService =
-      gitHubOrgs
-          ?: throw Status.UNIMPLEMENTED.withDescription("GitHub App not configured")
-              .asRuntimeException()
-
   override suspend fun listFibonacci(request: ListFibonacciRequest): ListFibonacciResponse =
       ListFibonacciResponse.newBuilder()
           .addAllNumbers(
@@ -55,7 +47,7 @@ class FarmServiceImpl(
   // Links an org to the Farm app: resolve and store its installation, kick off a background repo
   // sync, then report the repos already known for it (empty until the first sync lands).
   override suspend fun linkOrg(request: LinkOrgRequest): LinkOrgResponse {
-    val installationId = gitHubOrgs().linkOrg(GhOrgLogin(request.orgLogin))
+    val installationId = gitHubOrgs.linkOrg(GhOrgLogin(request.orgLogin))
     val repositories = repoStore.listActive(installationId.value)
     return LinkOrgResponse.newBuilder()
         .setInstallationId(installationId.value)

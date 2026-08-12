@@ -15,7 +15,7 @@ fun runTemporalWorker(config: WorkerConfig) {
           config.temporalAuth,
           store.fibonacci,
           store.repo,
-          config.gitHubApp?.let(::gitHubClientProvider),
+          gitHubClientProvider(config.gitHubApp),
       )
       .start()
   // Stay up; the worker factory polls on background threads.

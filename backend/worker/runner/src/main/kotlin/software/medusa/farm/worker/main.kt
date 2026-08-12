@@ -11,7 +11,7 @@ private const val temporalApiKeySecretId = "worker-temporal-api-key"
 private const val gitHubAppPemSecretId = "api-github-app-pem"
 
 // The client id is a non-secret, per-env identifier (a Terraform var for the API), so the operator
-// supplies it via the environment. Absent -> the runner skips repo sync.
+// supplies it via the environment. Required, like the other creds — absent is a setup slip.
 private const val gitHubAppClientIdEnvVarName = "GITHUB_APP_CLIENT_ID"
 
 /**
@@ -34,15 +34,13 @@ fun main() {
                     client.read(BakedConfig.TEMPORAL_KEY_PROJECT, temporalApiKeySecretId)
                 ),
             // The PEM comes from this env's `api-github-app-pem` secret (same path as the DB URL),
-            // paired with the operator-supplied client id; without the id the runner runs without
-            // hosting repo sync.
+            // paired with the operator-supplied client id.
             gitHubApp =
-                System.getenv(gitHubAppClientIdEnvVarName)?.let { clientId ->
-                  GitHubAppConfig(
-                      clientId,
-                      client.read(environment.gcpProjectId, gitHubAppPemSecretId),
-                  )
-                },
+                GitHubAppConfig(
+                    System.getenv(gitHubAppClientIdEnvVarName)
+                        ?: error("$gitHubAppClientIdEnvVarName environment variable must be set"),
+                    client.read(environment.gcpProjectId, gitHubAppPemSecretId),
+                ),
         )
       }
   runTemporalWorker(config)
