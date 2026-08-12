@@ -8,6 +8,11 @@ import software.medusa.farm.shared.WorkflowServiceAuthConfig
 private const val runnerEnvironmentEnvVarName = "FARM_RUNNER_ENVIRONMENT"
 private const val databaseUrlSecretId = "api-database-url"
 private const val temporalApiKeySecretId = "worker-temporal-api-key"
+private const val gitHubAppPemSecretId = "api-github-app-pem"
+
+// The client id is a non-secret, per-env identifier (a Terraform var for the API), so the operator
+// supplies it via the environment. Absent -> the runner skips repo sync.
+private const val gitHubAppClientIdEnvVarName = "GITHUB_APP_CLIENT_ID"
 
 /**
  * Runs the worker locally against a remote database. The database URL comes from the target
@@ -28,6 +33,16 @@ fun main() {
                 WorkflowServiceAuthConfig.Cloud(
                     client.read(BakedConfig.TEMPORAL_KEY_PROJECT, temporalApiKeySecretId)
                 ),
+            // The PEM comes from this env's `api-github-app-pem` secret (same path as the DB URL),
+            // paired with the operator-supplied client id; without the id the runner runs without
+            // hosting repo sync.
+            gitHubApp =
+                System.getenv(gitHubAppClientIdEnvVarName)?.let { clientId ->
+                  GitHubAppConfig(
+                      clientId,
+                      client.read(environment.gcpProjectId, gitHubAppPemSecretId),
+                  )
+                },
         )
       }
   runTemporalWorker(config)
