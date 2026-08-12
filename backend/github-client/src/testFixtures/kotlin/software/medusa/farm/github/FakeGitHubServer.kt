@@ -11,7 +11,11 @@ import java.util.concurrent.CopyOnWriteArrayList
 class FakeGitHubServer(private val handler: (Request) -> Response) : AutoCloseable {
   class Request(val method: String, val pathAndQuery: String, val authorization: String?)
 
-  class Response(val status: Int, val body: String)
+  class Response(
+      val status: Int,
+      val body: String,
+      val headers: Map<String, String> = emptyMap(),
+  )
 
   val requests = CopyOnWriteArrayList<Request>()
 
@@ -33,6 +37,7 @@ class FakeGitHubServer(private val handler: (Request) -> Response) : AutoCloseab
                 Response(500, e.message ?: "handler error")
               }
           val bytes = response.body.toByteArray()
+          response.headers.forEach { (name, value) -> exchange.responseHeaders.add(name, value) }
           exchange.sendResponseHeaders(response.status, bytes.size.toLong())
           exchange.responseBody.use { it.write(bytes) }
         }

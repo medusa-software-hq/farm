@@ -28,9 +28,12 @@ class FakeGitHub(
       }
       path == "/installation/repositories" -> {
         val id = GhInstallationId(request.authorization!!.removePrefix("Bearer tok-").toLong())
-        val repos = reposByInstallation.getValue(id)
+        val allRepos = reposByInstallation.getValue(id)
+        val perPage = queryParam(request.pathAndQuery, "per_page")?.toInt() ?: allRepos.size
+        val page = queryParam(request.pathAndQuery, "page")?.toInt() ?: 1
+        val pageRepos = allRepos.drop((page - 1) * perPage).take(perPage)
         val body =
-            repos.joinToString(",") {
+            pageRepos.joinToString(",") {
               val name = it.value.substringAfter('/')
               // A stable synthetic numeric id derived from the full name, so a repo keeps its id
               // across fetches (only a rename would change it).
@@ -38,9 +41,20 @@ class FakeGitHub(
               """{"id": $repoId, "full_name": "${it.value}", "name": "$name", """ +
                   """"private": false, "default_branch": "main"}"""
             }
+        // Advertise a next page via the Link header (as GitHub does) whenever more remain, so the
+        // client walks pages by following it rather than by counting.
+        val hasNext = page * perPage < allRepos.size
+        val headers =
+            if (hasNext)
+                mapOf(
+                    "Link" to
+                        "</installation/repositories?per_page=$perPage&page=${page + 1}>; rel=\"next\""
+                )
+            else emptyMap()
         FakeGitHubServer.Response(
             200,
-            """{"total_count": ${repos.size}, "repositories": [$body]}""",
+            """{"total_count": ${allRepos.size}, "repositories": [$body]}""",
+            headers,
         )
       }
       path.startsWith("/repos/") && path.endsWith("/issues") -> {
@@ -53,4 +67,7 @@ class FakeGitHub(
       else -> FakeGitHubServer.Response(404, "unexpected ${request.pathAndQuery}")
     }
   }
+
+  private fun queryParam(pathAndQuery: String, name: String): String? =
+      Regex("[?&]$name=([^&]+)").find(pathAndQuery)?.groupValues?.get(1)
 }

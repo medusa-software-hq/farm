@@ -1,11 +1,9 @@
 package software.medusa.farm.github
 
 import java.net.http.HttpClient
+import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-
-private const val httpOk = 200
-private const val reposPageSize = 100
 
 /**
  * The installation surface for one org: its installation-only endpoints, with the resource surface
@@ -21,34 +19,14 @@ private constructor(
     GhResourcesApiClient by GhUniversalResourcesApiClient(tokenProvider, baseUrl, httpClient) {
   private val http = GhHttp(baseUrl, httpClient)
 
-  override suspend fun listInstallationRepositories(): List<GhRepo> {
-    val repos = mutableListOf<GhRepo>()
-    var page = 1
-    while (true) {
-      val response =
-          http.get(
-              "/installation/repositories?per_page=$reposPageSize&page=$page",
-              bearer = tokenProvider.provideToken(),
-          )
-      check(response.statusCode() == httpOk) {
-        "GitHub repository listing failed: ${response.statusCode()} ${response.body()}"
-      }
-      val decoded = gitHubJson.decodeFromString<RepositoriesPageDto>(response.body())
-      repos +=
-          decoded.repositories.map {
-            GhRepo(
-                id = GhRepoId(it.id),
-                fullName = GhRepoFullName(it.fullName),
-                name = it.name,
-                isPrivate = it.private,
-                defaultBranch = it.defaultBranch,
-            )
+  override suspend fun listInstallationRepositories(): List<GhRepo> =
+      http
+          .getPaged("/installation/repositories", tokenProvider) { body ->
+            gitHubJson.decodeFromString<RepositoriesPageDto>(body).repositories.map {
+              it.toGhRepo()
+            }
           }
-      if (decoded.repositories.isEmpty() || repos.size >= decoded.totalCount) break
-      page++
-    }
-    return repos
-  }
+          .toList()
 
   companion object {
     fun build(
@@ -60,11 +38,7 @@ private constructor(
   }
 }
 
-@Serializable
-private class RepositoriesPageDto(
-    @SerialName("total_count") val totalCount: Int,
-    val repositories: List<RepositoryDto>,
-)
+@Serializable private class RepositoriesPageDto(val repositories: List<RepositoryDto>)
 
 @Serializable
 private class RepositoryDto(
@@ -74,3 +48,12 @@ private class RepositoryDto(
     val private: Boolean,
     @SerialName("default_branch") val defaultBranch: String,
 )
+
+private fun RepositoryDto.toGhRepo(): GhRepo =
+    GhRepo(
+        id = GhRepoId(id),
+        fullName = GhRepoFullName(fullName),
+        name = name,
+        isPrivate = private,
+        defaultBranch = defaultBranch,
+    )
