@@ -11,7 +11,13 @@ import io.temporal.workflow.WorkflowMethod
 @WorkflowInterface
 interface ProcessIssueWorkflow {
   @WorkflowMethod
-  fun process(installationId: Long, githubRepoId: Long, repoFullName: String, number: Int)
+  fun process(
+      installationId: Long,
+      githubRepoId: Long,
+      repoFullName: String,
+      number: Int,
+      title: String,
+  )
 }
 
 /**

@@ -10,11 +10,20 @@ import io.temporal.activity.ActivityMethod
 interface ProcessIssueActivities {
   /** Opens a running session with the workflow-supplied id (idempotent, so retries are safe). */
   @ActivityMethod
-  fun createSession(sessionId: String, installationId: Long, githubRepoId: Long, number: Int)
+  fun createSession(
+      sessionId: String,
+      installationId: Long,
+      githubRepoId: Long,
+      number: Int,
+      repoFullName: String,
+      title: String,
+  )
 
   /** Posts a comment on the issue, or throws so the post is retried. */
   @ActivityMethod
   fun postIssueComment(installationId: Long, repoFullName: String, number: Int, body: String)
 
   @ActivityMethod fun completeSession(sessionId: String)
+
+  @ActivityMethod fun failSession(sessionId: String)
 }

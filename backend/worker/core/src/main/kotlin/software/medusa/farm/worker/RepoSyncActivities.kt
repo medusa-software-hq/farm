@@ -52,5 +52,6 @@ interface RepoSyncActivities {
       githubRepoId: Long,
       repoFullName: String,
       number: Int,
+      title: String,
   )
 }
