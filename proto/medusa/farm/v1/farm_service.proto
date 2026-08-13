@@ -11,6 +11,8 @@ service FarmService {
   rpc ListLinkedOrgs(ListLinkedOrgsRequest) returns (ListLinkedOrgsResponse);
   rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse);
   rpc ListIssues(ListIssuesRequest) returns (ListIssuesResponse);
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
   rpc SyncRepositories(SyncRepositoriesRequest) returns (SyncRepositoriesResponse);
 }
 
@@ -57,6 +59,34 @@ message Issue {
   string title = 3;
   // Latest processing session state: "", "RUNNING", or "COMPLETED".
   string session_state = 4;
+}
+
+message ListSessionsRequest {}
+
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+}
+
+message GetSessionRequest {
+  string id = 1;
+}
+
+message GetSessionResponse {
+  Session session = 1;
+}
+
+// One run of the Farm agent against an issue. Self-describing: it carries the issue's repo, number,
+// and title as they were when the session ran.
+message Session {
+  string id = 1;
+  string repo_full_name = 2;
+  int32 number = 3;
+  string title = 4;
+  // "RUNNING", "COMPLETED", or "FAILED".
+  string state = 5;
+  int64 started_at_millis = 6;
+  // 0 while the session is still running.
+  int64 finished_at_millis = 7;
 }
 
 message SyncRepositoriesRequest {}

@@ -51,6 +51,7 @@ class RepoSyncWorkflowImpl : RepoSyncWorkflow {
               repo.githubRepoId,
               repo.fullName,
               issue.number,
+              issue.title,
           )
         }
       }

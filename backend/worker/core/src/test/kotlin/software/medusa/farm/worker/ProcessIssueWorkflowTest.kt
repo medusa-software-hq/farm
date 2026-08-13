@@ -4,11 +4,11 @@ import io.temporal.client.WorkflowClientOptions
 import io.temporal.client.WorkflowOptions
 import io.temporal.testing.TestEnvironmentOptions
 import io.temporal.testing.TestWorkflowEnvironment
+import java.time.Clock
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
-import software.medusa.farm.github.FakeGitHub
 import software.medusa.farm.github.FakeGitHubServer
 import software.medusa.farm.github.GhProperAppApiClient
 import software.medusa.farm.github.GhProperInstallationApiClientProvider
@@ -23,12 +23,11 @@ class ProcessIssueWorkflowTest {
   private val installationId = 100L
   private val appKey = TestAppKey()
 
-  private val server =
-      FakeGitHubServer(
-          FakeGitHub(installationIdsByOrg = emptyMap(), reposByInstallation = emptyMap()).handler
-      )
+  // Flip to make GitHub reject comment posts, so the failure path can be exercised.
+  private var failComments = false
 
-  private val sessions = InMemorySessionStore()
+  private val server = FakeGitHubServer(::handle)
+  private val sessions = InMemorySessionStore(Clock.systemUTC())
 
   private val env =
       TestWorkflowEnvironment.newInstance(
@@ -64,7 +63,7 @@ class ProcessIssueWorkflowTest {
             ProcessIssueWorkflow::class.java,
             WorkflowOptions.newBuilder().setTaskQueue(FarmWorker.TASK_QUEUE).build(),
         )
-        .process(installationId, 1L, "acme/one", 7)
+        .process(installationId, 1L, "acme/one", 7, "Fix the thing")
   }
 
   @Test
@@ -73,9 +72,36 @@ class ProcessIssueWorkflowTest {
 
     val session = runBlocking { sessions.listForOrgs(listOf(installationId)) }.single()
     assertEquals(SessionState.COMPLETED, session.state)
+    assertEquals("acme/one", session.repoFullName)
+    assertEquals("Fix the thing", session.title)
 
     val commentPosts =
         server.requests.count { it.method == "POST" && it.pathAndQuery.endsWith("/comments") }
     assertEquals(2, commentPosts)
+  }
+
+  @Test
+  fun `marks the session failed when the work cannot complete`() {
+    failComments = true
+    // The workflow fails after the comment post exhausts its retries; swallow that here.
+    runCatching { process() }
+
+    val session = runBlocking { sessions.listForOrgs(listOf(installationId)) }.single()
+    assertEquals(SessionState.FAILED, session.state)
+  }
+
+  private fun handle(request: FakeGitHubServer.Request): FakeGitHubServer.Response {
+    val path = request.pathAndQuery.substringBefore('?')
+    return when {
+      path.endsWith("/access_tokens") ->
+          FakeGitHubServer.Response(
+              201,
+              """{"token": "tok", "expires_at": "2999-01-01T00:00:00Z"}""",
+          )
+      path.endsWith("/comments") ->
+          if (failComments) FakeGitHubServer.Response(500, "boom")
+          else FakeGitHubServer.Response(201, """{"id": 1}""")
+      else -> FakeGitHubServer.Response(404, "unexpected ${request.pathAndQuery}")
+    }
   }
 }

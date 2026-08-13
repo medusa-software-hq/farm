@@ -16,7 +16,11 @@ class ProcessIssueActivitiesImpl(
       installationId: Long,
       githubRepoId: Long,
       number: Int,
-  ) = runBlocking { sessionStore.create(sessionId, installationId, githubRepoId, number) }
+      repoFullName: String,
+      title: String,
+  ) = runBlocking {
+    sessionStore.create(sessionId, installationId, githubRepoId, number, repoFullName, title)
+  }
 
   override fun postIssueComment(
       installationId: Long,
@@ -30,4 +34,6 @@ class ProcessIssueActivitiesImpl(
   }
 
   override fun completeSession(sessionId: String) = runBlocking { sessionStore.complete(sessionId) }
+
+  override fun failSession(sessionId: String) = runBlocking { sessionStore.fail(sessionId) }
 }

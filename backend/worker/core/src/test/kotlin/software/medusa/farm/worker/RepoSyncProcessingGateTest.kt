@@ -50,6 +50,7 @@ class RepoSyncProcessingGateTest {
         githubRepoId: Long,
         repoFullName: String,
         number: Int,
+        title: String,
     ) {
       processed += number
     }

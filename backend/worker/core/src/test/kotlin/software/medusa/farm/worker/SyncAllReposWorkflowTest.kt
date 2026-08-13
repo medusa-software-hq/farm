@@ -58,6 +58,7 @@ class SyncAllReposWorkflowTest {
         githubRepoId: Long,
         repoFullName: String,
         number: Int,
+        title: String,
     ) = error("not exercised by the sweep")
   }
 

@@ -112,6 +112,7 @@ class RepoSyncActivitiesImpl(
       githubRepoId: Long,
       repoFullName: String,
       number: Int,
+      title: String,
   ) {
     val stub =
         workflowClient.newWorkflowStub(
@@ -125,7 +126,7 @@ class RepoSyncActivitiesImpl(
                 .build(),
         )
     try {
-      WorkflowClient.start(stub::process, installationId, githubRepoId, repoFullName, number)
+      WorkflowClient.start(stub::process, installationId, githubRepoId, repoFullName, number, title)
     } catch (ignored: WorkflowExecutionAlreadyStarted) {
       // Already processed (or in flight): process each issue once. Nothing to do.
     }

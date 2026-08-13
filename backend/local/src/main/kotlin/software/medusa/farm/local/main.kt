@@ -52,7 +52,7 @@ fun main() {
           InMemoryLinkedOrgStore(),
           InMemoryRepoStore(Clock.systemUTC()),
           InMemoryIssueStore(Clock.systemUTC()),
-          InMemorySessionStore(),
+          InMemorySessionStore(Clock.systemUTC()),
       )
 
   val devGitHubApp = buildDevGitHubApp()

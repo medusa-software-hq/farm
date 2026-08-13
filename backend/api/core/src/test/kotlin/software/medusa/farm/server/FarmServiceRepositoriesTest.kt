@@ -17,9 +17,11 @@ import software.medusa.farm.shared.InMemoryIssueStore
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
 import software.medusa.farm.shared.InMemorySessionStore
+import software.medusa.farm.v1.GetSessionRequest
 import software.medusa.farm.v1.ListIssuesRequest
 import software.medusa.farm.v1.ListLinkedOrgsRequest
 import software.medusa.farm.v1.ListRepositoriesRequest
+import software.medusa.farm.v1.ListSessionsRequest
 import software.medusa.farm.v1.SyncRepositoriesRequest
 
 /** Covers the read path, which serves the synced repos table with no live GitHub call. */
@@ -63,7 +65,7 @@ class FarmServiceRepositoriesTest {
   private val linkedOrgs = InMemoryLinkedOrgStore()
   private val repos = InMemoryRepoStore(clock)
   private val issues = InMemoryIssueStore(clock)
-  private val sessions = InMemorySessionStore()
+  private val sessions = InMemorySessionStore(clock)
   private val syncAll = RecordingSyncAllStarter()
 
   private val service =
@@ -123,7 +125,14 @@ class FarmServiceRepositoriesTest {
         fetched = listOf(FetchedIssue(7, "Processed", false), FetchedIssue(9, "Untouched", false)),
         syncStartedAt = clock.current,
     )
-    sessions.create(id = "s1", installationId = 100L, githubRepoId = 1L, number = 7)
+    sessions.create(
+        id = "s1",
+        installationId = 100L,
+        githubRepoId = 1L,
+        number = 7,
+        repoFullName = "acme/one",
+        title = "Processed",
+    )
     sessions.complete("s1")
 
     val response = service.listIssues(ListIssuesRequest.getDefaultInstance())
@@ -131,6 +140,36 @@ class FarmServiceRepositoriesTest {
 
     assertEquals("COMPLETED", stateByNumber[7])
     assertEquals("", stateByNumber[9])
+  }
+
+  // ListSessions serves the agent sessions across linked orgs, newest first, self-describing.
+  @Test
+  fun `ListSessions reports sessions across linked orgs`() = runBlocking {
+    linkedOrgs.link(100L, "acme")
+    sessions.create("s1", 100L, 1L, 7, "acme/one", "First")
+    clock.current = clock.current.plusSeconds(60)
+    sessions.create("s2", 100L, 1L, 9, "acme/one", "Second")
+    sessions.complete("s2")
+
+    val response = service.listSessions(ListSessionsRequest.getDefaultInstance())
+
+    // Newest first.
+    assertEquals(listOf("s2", "s1"), response.sessionsList.map { it.id })
+    val completed = response.sessionsList.single { it.id == "s2" }
+    assertEquals("COMPLETED", completed.state)
+    assertEquals("acme/one", completed.repoFullName)
+    assertEquals(9, completed.number)
+  }
+
+  // GetSession returns one session by id.
+  @Test
+  fun `GetSession returns the session`() = runBlocking {
+    sessions.create("s1", 100L, 1L, 7, "acme/one", "Only")
+
+    val response = service.getSession(GetSessionRequest.newBuilder().setId("s1").build())
+
+    assertEquals("s1", response.session.id)
+    assertEquals("RUNNING", response.session.state)
   }
 
   // The link state surfaces on its own — an org reads as linked before any repo has synced.

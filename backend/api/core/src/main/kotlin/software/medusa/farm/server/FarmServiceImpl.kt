@@ -1,11 +1,15 @@
 package software.medusa.farm.server
 
+import io.grpc.Status
 import software.medusa.farm.github.GhOrgLogin
 import software.medusa.farm.shared.IssueStore
 import software.medusa.farm.shared.LinkedOrgStore
 import software.medusa.farm.shared.RepoStore
+import software.medusa.farm.shared.Session
 import software.medusa.farm.shared.SessionStore
 import software.medusa.farm.v1.FarmServiceGrpcKt
+import software.medusa.farm.v1.GetSessionRequest
+import software.medusa.farm.v1.GetSessionResponse
 import software.medusa.farm.v1.Issue as IssueProto
 import software.medusa.farm.v1.LinkOrgRequest
 import software.medusa.farm.v1.LinkOrgResponse
@@ -16,7 +20,10 @@ import software.medusa.farm.v1.ListLinkedOrgsRequest
 import software.medusa.farm.v1.ListLinkedOrgsResponse
 import software.medusa.farm.v1.ListRepositoriesRequest
 import software.medusa.farm.v1.ListRepositoriesResponse
+import software.medusa.farm.v1.ListSessionsRequest
+import software.medusa.farm.v1.ListSessionsResponse
 import software.medusa.farm.v1.Repository
+import software.medusa.farm.v1.Session as SessionProto
 import software.medusa.farm.v1.SyncRepositoriesRequest
 import software.medusa.farm.v1.SyncRepositoriesResponse
 
@@ -97,6 +104,33 @@ class FarmServiceImpl(
         )
         .build()
   }
+
+  // The agent sessions across every linked org, newest first. Self-describing rows, so no join to
+  // the (possibly since-closed) issue is needed.
+  override suspend fun listSessions(request: ListSessionsRequest): ListSessionsResponse {
+    val installationIds = linkedOrgStore.list().map { it.installationId }
+    val sessions = sessionStore.listForOrgs(installationIds).sortedByDescending { it.startedAt }
+    return ListSessionsResponse.newBuilder().addAllSessions(sessions.map { it.toProto() }).build()
+  }
+
+  override suspend fun getSession(request: GetSessionRequest): GetSessionResponse {
+    val session =
+        sessionStore.get(request.id)
+            ?: throw Status.NOT_FOUND.withDescription("No session ${request.id}")
+                .asRuntimeException()
+    return GetSessionResponse.newBuilder().setSession(session.toProto()).build()
+  }
+
+  private fun Session.toProto(): SessionProto =
+      SessionProto.newBuilder()
+          .setId(id)
+          .setRepoFullName(repoFullName)
+          .setNumber(number)
+          .setTitle(title)
+          .setState(state.name)
+          .setStartedAtMillis(startedAt.toEpochMilli())
+          .setFinishedAtMillis(finishedAt?.toEpochMilli() ?: 0L)
+          .build()
 
   // Kicks the all-orgs sweep on demand — the same workflow the hourly schedule runs. The starter
   // does its blocking Temporal work off the request thread; an unreachable Temporal surfaces as a

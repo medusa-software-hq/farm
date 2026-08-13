@@ -1,5 +1,6 @@
 package software.medusa.farm.shared
 
+import java.time.OffsetDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import software.medusa.farm.shared.db.FarmDatabase
@@ -13,6 +14,8 @@ class PostgresSessionStore(
       installationId: Long,
       githubRepoId: Long,
       number: Int,
+      repoFullName: String,
+      title: String,
   ) {
     withContext(Dispatchers.IO) {
       database.sessionsQueries.create(
@@ -20,6 +23,8 @@ class PostgresSessionStore(
           installationId = installationId,
           githubRepoId = githubRepoId,
           number = number,
+          repoFullName = repoFullName,
+          title = title,
           state = SessionState.RUNNING.name,
       )
     }
@@ -27,7 +32,13 @@ class PostgresSessionStore(
 
   override suspend fun complete(id: String) {
     withContext(Dispatchers.IO) {
-      database.sessionsQueries.complete(state = SessionState.COMPLETED.name, id = id)
+      database.sessionsQueries.setState(state = SessionState.COMPLETED.name, id = id)
+    }
+  }
+
+  override suspend fun fail(id: String) {
+    withContext(Dispatchers.IO) {
+      database.sessionsQueries.setState(state = SessionState.FAILED.name, id = id)
     }
   }
 
@@ -35,14 +46,60 @@ class PostgresSessionStore(
       withContext(Dispatchers.IO) {
         installationIds.flatMap { installationId ->
           database.sessionsQueries.listForOrg(installationId).executeAsList().map {
-            Session(
-                id = it.id,
-                installationId = it.installation_id,
-                githubRepoId = it.github_repo_id,
-                number = it.number,
-                state = SessionState.valueOf(it.state),
+            session(
+                it.id,
+                it.installation_id,
+                it.github_repo_id,
+                it.number,
+                it.repo_full_name,
+                it.title,
+                it.state,
+                it.created_at,
+                it.updated_at,
             )
           }
         }
       }
+
+  override suspend fun get(id: String): Session? =
+      withContext(Dispatchers.IO) {
+        database.sessionsQueries.get(id).executeAsOneOrNull()?.let {
+          session(
+              it.id,
+              it.installation_id,
+              it.github_repo_id,
+              it.number,
+              it.repo_full_name,
+              it.title,
+              it.state,
+              it.created_at,
+              it.updated_at,
+          )
+        }
+      }
+
+  private fun session(
+      id: String,
+      installationId: Long,
+      githubRepoId: Long,
+      number: Int,
+      repoFullName: String,
+      title: String,
+      state: String,
+      createdAt: OffsetDateTime,
+      updatedAt: OffsetDateTime,
+  ): Session {
+    val parsed = SessionState.valueOf(state)
+    return Session(
+        id = id,
+        installationId = installationId,
+        githubRepoId = githubRepoId,
+        number = number,
+        repoFullName = repoFullName,
+        title = title,
+        state = parsed,
+        startedAt = createdAt.toInstant(),
+        finishedAt = if (parsed == SessionState.RUNNING) null else updatedAt.toInstant(),
+    )
+  }
 }
