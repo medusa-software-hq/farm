@@ -7,4 +7,7 @@ package software.medusa.farm.github
  */
 interface GhResourcesApiClient {
   suspend fun listIssues(repo: GhRepoFullName): List<GhIssue>
+
+  /** The issue's Markdown body, or empty when it has none. */
+  suspend fun getIssueBody(repo: GhRepoFullName, number: Int): String
 }

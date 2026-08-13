@@ -14,7 +14,16 @@ import io.temporal.client.schedules.ScheduleSpec
 import io.temporal.serviceclient.WorkflowServiceStubs
 import io.temporal.serviceclient.WorkflowServiceStubsOptions
 import io.temporal.worker.WorkerFactory
+import java.nio.file.Files
 import java.time.Duration
+import kotlin.time.Duration.Companion.minutes
+import software.medusa.commons.system.SysExecutableHandle
+import software.medusa.commons.system.SysProcessSpawner
+import software.medusa.farm.claude.CldEngineConfig
+import software.medusa.farm.claude.CldProperAgent
+import software.medusa.farm.claude.CldProperProcess
+import software.medusa.farm.claude.CldProperSessionStore
+import software.medusa.farm.claude.CldToolPolicy
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.IssueStore
@@ -35,6 +44,7 @@ class TemporalWorkerHost(
     sessionStore: SessionStore,
     linkedOrgStore: LinkedOrgStore,
     gitHubClientProvider: GhInstallationApiClientProvider,
+    claudeOauthToken: String,
 ) {
   private val client: WorkflowClient
   private val factory: WorkerFactory
@@ -61,6 +71,11 @@ class TemporalWorkerHost(
     worker.registerActivitiesImplementations(
         RepoSyncActivitiesImpl(gitHubClientProvider, repoStore, issueStore, linkedOrgStore, client),
         ProcessIssueActivitiesImpl(gitHubClientProvider, sessionStore),
+        AgentActivitiesImpl(
+            gitHubClientProvider,
+            buildAgent(claudeOauthToken),
+            buildCldSessionStore(),
+        ),
     )
     ensureRepoSyncSchedule(service, namespace)
   }
@@ -114,5 +129,36 @@ class TemporalWorkerHost(
     // How often the sweep fires. One hour backstops the on-link sync without hammering GitHub; bump
     // it here to change the cadence.
     private val REPO_SYNC_SWEEP_INTERVAL: Duration = Duration.ofHours(1)
+
+    // A summary is a small, tool-free text task; cap it tightly.
+    private const val SUMMARY_MAX_BUDGET_USD = 0.50
+    private val SUMMARY_TIMEOUT = 2.minutes
+
+    // The connector that drives the real `claude` binary. Locating it here means a worker launched
+    // without claude on PATH fails loudly at startup rather than mid-run.
+    private fun buildAgent(claudeOauthToken: String): CldProperAgent {
+      val config =
+          CldEngineConfig.default(
+                  environment =
+                      mapOf(
+                          "PATH" to (System.getenv("PATH") ?: ""),
+                          "CLAUDE_CODE_OAUTH_TOKEN" to claudeOauthToken,
+                      )
+              )
+              .copy(
+                  // No coding framing (the summary prompt is self-contained) and no tools.
+                  appendSystemPrompt = "",
+                  maxBudgetUsd = SUMMARY_MAX_BUDGET_USD,
+                  wallClockTimeout = SUMMARY_TIMEOUT,
+                  toolPolicy = CldToolPolicy.default().copy(allowedTools = emptyList()),
+              )
+      return CldProperAgent(
+          CldProperProcess(SysProcessSpawner(), SysExecutableHandle.locate("claude")),
+          config,
+      )
+    }
+
+    private fun buildCldSessionStore(): CldProperSessionStore =
+        CldProperSessionStore(Files.createTempDirectory("farm-cld-sessions"))
   }
 }

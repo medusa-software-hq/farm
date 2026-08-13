@@ -66,6 +66,10 @@ fun main() {
           sessionStore = farmStore.session,
           linkedOrgStore = farmStore.linkedOrg,
           gitHubClientProvider = devGitHubApp.clientProvider,
+          // The dev's own claude token; the in-process worker runs the `claude` binary locally.
+          claudeOauthToken =
+              System.getenv("CLAUDE_CODE_OAUTH_TOKEN")
+                  ?: error("CLAUDE_CODE_OAUTH_TOKEN is required (from `claude setup-token`)"),
       )
       .start()
 

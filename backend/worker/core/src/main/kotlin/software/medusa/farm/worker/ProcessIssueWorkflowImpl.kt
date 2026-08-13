@@ -8,9 +8,9 @@ import java.time.Duration
 import software.medusa.farm.shared.ProcessIssueWorkflow
 
 /**
- * The fake processing run: open a session, post a "starting" comment, wait, post a "finished"
- * comment, close the session. A stand-in for the real AI work — the shape (session + issue
- * side-effects) is what later steps slot into. The session id is drawn from the workflow's
+ * The processing run: open a session, run the agent to summarize the issue, post the summary as a
+ * comment, close the session. The summary is a deliberately small first real task — no git, no PR —
+ * that puts an actual Claude call in the pipeline. The session id is drawn from the workflow's
  * deterministic RNG so an activity retry reuses it rather than opening a second session.
  *
  * If the work fails (an activity exhausts its bounded retries), the session is marked FAILED and
@@ -27,6 +27,19 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
               .build(),
       )
 
+  // The agent run gets a longer timeout (a real Claude call) and fewer retries (each attempt
+  // costs).
+  private val agentActivities =
+      Workflow.newActivityStub(
+          AgentActivities::class.java,
+          ActivityOptions.newBuilder()
+              .setStartToCloseTimeout(Duration.ofMinutes(5))
+              .setRetryOptions(
+                  RetryOptions.newBuilder().setMaximumAttempts(AGENT_MAX_ATTEMPTS).build()
+              )
+              .build(),
+      )
+
   override fun process(
       installationId: Long,
       githubRepoId: Long,
@@ -37,9 +50,8 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
     val sessionId = Workflow.randomUUID().toString()
     activities.createSession(sessionId, installationId, githubRepoId, number, repoFullName, title)
     try {
-      activities.postIssueComment(installationId, repoFullName, number, STARTING_COMMENT)
-      Workflow.sleep(PROCESS_DELAY)
-      activities.postIssueComment(installationId, repoFullName, number, FINISHED_COMMENT)
+      val summary = agentActivities.summarizeIssue(installationId, repoFullName, number, title)
+      activities.postIssueComment(installationId, repoFullName, number, summaryComment(summary))
       activities.completeSession(sessionId)
     } catch (e: ActivityFailure) {
       activities.failSession(sessionId)
@@ -52,11 +64,10 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
     // leave the session stuck RUNNING).
     private const val MAX_ATTEMPTS = 5
 
-    // Stand-in for real work; long enough that a session is observably "running" before it
-    // finishes.
-    private val PROCESS_DELAY: Duration = Duration.ofSeconds(5)
+    // Fewer attempts for the agent: a run is expensive, and a repeated failure is usually a real
+    // problem (bad token, exhausted budget) rather than a transient blip.
+    private const val AGENT_MAX_ATTEMPTS = 3
 
-    private const val STARTING_COMMENT = "🌱 Farm is starting to process this issue…"
-    private const val FINISHED_COMMENT = "✅ Farm finished processing this issue."
+    private fun summaryComment(summary: String): String = "🌱 **Farm summary**\n\n$summary"
   }
 }

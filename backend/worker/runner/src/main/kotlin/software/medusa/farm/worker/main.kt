@@ -6,6 +6,7 @@ import software.medusa.farm.shared.BakedConfig
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 private const val runnerEnvironmentEnvVarName = "FARM_RUNNER_ENVIRONMENT"
+private const val claudeOauthTokenEnvVarName = "CLAUDE_CODE_OAUTH_TOKEN"
 private const val databaseUrlSecretId = "api-database-url"
 private const val temporalApiKeySecretId = "worker-temporal-api-key"
 private const val gitHubAppPemSecretId = "api-github-app-pem"
@@ -37,6 +38,11 @@ fun main() {
                     environment.gitHubAppClientId,
                     client.read(environment.gcpProjectId, gitHubAppPemSecretId),
                 ),
+            // The operator's own claude token, from the launch environment — the worker runs the
+            // `claude` binary on the operator's machine, so its auth comes from there too.
+            claudeOauthToken =
+                System.getenv(claudeOauthTokenEnvVarName)
+                    ?: error("$claudeOauthTokenEnvVarName is required (from `claude setup-token`)"),
         )
       }
   runTemporalWorker(config)
