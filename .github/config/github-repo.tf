@@ -40,6 +40,7 @@ locals {
   check_api_domain_mapping_job_name     = "API (domain mapping)"
   check_api_impl_job_name               = "API (implementation)"
   check_cli_job_name                    = "CLI"
+  check_claude_connector_job_name       = "claude-connector"
 }
 
 # Branch protection ruleset for the default branch
@@ -121,6 +122,11 @@ resource "github_repository_ruleset" "default_branch" {
 
       required_check {
         context        = "${local.check_cli_job_name} / Check CLI"
+        integration_id = local.gh_actions_integration_id
+      }
+
+      required_check {
+        context        = "${local.check_claude_connector_job_name} / Check claude-connector"
         integration_id = local.gh_actions_integration_id
       }
 
