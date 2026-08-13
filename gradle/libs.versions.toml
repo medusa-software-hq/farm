@@ -12,6 +12,7 @@ kotlin = "2.3.20"
 kotlin-coroutines = "1.10.2"
 kotlinx-serialization = "1.9.0"
 ktfmt = "0.26.0"
+medusa-commons = "0.2.1"
 logback = "1.5.32"
 nimbus-jose-jwt = "10.9"
 nimbus-oauth2-oidc-sdk = "11.38.2"
@@ -44,6 +45,7 @@ kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotl
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlin-coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+medusa-commons-system = { module = "software.medusa.commons:system", version.ref = "medusa-commons" }
 nimbus-jose-jwt = { module = "com.nimbusds:nimbus-jose-jwt", version.ref = "nimbus-jose-jwt" }
 nimbus-oauth2-oidc-sdk = { module = "com.nimbusds:oauth2-oidc-sdk", version.ref = "nimbus-oauth2-oidc-sdk" }
 postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }

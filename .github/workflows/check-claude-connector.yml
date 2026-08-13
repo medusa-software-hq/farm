@@ -1,0 +1,63 @@
+name: Check claude-connector
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: 21
+  NO_COLOR: 1
+
+  SERVICE_PATH: backend/claude-connector
+  # The claude CLI version the connector's flag/behavior assumptions are pinned against.
+  CLAUDE_CLI_VERSION: 2.1.52
+
+jobs:
+  check-claude-connector:
+    name: Check claude-connector
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - uses: go-task/setup-task@v2
+
+      - name: Check formatting
+        run: task checkFormatting
+        working-directory: ${{ env.SERVICE_PATH }}
+
+      - name: Lint
+        run: task lint
+        working-directory: ${{ env.SERVICE_PATH }}
+
+      - name: Compile
+        run: task compile
+        working-directory: ${{ env.SERVICE_PATH }}
+
+      - name: Test
+        run: task test
+        working-directory: ${{ env.SERVICE_PATH }}
+
+      # Integration suite against the real CLI. The binary alone lets the flag-surface check run;
+      # the paid behavioral checks skip themselves unless CLAUDE_CODE_OAUTH_TOKEN is provisioned.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install claude CLI
+        run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CLI_VERSION }}
+
+      - name: Integration test
+        run: task integrationTest
+        working-directory: ${{ env.SERVICE_PATH }}
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

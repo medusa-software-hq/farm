@@ -21,6 +21,9 @@ allprojects {
   repositories {
     // Virtually all modules need Maven Central dependencies
     mavenCentral()
+
+    // Published kotlin-commons artifacts (software.medusa.commons:*).
+    maven { url = uri("https://dl.cloudsmith.io/public/medusa-software/public/maven/") }
   }
 }
 
