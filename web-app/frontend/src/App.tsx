@@ -1,6 +1,6 @@
 import { createClient } from '@connectrpc/connect';
 import { createGrpcWebTransport } from '@connectrpc/connect-web';
-import { Badge, Box, Button, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Badge, Box, Button, Group, Loader, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import heroImg from './assets/hero.png';
 import reactLogo from './assets/react.svg';
@@ -32,11 +32,17 @@ const socialLinks = [
 function AppContent({ token }: { token: string }) {
   const { handleUnauthorized } = useAuth();
   const [error, setError] = useState<string | null>(null);
-  const [linkedOrgs, setLinkedOrgs] = useState<{ orgLogin: string; installationId: bigint }[]>([]);
-  const [repositories, setRepositories] = useState<{ orgLogin: string; fullName: string }[]>([]);
+  // `null` means "not loaded yet" — kept distinct from `[]` ("loaded, nothing there") so the initial
+  // fetch shows a loading state rather than a false "nothing linked".
+  const [linkedOrgs, setLinkedOrgs] = useState<
+    { orgLogin: string; installationId: bigint }[] | null
+  >(null);
+  const [repositories, setRepositories] = useState<{ orgLogin: string; fullName: string }[] | null>(
+    null
+  );
   const [issues, setIssues] = useState<
-    { repoFullName: string; number: number; title: string; sessionState: string }[]
-  >([]);
+    { repoFullName: string; number: number; title: string; sessionState: string }[] | null
+  >(null);
   const [syncing, setSyncing] = useState(false);
 
   const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
@@ -66,6 +72,7 @@ function AppContent({ token }: { token: string }) {
       );
     } catch (err: unknown) {
       handleError(err);
+      setLinkedOrgs([]);
     }
   }, [headers, handleError]);
 
@@ -153,7 +160,9 @@ function AppContent({ token }: { token: string }) {
         <Text c="dimmed" size="sm">
           Linked to the Farm GitHub App.
         </Text>
-        {linkedOrgs.length === 0 ? (
+        {linkedOrgs === null ? (
+          <Loader size="sm" />
+        ) : linkedOrgs.length === 0 ? (
           <Text c="dimmed" size="sm">
             No organizations linked yet…
           </Text>
@@ -180,12 +189,14 @@ function AppContent({ token }: { token: string }) {
           variant="light"
           size="sm"
           loading={syncing}
-          disabled={linkedOrgs.length === 0}
+          disabled={!linkedOrgs || linkedOrgs.length === 0}
           onClick={() => void handleSync()}
         >
           Sync
         </Button>
-        {repositories.length === 0 ? (
+        {repositories === null ? (
+          <Loader size="sm" />
+        ) : repositories.length === 0 ? (
           <Text c="dimmed" size="sm">
             No repositories yet…
           </Text>
@@ -210,7 +221,9 @@ function AppContent({ token }: { token: string }) {
         <Text c="dimmed" size="sm">
           Open issues synced from the linked repos.
         </Text>
-        {issues.length === 0 ? (
+        {issues === null ? (
+          <Loader size="sm" />
+        ) : issues.length === 0 ? (
           <Text c="dimmed" size="sm">
             No issues yet…
           </Text>
