@@ -41,6 +41,18 @@ class GhUniversalResourcesApiClient(
           GhIssue(number = it.number, title = it.title, labels = it.labels.map { l -> l.name })
         }
   }
+
+  override suspend fun getIssueBody(repo: GhRepoFullName, number: Int): String {
+    val response =
+        http.get(
+            "/repos/${repo.value}/issues/$number",
+            bearer = tokenProvider.provideToken(),
+        )
+    check(response.statusCode() == httpOk) {
+      "GitHub issue fetch failed: ${response.statusCode()} ${response.body()}"
+    }
+    return gitHubJson.decodeFromString<IssueBodyDto>(response.body()).body.orEmpty()
+  }
 }
 
 @Serializable
@@ -50,5 +62,7 @@ private class IssueDto(
     val labels: List<LabelDto> = emptyList(),
     @SerialName("pull_request") val pullRequest: JsonElement? = null,
 )
+
+@Serializable private class IssueBodyDto(val body: String? = null)
 
 @Serializable private class LabelDto(val name: String)

@@ -52,6 +52,22 @@ class GhUniversalResourcesApiClientTest {
   }
 
   @Test
+  fun `fetches an issue body, and treats a null body as empty`() = runBlocking {
+    FakeGitHubServer { request ->
+          when {
+            request.pathAndQuery.endsWith("/issues/7") ->
+                FakeGitHubServer.Response(200, """{"number": 7, "body": "Please fix the thing."}""")
+            else -> FakeGitHubServer.Response(200, """{"number": 9}""")
+          }
+        }
+        .use { server ->
+          val client = clientAgainst(server)
+          assertEquals("Please fix the thing.", client.getIssueBody(GhRepoFullName("acme/one"), 7))
+          assertEquals("", client.getIssueBody(GhRepoFullName("acme/one"), 9))
+        }
+  }
+
+  @Test
   fun `parses label names`() = runBlocking {
     FakeGitHubServer {
           FakeGitHubServer.Response(

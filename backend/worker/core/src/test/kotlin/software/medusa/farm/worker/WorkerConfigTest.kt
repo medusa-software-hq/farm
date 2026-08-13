@@ -14,6 +14,7 @@ class WorkerConfigTest {
           "TEMPORAL_API_KEY" to "secret-key",
           "GITHUB_APP_CLIENT_ID" to "Iv1.test",
           "GITHUB_APP_PEM" to "-----BEGIN PRIVATE KEY-----",
+          "CLAUDE_CODE_OAUTH_TOKEN" to "sk-ant-oat01-test",
       )
 
   @Test
@@ -25,6 +26,7 @@ class WorkerConfigTest {
     assertEquals(WorkflowServiceAuthConfig.Cloud("secret-key"), config.temporalAuth)
     assertEquals("Iv1.test", config.gitHubApp.clientId)
     assertEquals("-----BEGIN PRIVATE KEY-----", config.gitHubApp.pem)
+    assertEquals("sk-ant-oat01-test", config.claudeOauthToken)
   }
 
   @Test

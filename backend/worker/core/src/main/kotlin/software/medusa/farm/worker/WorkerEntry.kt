@@ -18,6 +18,7 @@ fun runTemporalWorker(config: WorkerConfig) {
           store.session,
           store.linkedOrg,
           gitHubClientProvider(config.gitHubApp),
+          config.claudeOauthToken,
       )
       .start()
   // Stay up; the worker factory polls on background threads.

@@ -9,6 +9,8 @@ data class WorkerConfig(
     val temporalNamespace: String,
     val temporalAuth: WorkflowServiceAuthConfig,
     val gitHubApp: GitHubAppConfig,
+    // The claude CLI auth token the agent runs under (from `claude setup-token`).
+    val claudeOauthToken: String,
 ) {
   companion object {
     fun fromEnvironment(env: Map<String, String> = System.getenv()): WorkerConfig =
@@ -28,6 +30,8 @@ data class WorkerConfig(
                     env["GITHUB_APP_CLIENT_ID"] ?: error("GITHUB_APP_CLIENT_ID is required"),
                     env["GITHUB_APP_PEM"] ?: error("GITHUB_APP_PEM is required"),
                 ),
+            claudeOauthToken =
+                env["CLAUDE_CODE_OAUTH_TOKEN"] ?: error("CLAUDE_CODE_OAUTH_TOKEN is required"),
         )
   }
 }
