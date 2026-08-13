@@ -52,3 +52,7 @@ jobs:
     uses: ./.github/workflows/check-claude-connector.yml
     # For the real-CLI integration suite's CLAUDE_CODE_OAUTH_TOKEN (paid checks skip without it).
     secrets: inherit
+
+  check-git-cli:
+    name: git-cli
+    uses: ./.github/workflows/check-git-cli.yml

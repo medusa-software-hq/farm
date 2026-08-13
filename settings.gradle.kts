@@ -9,6 +9,7 @@ include(
     ":backend:shared",
     ":backend:github-client",
     ":backend:claude-connector",
+    ":backend:git-cli",
     ":backend:worker:core",
     ":backend:worker:proper",
     ":backend:worker:runner",
