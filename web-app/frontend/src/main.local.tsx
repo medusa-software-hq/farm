@@ -3,6 +3,7 @@ import './global.css';
 import { MantineProvider } from '@mantine/core';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import App from './App.tsx';
 import { LocalAuthProvider } from './LocalAuthProvider.tsx';
@@ -17,7 +18,9 @@ createRoot(root).render(
   <StrictMode>
     <MantineProvider theme={theme}>
       <LocalAuthProvider>
-        <App />
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
       </LocalAuthProvider>
       <Toaster richColors position="bottom-right" />
     </MantineProvider>
