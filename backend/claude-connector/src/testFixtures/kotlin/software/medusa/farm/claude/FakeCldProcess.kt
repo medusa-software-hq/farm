@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.asFlow
  * exhausted the last one is replayed.
  *
  * Every [spawn]'s [CldInvocation] is recorded in [invocations] so tests can assert on the flags and
- * environment the agent built, and any stdin writes land in [sentMessages].
+ * environment the agent built.
  */
 class FakeCldProcess
 private constructor(
@@ -45,8 +45,6 @@ private constructor(
   val spawnCount: Int
     get() = invocations.size
 
-  val sentMessages: MutableList<String> = mutableListOf()
-
   private var closedCount: Int = 0
 
   /** True once every spawned run has been closed (process trees killed). */
@@ -60,10 +58,6 @@ private constructor(
 
     return object : CldRun {
       override val messages: Flow<CldMessage> = cannedMessages.asFlow()
-
-      override suspend fun sendUserMessage(text: String) {
-        sentMessages += text
-      }
 
       override suspend fun awaitTermination(): CldRun.Termination = termination
 

@@ -16,14 +16,6 @@ interface CldRun : AutoCloseable {
    */
   val messages: Flow<CldMessage>
 
-  /**
-   * Feeds a user message to the process's stdin as a `stream-json` input line. Unused by the
-   * single-shot run; it exists for the fixup path, which resumes the same live process by writing
-   * feedback here rather than re-spawning. The implementation wraps [text] into the
-   * `{"type":"user","message":{…}}` envelope the CLI expects.
-   */
-  suspend fun sendUserMessage(text: String)
-
   /** Suspends until the process exits, then reports how it ended. */
   suspend fun awaitTermination(): Termination
 

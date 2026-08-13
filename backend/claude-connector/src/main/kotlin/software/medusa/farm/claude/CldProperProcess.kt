@@ -3,9 +3,6 @@ package software.medusa.farm.claude
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.mapNotNull
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonObject
 import software.medusa.commons.system.SysExecutableHandle
 import software.medusa.commons.system.SysProcessHandle
 import software.medusa.commons.system.SysProcessSpawner
@@ -15,8 +12,7 @@ import software.medusa.commons.system.SysProcessSpawner
  *
  * The subprocess mechanics — replace-not-inherit environment, streamed stdout, process-tree kill on
  * close, shutdown-hook cleanup — live in [SysProcessSpawner.launch]. This class only adapts that
- * generic handle to the claude-specific seam: it parses each stdout line into a [CldMessage] and
- * wraps a user turn in the `stream-json` envelope the CLI expects.
+ * generic handle to the claude-specific seam: parsing each stdout line into a [CldMessage].
  *
  * The [executable] is a validated handle resolved once at startup, so a missing binary is a clean,
  * loud failure rather than a surprise deep inside the first run.
@@ -37,6 +33,9 @@ class CldProperProcess(
         } catch (e: IOException) {
           throw CldConnectorException.binaryUnavailable(cause = e)
         }
+    // The connector drives claude entirely through `-p` and never writes stdin, so close it now:
+    // headless claude blocks reading stdin until EOF, so an open pipe would hang the whole run.
+    handle.closeInput()
     return HandleRun(handle)
   }
 
@@ -45,10 +44,6 @@ class CldProperProcess(
   ) : CldRun {
     override val messages: Flow<CldMessage> =
         handle.standardOutputLines.mapNotNull { CldStreamParser.parseLine(it) }
-
-    override suspend fun sendUserMessage(text: String) {
-      handle.writeLine(renderUserMessageLine(text))
-    }
 
     override suspend fun awaitTermination(): CldRun.Termination {
       val termination = handle.awaitTermination()
@@ -60,19 +55,6 @@ class CldProperProcess(
 
     override fun close() {
       handle.close()
-    }
-
-    private companion object {
-      /** Wraps raw text as a single-line `stream-json` user message. */
-      fun renderUserMessageLine(text: String): String =
-          buildJsonObject {
-                put("type", "user")
-                putJsonObject("message") {
-                  put("role", "user")
-                  put("content", text)
-                }
-              }
-              .toString()
     }
   }
 }
