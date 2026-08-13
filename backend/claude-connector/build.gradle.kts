@@ -40,4 +40,7 @@ tasks.register<Test>("integrationTest") {
   classpath = integrationTest.runtimeClasspath
   useJUnitPlatform()
   shouldRunAfter(tasks.named("test"))
+  // Probes the real CLI (and an env-provided token), neither of which is a task input, so never
+  // treat this as up to date — always re-run when invoked.
+  outputs.upToDateWhen { false }
 }

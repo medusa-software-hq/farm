@@ -40,5 +40,7 @@ tasks:
   integrationTest:
     desc: Run integration tests against the real claude CLI
     cmds:
-      - ../../gradlew :backend:claude-connector:integrationTest
+      # --no-daemon so this invocation's CLAUDE_CODE_OAUTH_TOKEN reaches the forked test JVM: a
+      # reused daemon keeps the environment it was started with and would drop the token.
+      - ../../gradlew --no-daemon :backend:claude-connector:integrationTest
     interactive: true

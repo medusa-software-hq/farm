@@ -32,7 +32,9 @@ class CldClaudeCliIntegrationTest {
 
   private fun tokenOrSkip(): String {
     val token = System.getenv("CLAUDE_CODE_OAUTH_TOKEN")
-    assumeTrue(!token.isNullOrBlank(), "CLAUDE_CODE_OAUTH_TOKEN is not set")
+    // Only a real Anthropic token (sk-ant-…) runs these paid tests; the provisioned placeholder and
+    // any misconfiguration are treated as "not configured", so they skip rather than fail.
+    assumeTrue(token != null && token.startsWith("sk-ant-"), "no usable CLAUDE_CODE_OAUTH_TOKEN")
     return token
   }
 
