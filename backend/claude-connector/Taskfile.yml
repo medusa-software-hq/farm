@@ -1,0 +1,44 @@
+version: '3'
+
+.kotlinSources: &kotlinSources
+  - '**/*.kt'
+  - '**/*.kts'
+
+tasks:
+  checkFormatting:
+    desc: Check Kotlin formatting
+    sources: *kotlinSources
+    cmds:
+      - ../../gradlew :backend:claude-connector:ktfmtCheck
+    interactive: true
+
+  lint:
+    desc: Lint the Kotlin sources
+    sources: *kotlinSources
+    cmds:
+      - ../../gradlew :backend:claude-connector:detekt
+    interactive: true
+
+  compile:
+    desc: Compile all source sets
+    sources: *kotlinSources
+    cmds:
+      - >-
+        ../../gradlew :backend:claude-connector:compileKotlin
+        :backend:claude-connector:compileTestKotlin
+        :backend:claude-connector:compileTestFixturesKotlin
+        :backend:claude-connector:compileIntegrationTestKotlin
+    interactive: true
+
+  test:
+    desc: Run the pure unit tests
+    sources: *kotlinSources
+    cmds:
+      - ../../gradlew :backend:claude-connector:test
+    interactive: true
+
+  integrationTest:
+    desc: Run integration tests against the real claude CLI
+    cmds:
+      - ../../gradlew :backend:claude-connector:integrationTest
+    interactive: true

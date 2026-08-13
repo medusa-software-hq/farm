@@ -46,3 +46,9 @@ jobs:
   check-cli:
     name: CLI
     uses: ./.github/workflows/check-cli.yml
+
+  check-claude-connector:
+    name: claude-connector
+    uses: ./.github/workflows/check-claude-connector.yml
+    # For the real-CLI integration suite's CLAUDE_CODE_OAUTH_TOKEN (paid checks skip without it).
+    secrets: inherit
