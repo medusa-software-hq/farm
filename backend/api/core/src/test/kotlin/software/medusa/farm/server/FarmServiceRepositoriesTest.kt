@@ -99,7 +99,7 @@ class FarmServiceRepositoriesTest {
         installationId = 100L,
         githubRepoId = 1L,
         repoFullName = "acme/one",
-        fetched = listOf(FetchedIssue(7, "Fix the thing"), FetchedIssue(9, "Docs")),
+        fetched = listOf(FetchedIssue(7, "Fix the thing", false), FetchedIssue(9, "Docs", false)),
         syncStartedAt = clock.current,
     )
 
@@ -119,7 +119,7 @@ class FarmServiceRepositoriesTest {
         installationId = 100L,
         githubRepoId = 1L,
         repoFullName = "acme/one",
-        fetched = listOf(FetchedIssue(7, "Processed"), FetchedIssue(9, "Untouched")),
+        fetched = listOf(FetchedIssue(7, "Processed", false), FetchedIssue(9, "Untouched", false)),
         syncStartedAt = clock.current,
     )
     sessions.create(id = "s1", installationId = 100L, githubRepoId = 1L, number = 7)

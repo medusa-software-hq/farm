@@ -20,7 +20,7 @@ class GhRefreshingInstallationTokenProviderTest {
         FakeGitHub(
             installationIdsByOrg = mapOf(GhOrgLogin("acme") to GhInstallationId(100L)),
             reposByInstallation = mapOf(GhInstallationId(100L) to listOf(repo)),
-            issuesByRepo = mapOf(repo to listOf(GhIssue(1, "hi"))),
+            issuesByRepo = mapOf(repo to listOf(GhIssue(1, "hi", emptyList()))),
         )
     FakeGitHubServer(fake.handler).use { server ->
       val tokenProvider =
