@@ -91,3 +91,36 @@ export function IconSprout({ size }: IconProps) {
     </Svg>
   );
 }
+
+export function IconArrowLeft({ size }: IconProps) {
+  return (
+    <Svg size={size}>
+      <path d="m15 18-6-6 6-6" />
+    </Svg>
+  );
+}
+
+export function IconSearch({ size }: IconProps) {
+  return (
+    <Svg size={size}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3-3" />
+    </Svg>
+  );
+}
+
+export function IconX({ size }: IconProps) {
+  return (
+    <Svg size={size}>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </Svg>
+  );
+}
+
+export function IconActivity({ size }: IconProps) {
+  return (
+    <Svg size={size}>
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+    </Svg>
+  );
+}

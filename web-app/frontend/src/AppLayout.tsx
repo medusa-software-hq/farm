@@ -15,6 +15,11 @@ const NAV = [
   { to: '/sessions', label: 'Sessions', Icon: IconSessions },
 ];
 
+// A nav entry owns its path and everything under it (so /sessions stays active on /sessions/:id).
+function ownsPath(to: string, pathname: string): boolean {
+  return to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(`${to}/`);
+}
+
 export function AppLayout() {
   const { pathname } = useLocation();
   const { state } = useAuth();
@@ -22,7 +27,7 @@ export function AppLayout() {
   const [syncing, setSyncing] = useState(false);
 
   const user = state.status === 'authenticated' ? state.user : null;
-  const title = NAV.find((n) => n.to === pathname)?.label ?? 'Farm';
+  const title = NAV.find((n) => ownsPath(n.to, pathname))?.label ?? 'Farm';
 
   async function sync() {
     setSyncing(true);
@@ -74,7 +79,7 @@ export function AppLayout() {
               to={to}
               label={label}
               leftSection={<Icon size={17} />}
-              active={pathname === to}
+              active={ownsPath(to, pathname)}
               variant="light"
               style={{ borderRadius: 'var(--mantine-radius-md)' }}
             />

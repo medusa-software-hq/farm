@@ -4,7 +4,9 @@ import { OrgProvider } from './OrgContext.tsx';
 import { Issues } from './routes/Issues.tsx';
 import { Overview } from './routes/Overview.tsx';
 import { Repositories } from './routes/Repositories.tsx';
+import { SessionDetail } from './routes/SessionDetail.tsx';
 import { Sessions } from './routes/Sessions.tsx';
+import { SessionsArchive } from './routes/SessionsArchive.tsx';
 import { SignInWall } from './SignInWall.tsx';
 import { useAuth } from './useAuth.tsx';
 
@@ -26,6 +28,8 @@ export default function App() {
           <Route path="repositories" element={<Repositories />} />
           <Route path="issues" element={<Issues />} />
           <Route path="sessions" element={<Sessions />} />
+          <Route path="sessions/archive" element={<SessionsArchive />} />
+          <Route path="sessions/:id" element={<SessionDetail />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
