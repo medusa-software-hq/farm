@@ -46,14 +46,15 @@ class FarmServiceRepositoriesTest {
 
   // The read path never starts a workflow; this stands in for the starter, unused here.
   private object UnusedRepoSyncStarter : RepoSyncStarter {
-    override fun start(installationId: Long) = error("the read path must not start a workflow")
+    override suspend fun start(installationId: Long) =
+        error("the read path must not start a workflow")
   }
 
   // Records whether the manual sweep was triggered, so the SyncRepositories path can assert on it.
   private class RecordingSyncAllStarter : SyncAllStarter {
     var started = 0
 
-    override fun start() {
+    override suspend fun start() {
       started++
     }
   }

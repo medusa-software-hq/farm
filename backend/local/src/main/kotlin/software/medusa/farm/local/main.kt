@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.time.Clock
+import kotlinx.coroutines.CompletableDeferred
 import software.medusa.farm.github.GhCachingInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhProperAppApiClient
@@ -13,6 +14,7 @@ import software.medusa.farm.server.NoOpAuthDecorator
 import software.medusa.farm.server.TemporalRepoSyncStarter
 import software.medusa.farm.server.TemporalSyncAllStarter
 import software.medusa.farm.server.buildServer
+import software.medusa.farm.server.buildWorkflowClient
 import software.medusa.farm.shared.FarmStore
 import software.medusa.farm.shared.InMemoryIssueStore
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
@@ -67,6 +69,18 @@ fun main() {
       )
       .start()
 
+  // One shared Temporal client for both starters. Built synchronously here — the local stack isn't
+  // latency-sensitive — and wrapped in a completed Deferred to match the starters' signature; a
+  // build failure just crashes the dev process.
+  val temporalClient =
+      CompletableDeferred(
+          buildWorkflowClient(
+              localTemporalAddress,
+              localTemporalNamespace,
+              WorkflowServiceAuthConfig.Local,
+          )
+      )
+
   buildServer(
           originRegex = localCorsOriginRegex,
           port = localPort,
@@ -76,18 +90,9 @@ fun main() {
               GitHubOrgService(
                   devGitHubApp.appApiClient,
                   farmStore.linkedOrg,
-                  TemporalRepoSyncStarter(
-                      localTemporalAddress,
-                      localTemporalNamespace,
-                      WorkflowServiceAuthConfig.Local,
-                  ),
+                  TemporalRepoSyncStarter(temporalClient),
               ),
-          syncAllStarter =
-              TemporalSyncAllStarter(
-                  localTemporalAddress,
-                  localTemporalNamespace,
-                  WorkflowServiceAuthConfig.Local,
-              ),
+          syncAllStarter = TemporalSyncAllStarter(temporalClient),
       )
       .start()
       .join()
