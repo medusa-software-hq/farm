@@ -16,9 +16,24 @@ resource "google_cloud_run_v2_service" "primary" {
   template {
     service_account = google_service_account.primary_service_sa.email
 
+    # Scale to zero is deliberate: this is an experimental, low-traffic app, so we don't pay for an
+    # always-on instance. The trade-off is a JVM cold start on the first request after idle (~13s of
+    # boot, which the browser's CORS preflight absorbs before any data loads). We attack that boot
+    # cost directly — startup_cpu_boost below, async client init, the loading UI — rather than by
+    # keeping an instance warm.
+    scaling {
+      min_instance_count = 0
+    }
+
     containers {
       # Initial placeholder; CI/CD will deploy the real image from Artifact Registry.
       image = "us-docker.pkg.dev/cloudrun/container/hello"
+
+      # Full CPU during startup so the cold start boots quickly rather than crawling on throttled
+      # CPU (the boot is CPU-bound classload + client init). Costs nothing at steady state.
+      resources {
+        startup_cpu_boost = true
+      }
 
       ports {
         container_port = 8080
