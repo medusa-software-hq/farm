@@ -43,6 +43,10 @@ tasks.register<Test>("integrationTest") {
   // Probes the real CLI (and an env-provided token), neither of which is a task input, so never
   // treat this as up to date — always re-run when invoked.
   outputs.upToDateWhen { false }
-  // Log each test's outcome so a CI run makes plain whether the behavioral checks ran or skipped.
-  testLogging { events("passed", "skipped", "failed") }
+  // Log each test's outcome (with full failure detail) so a CI run makes plain whether the
+  // behavioral checks ran, skipped, or why they failed.
+  testLogging {
+    events("passed", "skipped", "failed")
+    exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+  }
 }

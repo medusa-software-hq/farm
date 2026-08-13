@@ -111,6 +111,13 @@ class CldClaudeCliIntegrationTest {
     val token = tokenOrSkip()
     val agent = CldProperAgent(CldProperProcess(spawner, claude), behavioralConfig(token))
 
+    // The workspace path is fixed across both runs: claude files a session's transcript under a
+    // slug
+    // derived from the working directory, so --resume only finds it when run 2 shares run 1's path
+    // (the worker pins this path for the same reason). Only the HOME/store differs — a second
+    // worker.
+    val workspace = Files.createTempDirectory("cld-it-resume-ws")
+
     // Run 1 on "worker A": plant a codeword, then snapshot.
     val workerA = CldProperSessionStore(Files.createTempDirectory("cld-it-a"))
     val sessionId = UUID.randomUUID().toString()
@@ -118,7 +125,7 @@ class CldClaudeCliIntegrationTest {
     val first =
         agent.run(
             CldRunRequest(
-                workspace = Files.createTempDirectory("cld-it-w1"),
+                workspace = workspace,
                 home = homeA,
                 prompt = "Remember this codeword for later: MEDUSA. Reply with just: OK.",
                 session = CldSessionSelector.Fresh(sessionId),
@@ -133,7 +140,7 @@ class CldClaudeCliIntegrationTest {
     val second =
         agent.run(
             CldRunRequest(
-                workspace = Files.createTempDirectory("cld-it-w2"),
+                workspace = workspace,
                 home = homeB,
                 prompt = "What was the codeword I gave you? Reply with just that word.",
                 session = CldSessionSelector.Resume(ref),
