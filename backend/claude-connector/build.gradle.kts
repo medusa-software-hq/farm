@@ -11,6 +11,8 @@ plugins {
 dependencies {
   api(libs.kotlinx.coroutines.core)
   implementation(libs.kotlinx.serialization.json)
+  // The subprocess plumbing (spawn/stream/kill-tree) lives in commons; this module adapts it.
+  implementation(libs.medusa.commons.system)
 
   testImplementation(libs.kotlin.test)
 }

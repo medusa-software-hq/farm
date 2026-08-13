@@ -1,120 +1,68 @@
 package software.medusa.farm.claude
 
-import java.io.BufferedWriter
 import java.io.IOException
-import java.nio.file.Path
-import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import software.medusa.commons.system.SysExecutableHandle
+import software.medusa.commons.system.SysProcessHandle
+import software.medusa.commons.system.SysProcessSpawner
 
 /**
- * The production [CldProcess]: drives the real `claude` binary via [ProcessBuilder].
+ * The production [CldProcess]: drives the real `claude` binary via the commons [SysProcessSpawner].
  *
- * The [claudeExecutable] is located once at startup and injected, so a missing binary is a clean,
+ * The subprocess mechanics — replace-not-inherit environment, streamed stdout, process-tree kill on
+ * close, shutdown-hook cleanup — live in [SysProcessSpawner.launch]. This class only adapts that
+ * generic handle to the claude-specific seam: it parses each stdout line into a [CldMessage] and
+ * wraps a user turn in the `stream-json` envelope the CLI expects.
+ *
+ * The [executable] is a validated handle resolved once at startup, so a missing binary is a clean,
  * loud failure rather than a surprise deep inside the first run.
- *
- * Two deliberate properties:
- * - **Replace-not-inherit environment.** The child gets exactly [CldInvocation.environment]; the
- *   JVM's own env is cleared first, so no host `ANTHROPIC_*`/`CLAUDE_*` or `~/.claude` leaks in.
- * - **Process-tree kill on close.** [close] destroys the process and all descendants, so
- *   cancellation or a timeout leaves nothing reparented and alive.
  */
 class CldProperProcess(
-    private val claudeExecutable: Path,
+    private val spawner: SysProcessSpawner,
+    private val executable: SysExecutableHandle,
 ) : CldProcess {
   override fun spawn(invocation: CldInvocation): CldRun {
-    val processBuilder =
-        ProcessBuilder(listOf(claudeExecutable.toString()) + invocation.arguments)
-            .directory(invocation.workingDirectory.toFile())
-
-    // Replace-not-inherit: strip the JVM's environment, then install exactly what was requested.
-    processBuilder.environment().clear()
-    processBuilder.environment().putAll(invocation.environment)
-
-    val process =
+    val handle =
         try {
-          processBuilder.start()
+          spawner.launch(
+              executable = executable,
+              workingDirectory = invocation.workingDirectory,
+              arguments = invocation.arguments,
+              environment = invocation.environment,
+          )
         } catch (e: IOException) {
           throw CldConnectorException.binaryUnavailable(cause = e)
         }
-
-    return ProcessRun(process = process)
+    return HandleRun(handle)
   }
 
-  private class ProcessRun(
-      private val process: Process,
+  private class HandleRun(
+      private val handle: SysProcessHandle,
   ) : CldRun {
-    private val stdin: BufferedWriter = process.outputStream.bufferedWriter()
-
-    // stderr must be drained concurrently with stdout or the child can block on a full pipe; a
-    // daemon thread keeps this draining off any coroutine scope.
-    private val stderrBuffer = StringBuilder()
-    private val stderrThread =
-        Thread {
-              process.errorStream.bufferedReader().useLines { lines ->
-                lines.forEach { line ->
-                  synchronized(stderrBuffer) { stderrBuffer.appendLine(line) }
-                }
-              }
-            }
-            .apply {
-              isDaemon = true
-              start()
-            }
-
     override val messages: Flow<CldMessage> =
-        flow {
-              process.inputStream.bufferedReader().useLines { lines ->
-                for (line in lines) {
-                  CldStreamParser.parseLine(line)?.let { emit(it) }
-                }
-              }
-            }
-            .flowOn(Dispatchers.IO)
+        handle.standardOutputLines.mapNotNull { CldStreamParser.parseLine(it) }
 
     override suspend fun sendUserMessage(text: String) {
-      withContext(Dispatchers.IO) {
-        stdin.write(renderUserMessageLine(text))
-        stdin.newLine()
-        stdin.flush()
-      }
+      handle.writeLine(renderUserMessageLine(text))
     }
 
     override suspend fun awaitTermination(): CldRun.Termination {
-      val exitCode = withContext(Dispatchers.IO) { process.waitFor() }
-      stderrThread.join(stderrJoinMillis)
+      val termination = handle.awaitTermination()
       return CldRun.Termination(
-          exitCode = exitCode,
-          standardError = synchronized(stderrBuffer) { stderrBuffer.toString() },
+          exitCode = termination.exitCode,
+          standardError = termination.errorOutput,
       )
     }
 
     override fun close() {
-      // Kill descendants first, then the root, so nothing reparents and survives.
-      process.descendants().forEach { it.destroyForcibly() }
-      process.destroyForcibly()
-      try {
-        process.waitFor(closeWaitSeconds, TimeUnit.SECONDS)
-      } catch (_: InterruptedException) {
-        Thread.currentThread().interrupt()
-      }
-      try {
-        stdin.close()
-      } catch (_: IOException) {
-        // best-effort
-      }
+      handle.close()
     }
 
     private companion object {
-      const val stderrJoinMillis = 2_000L
-      const val closeWaitSeconds = 5L
-
       /** Wraps raw text as a single-line `stream-json` user message. */
       fun renderUserMessageLine(text: String): String =
           buildJsonObject {
