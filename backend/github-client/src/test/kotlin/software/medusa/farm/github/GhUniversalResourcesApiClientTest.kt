@@ -23,7 +23,10 @@ class GhUniversalResourcesApiClientTest {
         }
         .use { server ->
           val issues = clientAgainst(server).listIssues(GhRepoFullName("acme/one"))
-          assertEquals(listOf(GhIssue(7, "Fix the thing"), GhIssue(9, "Docs")), issues)
+          assertEquals(
+              listOf(GhIssue(7, "Fix the thing", emptyList()), GhIssue(9, "Docs", emptyList())),
+              issues,
+          )
           assertEquals("Bearer ghs_token", server.requests.single().authorization)
         }
   }
@@ -44,7 +47,21 @@ class GhUniversalResourcesApiClientTest {
         }
         .use { server ->
           val issues = clientAgainst(server).listIssues(GhRepoFullName("acme/one"))
-          assertEquals(listOf(GhIssue(1, "A real issue")), issues)
+          assertEquals(listOf(GhIssue(1, "A real issue", emptyList())), issues)
+        }
+  }
+
+  @Test
+  fun `parses label names`() = runBlocking {
+    FakeGitHubServer {
+          FakeGitHubServer.Response(
+              200,
+              """[{"number": 5, "title": "Ready", "labels": [{"name": "farm:ready"}, {"name": "bug"}]}]""",
+          )
+        }
+        .use { server ->
+          val issues = clientAgainst(server).listIssues(GhRepoFullName("acme/one"))
+          assertEquals(listOf(GhIssue(5, "Ready", listOf("farm:ready", "bug"))), issues)
         }
   }
 }

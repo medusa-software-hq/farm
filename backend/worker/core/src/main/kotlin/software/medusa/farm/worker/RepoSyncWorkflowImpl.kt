@@ -16,9 +16,10 @@ import software.medusa.farm.shared.RepoSyncWorkflow
  * the same pass. An empty issue fetch *is* reconciled — no open issues is a valid state that should
  * orphan any that were open — since the fetch throws rather than returning empty on failure.
  *
- * After reconciling a repo's issues, processing is kicked for each open issue. The start is
- * once-per-issue (REJECT_DUPLICATE), so re-running the sweep never re-processes an issue already
- * handled — it only picks up ones that are newly open.
+ * After reconciling a repo's issues, processing is kicked for each open issue **that carries the
+ * `farm:ready` label** — the opt-in gate. The start is once-per-issue (REJECT_DUPLICATE), so
+ * re-running the sweep never re-processes an issue already handled; it only picks up ones newly
+ * labelled ready. Non-ready issues are still synced and listed, just not processed.
  */
 class RepoSyncWorkflowImpl : RepoSyncWorkflow {
   private val activities =
@@ -44,12 +45,14 @@ class RepoSyncWorkflowImpl : RepoSyncWorkflow {
           issuesStartedAtEpochMillis,
       )
       for (issue in issues) {
-        activities.startIssueProcessing(
-            installationId,
-            repo.githubRepoId,
-            repo.fullName,
-            issue.number,
-        )
+        if (issue.isReady) {
+          activities.startIssueProcessing(
+              installationId,
+              repo.githubRepoId,
+              repo.fullName,
+              issue.number,
+          )
+        }
       }
     }
   }

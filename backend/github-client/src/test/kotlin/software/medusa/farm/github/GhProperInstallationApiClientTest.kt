@@ -76,7 +76,7 @@ class GhProperInstallationApiClientTest {
     FakeGitHubServer { FakeGitHubServer.Response(200, """[{"number": 3, "title": "Hi"}]""") }
         .use { server ->
           val issues = clientAgainst(server).listIssues(GhRepoFullName("medusa/one"))
-          assertEquals(listOf(GhIssue(3, "Hi")), issues)
+          assertEquals(listOf(GhIssue(3, "Hi", emptyList())), issues)
           assertEquals("Bearer ghs_secret", server.requests.single().authorization)
         }
   }

@@ -37,7 +37,9 @@ class GhUniversalResourcesApiClient(
         .decodeFromString<List<IssueDto>>(response.body())
         // GitHub's issues endpoint also returns pull requests; a `pull_request` field marks them.
         .filter { it.pullRequest == null }
-        .map { GhIssue(number = it.number, title = it.title) }
+        .map {
+          GhIssue(number = it.number, title = it.title, labels = it.labels.map { l -> l.name })
+        }
   }
 }
 
@@ -45,5 +47,8 @@ class GhUniversalResourcesApiClient(
 private class IssueDto(
     val number: Int,
     val title: String,
+    val labels: List<LabelDto> = emptyList(),
     @SerialName("pull_request") val pullRequest: JsonElement? = null,
 )
+
+@Serializable private class LabelDto(val name: String)

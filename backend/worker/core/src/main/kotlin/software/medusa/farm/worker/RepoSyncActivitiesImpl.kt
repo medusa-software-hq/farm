@@ -10,6 +10,7 @@ import kotlinx.coroutines.runBlocking
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhRepoFullName
+import software.medusa.farm.shared.FarmLabels
 import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.FetchedIssue
 import software.medusa.farm.shared.FetchedRepo
@@ -57,7 +58,13 @@ class RepoSyncActivitiesImpl(
         clientProvider
             .provideForInstallation(GhInstallationId(installationId))
             .listIssues(GhRepoFullName(repoFullName))
-            .map { FetchedIssue(number = it.number, title = it.title) }
+            .map {
+              FetchedIssue(
+                  number = it.number,
+                  title = it.title,
+                  isReady = FarmLabels.READY in it.labels,
+              )
+            }
       }
 
   override fun reconcileIssues(

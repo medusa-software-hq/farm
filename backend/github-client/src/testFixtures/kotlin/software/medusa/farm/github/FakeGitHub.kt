@@ -61,7 +61,10 @@ class FakeGitHub(
         val repo = GhRepoFullName(path.removePrefix("/repos/").removeSuffix("/issues"))
         val issues = issuesByRepo[repo].orEmpty()
         val body =
-            issues.joinToString(",") { """{"number": ${it.number}, "title": "${it.title}"}""" }
+            issues.joinToString(",") { issue ->
+              val labels = issue.labels.joinToString(",") { """{"name": "$it"}""" }
+              """{"number": ${issue.number}, "title": "${issue.title}", "labels": [$labels]}"""
+            }
         FakeGitHubServer.Response(200, "[$body]")
       }
       path.startsWith("/repos/") && path.endsWith("/comments") ->
