@@ -1,7 +1,5 @@
 package software.medusa.farm.server
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import software.medusa.farm.github.GhOrgLogin
 import software.medusa.farm.shared.IssueStore
 import software.medusa.farm.shared.LinkedOrgStore
@@ -100,14 +98,14 @@ class FarmServiceImpl(
         .build()
   }
 
-  // Kicks the all-orgs sweep on demand — the same workflow the hourly schedule runs. The blocking
-  // Temporal start runs off the request thread; an unreachable Temporal surfaces as a gRPC error so
-  // the caller knows the sync did not start (unlike the best-effort on-link trigger). Returns as
-  // soon as the sweep is started; the repos land as the worker processes it.
+  // Kicks the all-orgs sweep on demand — the same workflow the hourly schedule runs. The starter
+  // does its blocking Temporal work off the request thread; an unreachable Temporal surfaces as a
+  // gRPC error so the caller knows the sync did not start (unlike the best-effort on-link trigger).
+  // Returns as soon as the sweep is started; the repos land as the worker processes it.
   override suspend fun syncRepositories(
       request: SyncRepositoriesRequest
   ): SyncRepositoriesResponse {
-    withContext(Dispatchers.IO) { syncAllStarter.start() }
+    syncAllStarter.start()
     return SyncRepositoriesResponse.getDefaultInstance()
   }
 }

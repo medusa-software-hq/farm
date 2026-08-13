@@ -8,5 +8,5 @@ package software.medusa.farm.server
  * environment picks the implementation at the entry point.
  */
 interface SyncAllStarter {
-  fun start()
+  suspend fun start()
 }

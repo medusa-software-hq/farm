@@ -7,5 +7,5 @@ package software.medusa.farm.server
  * a local no-op) is chosen at the entry point, keeping the API decoupled from the worker module.
  */
 interface RepoSyncStarter {
-  fun start(installationId: Long)
+  suspend fun start(installationId: Long)
 }
