@@ -17,7 +17,7 @@ class GitHubOrgServiceTest {
   private class RecordingRepoSyncStarter : RepoSyncStarter {
     val started = mutableListOf<Long>()
 
-    override fun start(installationId: Long) {
+    override suspend fun start(installationId: Long) {
       started += installationId
     }
   }

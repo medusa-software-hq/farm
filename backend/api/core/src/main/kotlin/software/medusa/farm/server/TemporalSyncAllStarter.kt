@@ -3,13 +3,12 @@ package software.medusa.farm.server
 import io.temporal.api.enums.v1.WorkflowIdConflictPolicy
 import io.temporal.api.enums.v1.WorkflowIdReusePolicy
 import io.temporal.client.WorkflowClient
-import io.temporal.client.WorkflowClientOptions
 import io.temporal.client.WorkflowOptions
-import io.temporal.serviceclient.WorkflowServiceStubs
-import io.temporal.serviceclient.WorkflowServiceStubsOptions
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.SyncAllReposWorkflow
-import software.medusa.farm.shared.WorkflowServiceAuthConfig
 import software.medusa.farm.shared.syncAllReposWorkflowId
 
 /**
@@ -20,46 +19,31 @@ import software.medusa.farm.shared.syncAllReposWorkflowId
  * sweep start once the previous one finishes. The per-installation syncs the sweep fans out to
  * dedupe on their own ids, so overlapping with a scheduled run never double-syncs an org.
  *
- * The [WorkflowClient] is built eagerly with the startup health check disabled, so construction
- * never blocks on Temporal reachability; the gRPC channel connects lazily on the first RPC. A start
- * that cannot reach Temporal propagates, so the caller surfaces the failure.
+ * The [WorkflowClient] is built off the critical path and shared across starters; [start] awaits it
+ * (a request that races the build just suspends until it completes). A start that cannot reach
+ * Temporal propagates, so the caller surfaces the failure.
  */
 class TemporalSyncAllStarter(
-    address: String,
-    private val namespace: String,
-    authConfig: WorkflowServiceAuthConfig,
+    private val clientDeferred: Deferred<WorkflowClient>,
 ) : SyncAllStarter {
-  private val client: WorkflowClient = buildClient(address, authConfig)
-
-  private fun buildClient(
-      address: String,
-      authConfig: WorkflowServiceAuthConfig,
-  ): WorkflowClient {
-    val builder =
-        WorkflowServiceStubsOptions.newBuilder().setTarget(address).setDisableHealthCheck(true)
-    authConfig.configureBuilder(builder)
-    val service = WorkflowServiceStubs.newServiceStubs(builder.build())
-    return WorkflowClient.newInstance(
-        service,
-        WorkflowClientOptions.newBuilder().setNamespace(namespace).build(),
-    )
-  }
-
-  override fun start() {
-    val stub =
-        client.newWorkflowStub(
-            SyncAllReposWorkflow::class.java,
-            WorkflowOptions.newBuilder()
-                .setTaskQueue(FarmWorker.TASK_QUEUE)
-                .setWorkflowId(syncAllReposWorkflowId())
-                .setWorkflowIdReusePolicy(
-                    WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE
-                )
-                .setWorkflowIdConflictPolicy(
-                    WorkflowIdConflictPolicy.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING
-                )
-                .build(),
-        )
-    WorkflowClient.start(stub::syncAll)
+  override suspend fun start() {
+    val client = clientDeferred.await()
+    withContext(Dispatchers.IO) {
+      val stub =
+          client.newWorkflowStub(
+              SyncAllReposWorkflow::class.java,
+              WorkflowOptions.newBuilder()
+                  .setTaskQueue(FarmWorker.TASK_QUEUE)
+                  .setWorkflowId(syncAllReposWorkflowId())
+                  .setWorkflowIdReusePolicy(
+                      WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE
+                  )
+                  .setWorkflowIdConflictPolicy(
+                      WorkflowIdConflictPolicy.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING
+                  )
+                  .build(),
+          )
+      WorkflowClient.start(stub::syncAll)
+    }
   }
 }
