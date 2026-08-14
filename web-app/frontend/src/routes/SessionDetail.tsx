@@ -50,6 +50,7 @@ export function SessionDetail() {
             state: s.state,
             startedAtMillis: Number(s.startedAtMillis),
             finishedAtMillis: Number(s.finishedAtMillis),
+            pullRequestUrl: s.pullRequestUrl,
           },
         });
       } catch {
@@ -177,6 +178,13 @@ function Detail({ session }: { session: Session }) {
                   {session.repoFullName.split('/').pop()}
                 </Text>
               </MetaRow>
+              {session.pullRequestUrl && (
+                <MetaRow label="Pull request">
+                  <Anchor href={session.pullRequestUrl} target="_blank" size="sm">
+                    #{session.pullRequestUrl.split('/').pop()}
+                  </Anchor>
+                </MetaRow>
+              )}
               <MetaRow label="Started">
                 <Text span ff="monospace" size="sm">
                   {clockTime(session.startedAtMillis)}

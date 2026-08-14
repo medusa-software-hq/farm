@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class InMemorySessionStore(private val clock: Clock) : SessionStore {
   private val rows = ConcurrentHashMap<String, Session>()
+  private val prs = ConcurrentHashMap<String, SessionPullRequest>()
   private val order = java.util.Collections.synchronizedList(mutableListOf<String>())
 
   override suspend fun create(
@@ -31,6 +32,7 @@ class InMemorySessionStore(private val clock: Clock) : SessionStore {
             state = SessionState.RUNNING,
             startedAt = now,
             finishedAt = null,
+            pullRequest = null,
         )
     // Idempotent on the id, mirroring the DB's ON CONFLICT DO NOTHING.
     if (rows.putIfAbsent(id, session) == null) {
@@ -46,25 +48,20 @@ class InMemorySessionStore(private val clock: Clock) : SessionStore {
     transition(id, SessionState.FAILED)
   }
 
+  override suspend fun recordPullRequest(id: String, number: Int, url: String, headSha: String) {
+    prs[id] = SessionPullRequest(number = number, url = url, headSha = headSha, mergedAt = null)
+  }
+
   private fun transition(id: String, state: SessionState) {
     val now = clock.instant()
-    rows.computeIfPresent(id) { _, s ->
-      Session(
-          id = s.id,
-          installationId = s.installationId,
-          githubRepoId = s.githubRepoId,
-          number = s.number,
-          repoFullName = s.repoFullName,
-          title = s.title,
-          state = state,
-          startedAt = s.startedAt,
-          finishedAt = now,
-      )
-    }
+    rows.computeIfPresent(id) { _, s -> s.copy(state = state, finishedAt = now) }
   }
 
   override suspend fun listForOrgs(installationIds: List<Long>): List<Session> =
-      order.mapNotNull { rows[it] }.filter { it.installationId in installationIds }
+      order.mapNotNull { withPullRequest(rows[it]) }.filter { it.installationId in installationIds }
 
-  override suspend fun get(id: String): Session? = rows[id]
+  override suspend fun get(id: String): Session? = withPullRequest(rows[id])
+
+  private fun withPullRequest(session: Session?): Session? =
+      session?.copy(pullRequest = prs[session.id])
 }

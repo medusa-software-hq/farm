@@ -1,0 +1,19 @@
+-- Mirror of the Flyway migration for this table; SQLDelight verifies the queries below against it
+-- at compile time, so the two must stay identical.
+--
+-- The pull request a session opened (0 or 1 per session today). merged_at is filled in later by the
+-- merge gate; null means open or not-yet-merged.
+CREATE TABLE session_pr (
+  session_id TEXT        NOT NULL PRIMARY KEY REFERENCES sessions(id),
+  pr_number  INTEGER     NOT NULL,
+  pr_url     TEXT        NOT NULL,
+  head_sha   TEXT        NOT NULL,
+  merged_at  TIMESTAMPTZ
+);
+
+-- Records the PR a session opened. Idempotent on the session so an activity retry just overwrites.
+recordPullRequest:
+INSERT INTO session_pr (session_id, pr_number, pr_url, head_sha)
+VALUES (:sessionId, :prNumber, :prUrl, :headSha)
+ON CONFLICT (session_id) DO UPDATE
+SET pr_number = :prNumber, pr_url = :prUrl, head_sha = :headSha;

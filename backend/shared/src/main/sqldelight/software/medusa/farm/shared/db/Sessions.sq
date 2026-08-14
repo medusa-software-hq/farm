@@ -24,12 +24,16 @@ setState:
 UPDATE sessions SET state = :state, updated_at = now() WHERE id = :id;
 
 listForOrg:
-SELECT id, installation_id, github_repo_id, number, repo_full_name, title, state, created_at, updated_at
-FROM sessions
-WHERE installation_id = :installationId
-ORDER BY created_at;
+SELECT s.id, s.installation_id, s.github_repo_id, s.number, s.repo_full_name, s.title, s.state,
+       s.created_at, s.updated_at, pr.pr_number, pr.pr_url, pr.head_sha, pr.merged_at
+FROM sessions s
+LEFT JOIN session_pr pr ON pr.session_id = s.id
+WHERE s.installation_id = :installationId
+ORDER BY s.created_at;
 
 get:
-SELECT id, installation_id, github_repo_id, number, repo_full_name, title, state, created_at, updated_at
-FROM sessions
-WHERE id = :id;
+SELECT s.id, s.installation_id, s.github_repo_id, s.number, s.repo_full_name, s.title, s.state,
+       s.created_at, s.updated_at, pr.pr_number, pr.pr_url, pr.head_sha, pr.merged_at
+FROM sessions s
+LEFT JOIN session_pr pr ON pr.session_id = s.id
+WHERE s.id = :id;

@@ -87,6 +87,8 @@ message Session {
   int64 started_at_millis = 6;
   // 0 while the session is still running.
   int64 finished_at_millis = 7;
+  // The pull request the run opened, or empty if it opened none.
+  string pull_request_url = 8;
 }
 
 message SyncRepositoriesRequest {}
