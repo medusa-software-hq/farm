@@ -36,10 +36,9 @@ locals {
   check_web_app_infra_job_name          = "Web app (infra)"
   check_web_app_domain_mapping_job_name = "Web app (domain mapping)"
   check_web_app_impl_job_name           = "Web app (implementation)"
-  check_api_infra_job_name              = "API (infra)"
+  check_backend_infra_job_name          = "Backend (infra)"
   check_api_domain_mapping_job_name     = "API (domain mapping)"
-  check_api_impl_job_name               = "API (implementation)"
-  check_cli_job_name                    = "CLI"
+  check_backend_impl_job_name           = "Backend (implementation)"
   check_claude_connector_job_name       = "claude-connector"
 }
 
@@ -106,7 +105,7 @@ resource "github_repository_ruleset" "default_branch" {
       }
 
       required_check {
-        context        = "${local.check_api_infra_job_name} / Check Terraform configuration"
+        context        = "${local.check_backend_infra_job_name} / Check Terraform configuration"
         integration_id = local.gh_actions_integration_id
       }
 
@@ -115,18 +114,15 @@ resource "github_repository_ruleset" "default_branch" {
         integration_id = local.gh_actions_integration_id
       }
 
+      # One gate for every JVM module (formatting/lint/full test suite), the worker's tests included.
       required_check {
-        context        = "${local.check_api_impl_job_name} / Check service"
+        context        = "${local.check_backend_impl_job_name} / Check"
         integration_id = local.gh_actions_integration_id
       }
 
+      # The connector's real-CLI integration suite (its unit tests run in the backend gate above).
       required_check {
-        context        = "${local.check_cli_job_name} / Check CLI"
-        integration_id = local.gh_actions_integration_id
-      }
-
-      required_check {
-        context        = "${local.check_claude_connector_job_name} / Check claude-connector"
+        context        = "${local.check_claude_connector_job_name} / Integration test"
         integration_id = local.gh_actions_integration_id
       }
 

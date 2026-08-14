@@ -21,13 +21,9 @@ includes:
     taskfile: web-app/infra/domain-mapping/Taskfile.yml
     dir: web-app/infra/domain-mapping
 
-  api:impl:
-    taskfile: backend/api/Taskfile.yml
-    dir: backend/api
-
-  worker:impl:
-    taskfile: backend/worker/Taskfile.yml
-    dir: backend/worker
+  gradleRoot:
+    taskfile: gradle-root.Taskfile.yml
+    dir: .
 
   api:infra:
     taskfile: backend/infra/Taskfile.yml
@@ -65,43 +61,40 @@ tasks:
     desc: Check formatting for the entire codebase
     deps:
       - github-ci:lint
+      - gradleRoot:checkFormatting
       - infra:checkFormatting
       - config:checkFormatting
       - web:app:checkFormatting
       - web:infra:checkFormatting
       - web:domain-mapping:checkFormatting
-      - api:impl:checkFormatting
       - api:infra:checkFormatting
       - api:domain-mapping:checkFormatting
-      - cli:checkFormatting
 
   fixFormatting-all:
     desc: Fix formatting for the entire codebase
     deps:
       - github-ci:fixLint
+      - gradleRoot:fixFormatting
       - infra:fixFormatting
       - config:fixFormatting
       - web:app:fixFormatting
       - web:infra:fixFormatting
       - web:domain-mapping:fixFormatting
-      - api:impl:fixFormatting
       - api:infra:fixFormatting
       - api:domain-mapping:fixFormatting
-      - cli:fixFormatting
 
   lint-all:
     desc: Lint the entire codebase
     deps:
       - github-ci:lint
+      - gradleRoot:lint
       - infra:lint
       - config:lint
       - web:app:lint
       - web:infra:lint
       - web:domain-mapping:lint
-      - api:impl:lint
       - api:infra:lint
       - api:domain-mapping:lint
-      - cli:lint
 
   analyze-all:
     desc: Analyze the entire codebase
@@ -113,8 +106,14 @@ tasks:
       - web:domain-mapping:validate
       - api:infra:validate
       - api:domain-mapping:validate
-      - cli:compile
-      - cli:test
+      - gradleRoot:compile
+      - gradleRoot:test
+
+  worker:run:
+    desc: Run the worker on its own (env-configured; requires a reachable Postgres and Temporal)
+    cmds:
+      - ./gradlew :backend:worker:proper:run
+    interactive: true
 
   dev:
     desc: Run the full local stack — the local backend (with its Temporal dev server) and the frontend

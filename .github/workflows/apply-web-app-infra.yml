@@ -23,7 +23,7 @@ jobs:
     name: Apply Terraform (${{ matrix.environment }})
     runs-on: ubuntu-latest
 
-    # See apply-api-infra.yml for the environment/workspace split and the
+    # See apply-backend-infra.yml for the environment/workspace split and the
     # staging-first promotion ordering. Production's workspace is `default` — its
     # state predates the prod/staging split.
     strategy:

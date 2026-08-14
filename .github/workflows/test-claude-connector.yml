@@ -1,0 +1,75 @@
+name: Test claude-connector
+
+# Only the integration suite lives here — it needs the real claude CLI (and a paid token for the
+# behavioral checks), which the plain check-backend-impl gate deliberately doesn't set up. The
+# connector's formatting/lint/compile/unit tests run there with every other JVM module.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: 21
+  NO_COLOR: 1
+
+  # The claude CLI version the connector's flag/behavior assumptions are pinned against.
+  CLAUDE_CLI_VERSION: 2.1.52
+
+jobs:
+  integration-test:
+    name: Integration test
+    runs-on: ubuntu-latest
+
+    steps:
+      # fetch-depth: 0 so the change-detection step below can diff against the PR base.
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      # This suite is paid (real CLI + token) and only breaks when the connector's own code or the
+      # CLI version it's pinned against changes — never from a frontend/infra/docs PR. The job always
+      # runs (so the required "Integration test" context always reports), but the paid steps run only
+      # on a relevant change. Plain `git diff`, no third-party action: `paths:` can't live on a
+      # `workflow_call` file, and a caller-side skip would make the required context never report.
+      - name: Detect relevant changes
+        id: changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          pattern='^(backend/claude-connector/|gradle/libs.versions.toml|.github/workflows/test-claude-connector.yml)'
+          if git diff --name-only "origin/$BASE_REF...HEAD" | grep -qE "$pattern"; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "No claude-connector changes — skipping the paid integration suite." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.changes.outputs.relevant == 'true'
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.changes.outputs.relevant == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.relevant == 'true'
+        with:
+          node-version: 22
+
+      - name: Install claude CLI
+        if: steps.changes.outputs.relevant == 'true'
+        run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CLI_VERSION }}
+
+      # The binary alone lets the flag-surface check run; the paid behavioral checks skip themselves
+      # unless CLAUDE_CODE_OAUTH_TOKEN is provisioned. --no-daemon so this invocation's token reaches
+      # the forked test JVM: a reused daemon keeps its start-up environment and would drop it.
+      - name: Integration test
+        if: steps.changes.outputs.relevant == 'true'
+        run: ./gradlew --no-daemon :backend:claude-connector:integrationTest
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
