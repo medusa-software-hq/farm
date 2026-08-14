@@ -6,4 +6,19 @@ interface GhInstallationApiClient : GhResourcesApiClient {
 
   /** Posts a comment on an issue. Requires the App's Issues:write permission. */
   suspend fun createIssueComment(repo: GhRepoFullName, number: Int, body: String)
+
+  /**
+   * Opens a pull request from [head] into [base] and returns it. Requires the App's Pull
+   * requests:write permission.
+   */
+  suspend fun createPullRequest(
+      repo: GhRepoFullName,
+      head: String,
+      base: String,
+      title: String,
+      body: String,
+  ): GhPullRequest
+
+  /** The current state of pull request [number]. */
+  suspend fun getPullRequest(repo: GhRepoFullName, number: Int): GhPullRequest
 }

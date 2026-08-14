@@ -81,6 +81,75 @@ class GhProperInstallationApiClientTest {
         }
   }
 
+  @Test
+  fun `opens a pull request and maps the response`() = runBlocking {
+    FakeGitHubServer {
+          FakeGitHubServer.Response(
+              201,
+              """{"number": 42, "html_url": "https://github.com/acme/one/pull/42", """ +
+                  """"state": "open", "head": {"sha": "abc123"}}""",
+          )
+        }
+        .use { server ->
+          val pr =
+              clientAgainst(server)
+                  .createPullRequest(
+                      GhRepoFullName("acme/one"),
+                      head = "farm/issue-7",
+                      base = "trunk",
+                      title = "Fix it",
+                      body = "Refs #7",
+                  )
+          assertEquals(42, pr.number)
+          assertEquals("https://github.com/acme/one/pull/42", pr.url)
+          assertEquals(GhPullRequestState.OPEN, pr.state)
+          assertEquals("abc123", pr.headSha)
+
+          val request = server.requests.single()
+          assertEquals("POST", request.method)
+          assertTrue(request.pathAndQuery.endsWith("/repos/acme/one/pulls"))
+        }
+  }
+
+  @Test
+  fun `reads pull request state, distinguishing merged from closed-unmerged`() = runBlocking {
+    FakeGitHubServer { request ->
+          val head = """"head": {"sha": "s"}"""
+          when {
+            request.pathAndQuery.endsWith("/pulls/1") ->
+                FakeGitHubServer.Response(
+                    200,
+                    """{"number": 1, "html_url": "u", "state": "closed", "merged": true, $head}""",
+                )
+            request.pathAndQuery.endsWith("/pulls/2") ->
+                FakeGitHubServer.Response(
+                    200,
+                    """{"number": 2, "html_url": "u", "state": "closed", "merged": false, $head}""",
+                )
+            else ->
+                FakeGitHubServer.Response(
+                    200,
+                    """{"number": 3, "html_url": "u", "state": "open", $head}""",
+                )
+          }
+        }
+        .use { server ->
+          val client = clientAgainst(server)
+          assertEquals(
+              GhPullRequestState.MERGED,
+              client.getPullRequest(GhRepoFullName("acme/one"), 1).state,
+          )
+          assertEquals(
+              GhPullRequestState.CLOSED,
+              client.getPullRequest(GhRepoFullName("acme/one"), 2).state,
+          )
+          assertEquals(
+              GhPullRequestState.OPEN,
+              client.getPullRequest(GhRepoFullName("acme/one"), 3).state,
+          )
+        }
+  }
+
   private fun isSecondPage(pathAndQuery: String): Boolean =
       Regex("[?&]page=(\\d+)").find(pathAndQuery)?.groupValues?.get(1)?.toInt() == 2
 
