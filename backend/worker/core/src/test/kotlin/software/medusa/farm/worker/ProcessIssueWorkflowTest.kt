@@ -40,7 +40,11 @@ class ProcessIssueWorkflowTest {
         title: String,
     ): IssueAttemptOutcome {
       check(!failAttempt) { "attempt boom" }
-      return IssueAttemptOutcome(pullRequestUrl = "https://github.com/acme/one/pull/12")
+      return IssueAttemptOutcome(
+          pullRequestUrl = "https://github.com/acme/one/pull/12",
+          pullRequestNumber = 12,
+          pullRequestHeadSha = "abc123",
+      )
     }
   }
 
@@ -92,6 +96,8 @@ class ProcessIssueWorkflowTest {
     assertEquals(SessionState.COMPLETED, session.state)
     assertEquals("acme/one", session.repoFullName)
     assertEquals("Fix the thing", session.title)
+    // The opened PR is recorded on the session.
+    assertEquals("https://github.com/acme/one/pull/12", session.pullRequest?.url)
 
     val commentPosts =
         server.requests.count { it.method == "POST" && it.pathAndQuery.endsWith("/comments") }

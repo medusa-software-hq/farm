@@ -51,6 +51,18 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
     activities.createSession(sessionId, installationId, githubRepoId, number, repoFullName, title)
     try {
       val outcome = publishActivities.attemptIssue(installationId, repoFullName, number, title)
+      if (
+          outcome.pullRequestUrl != null &&
+              outcome.pullRequestNumber != null &&
+              outcome.pullRequestHeadSha != null
+      ) {
+        activities.recordPullRequest(
+            sessionId,
+            outcome.pullRequestNumber,
+            outcome.pullRequestUrl,
+            outcome.pullRequestHeadSha,
+        )
+      }
       activities.postIssueComment(installationId, repoFullName, number, resultComment(outcome))
       activities.completeSession(sessionId)
     } catch (e: ActivityFailure) {

@@ -11,6 +11,7 @@ export interface Session {
   state: string;
   startedAtMillis: number;
   finishedAtMillis: number;
+  pullRequestUrl: string;
 }
 
 /**
@@ -37,6 +38,7 @@ export function useSessions(pollMs?: number): Session[] | null {
               state: s.state,
               startedAtMillis: Number(s.startedAtMillis),
               finishedAtMillis: Number(s.finishedAtMillis),
+              pullRequestUrl: s.pullRequestUrl,
             }))
           );
         }

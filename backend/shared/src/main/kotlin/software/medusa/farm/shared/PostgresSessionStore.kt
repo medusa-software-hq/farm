@@ -42,6 +42,17 @@ class PostgresSessionStore(
     }
   }
 
+  override suspend fun recordPullRequest(id: String, number: Int, url: String, headSha: String) {
+    withContext(Dispatchers.IO) {
+      database.sessionPrQueries.recordPullRequest(
+          sessionId = id,
+          prNumber = number,
+          prUrl = url,
+          headSha = headSha,
+      )
+    }
+  }
+
   override suspend fun listForOrgs(installationIds: List<Long>): List<Session> =
       withContext(Dispatchers.IO) {
         installationIds.flatMap { installationId ->
@@ -56,6 +67,10 @@ class PostgresSessionStore(
                 it.state,
                 it.created_at,
                 it.updated_at,
+                it.pr_number,
+                it.pr_url,
+                it.head_sha,
+                it.merged_at,
             )
           }
         }
@@ -74,10 +89,15 @@ class PostgresSessionStore(
               it.state,
               it.created_at,
               it.updated_at,
+              it.pr_number,
+              it.pr_url,
+              it.head_sha,
+              it.merged_at,
           )
         }
       }
 
+  @Suppress("LongParameterList")
   private fun session(
       id: String,
       installationId: Long,
@@ -88,6 +108,10 @@ class PostgresSessionStore(
       state: String,
       createdAt: OffsetDateTime,
       updatedAt: OffsetDateTime,
+      prNumber: Int?,
+      prUrl: String?,
+      prHeadSha: String?,
+      prMergedAt: OffsetDateTime?,
   ): Session {
     val parsed = SessionState.valueOf(state)
     return Session(
@@ -100,6 +124,12 @@ class PostgresSessionStore(
         state = parsed,
         startedAt = createdAt.toInstant(),
         finishedAt = if (parsed == SessionState.RUNNING) null else updatedAt.toInstant(),
+        pullRequest =
+            if (prNumber != null && prUrl != null && prHeadSha != null) {
+              SessionPullRequest(prNumber, prUrl, prHeadSha, prMergedAt?.toInstant())
+            } else {
+              null
+            },
     )
   }
 }

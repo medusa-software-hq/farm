@@ -130,6 +130,7 @@ class FarmServiceImpl(
           .setState(state.name)
           .setStartedAtMillis(startedAt.toEpochMilli())
           .setFinishedAtMillis(finishedAt?.toEpochMilli() ?: 0L)
+          .setPullRequestUrl(pullRequest?.url ?: "")
           .build()
 
   // Kicks the all-orgs sweep on demand — the same workflow the hourly schedule runs. The starter

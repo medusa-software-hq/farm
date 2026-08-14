@@ -23,6 +23,10 @@ interface ProcessIssueActivities {
   @ActivityMethod
   fun postIssueComment(installationId: Long, repoFullName: String, number: Int, body: String)
 
+  /** Records the pull request the session opened. */
+  @ActivityMethod
+  fun recordPullRequest(sessionId: String, number: Int, url: String, headSha: String)
+
   @ActivityMethod fun completeSession(sessionId: String)
 
   @ActivityMethod fun failSession(sessionId: String)
