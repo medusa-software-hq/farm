@@ -15,6 +15,7 @@ include(
     ":backend:worker:runner",
     ":backend:api:proper",
     ":backend:api:core",
+    ":backend:migrate",
     ":backend:local",
     ":cli",
 )
