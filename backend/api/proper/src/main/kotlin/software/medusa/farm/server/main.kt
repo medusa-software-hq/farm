@@ -66,7 +66,8 @@ suspend fun main() {
         System.getenv(gitHubAppPemEnvVarName)
             ?: error("$gitHubAppPemEnvVarName environment variable must be set")
 
-    val farmStore = FarmStore.buildWithMigrations(databaseUrl)
+    // Migrations are applied by the deploy pipeline's migrate step, not on startup.
+    val farmStore = FarmStore.buildWithoutMigrations(databaseUrl)
 
     // Build the shared Temporal client off the critical path so the server binds without waiting
     // on its gRPC/Netty/TLS init (~6s of the cold start). The list RPCs don't need Temporal;

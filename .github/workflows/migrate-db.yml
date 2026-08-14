@@ -1,0 +1,61 @@
+name: Migrate database
+
+# Applies pending Flyway migrations to one environment's shared database, once, before that
+# environment's services are (re)deployed — so neither the API nor the worker migrates on startup.
+# Runs Flyway from the runner as the CI/CD SA, which reads the connection string from Secret Manager
+# (granted read in backend/infra).
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Deployment environment whose database to migrate (staging | production).
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: 21
+  NO_COLOR: 1
+
+jobs:
+  migrate:
+    name: Migrate
+    runs-on: ubuntu-latest
+
+    # `environment:` is what makes vars.* resolve to this environment's GCP project, CI/CD identity
+    # and API service name — so staging migrates staging's database, production production's.
+    environment: ${{ inputs.environment }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
+          service_account: ${{ vars.GCP_CICD_SA_EMAIL }}
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # --no-daemon so DATABASE_URL reaches the forked app JVM (a reused daemon keeps its start-up
+      # environment). The secret is named after the API service (see backend/infra).
+      - name: Apply migrations
+        run: |
+          DATABASE_URL="$(gcloud secrets versions access latest \
+            --secret="${{ vars.GCP_API_RUN_SERVICE_NAME }}-database-url" \
+            --project="${{ vars.GCP_PROJECT_ID }}")"
+          export DATABASE_URL
+          ./gradlew --no-daemon :backend:migrate:run

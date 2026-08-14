@@ -8,13 +8,14 @@ name: Deploy API
 on:
   push:
     branches: ["trunk/*"]
-    # The API image bundles these modules (api → shared + github-client), and it applies Flyway
-    # migrations from backend/shared on startup — so a change to any of them must redeploy the API,
-    # else the migration (or the embedded code) never reaches production.
+    # This pipeline migrates the shared database (backend/shared holds the migrations) and deploys
+    # the API image (api → shared + github-client). A change to any of these must run it — else the
+    # schema change never reaches the database, or the embedded code never reaches production.
     paths:
       - "backend/api/**"
       - "backend/shared/**"
       - "backend/github-client/**"
+      - "backend/migrate/**"
 
   workflow_dispatch:
 
@@ -35,8 +36,21 @@ env:
   SERVICE_PATH: backend/api
 
 jobs:
+  # Migrate the shared database before the services that read it are (re)deployed. Staging first;
+  # production's migrate is gated on the staging smoke (below), so the prod DB isn't touched until
+  # the staging deploy is proven.
+  migrate-staging:
+    name: Migrate staging DB
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/migrate-db.yml
+    with:
+      environment: staging
+
   deploy-staging:
     name: Build & deploy staging
+    needs: migrate-staging
     runs-on: ubuntu-latest
 
     environment: staging
@@ -105,9 +119,19 @@ jobs:
       id-token: write
     uses: ./.github/workflows/smoke-staging.yml
 
+  migrate-prod:
+    name: Migrate prod DB
+    needs: smoke
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/migrate-db.yml
+    with:
+      environment: production
+
   deploy-prod:
     name: Deploy prod (promote)
-    needs: smoke
+    needs: migrate-prod
     runs-on: ubuntu-latest
 
     environment: production
