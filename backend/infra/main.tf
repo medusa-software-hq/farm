@@ -49,6 +49,11 @@ variable "github_app_pem" {
   sensitive   = true
 }
 
+variable "gcp_cicd_sa_email" {
+  description = "Email of the CI/CD service account, granted read on the database-url secret so the deploy pipeline's migrate step can apply Flyway migrations."
+  type        = string
+}
+
 # Primary Google provider
 provider "google" {
   project = module.common.gcp_meta_project_id
