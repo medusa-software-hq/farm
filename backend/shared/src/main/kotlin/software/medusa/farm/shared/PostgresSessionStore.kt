@@ -1,14 +1,18 @@
 package software.medusa.farm.shared
 
 import java.time.OffsetDateTime
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import software.medusa.farm.shared.db.FarmDatabase
 
 /** [SessionStore] backed by a Postgres database. */
 class PostgresSessionStore(
     private val database: FarmDatabase,
 ) : SessionStore {
+  private val json = Json
+
   override suspend fun create(
       id: String,
       installationId: Long,
@@ -52,6 +56,38 @@ class PostgresSessionStore(
       )
     }
   }
+
+  override suspend fun recordRun(
+      id: String,
+      ordinal: Int,
+      log: AgentRunLog,
+      outcome: AgentRunOutcome,
+      cost: AgentRunCost?,
+  ) {
+    withContext(Dispatchers.IO) {
+      database.sessionRunQueries.recordRun(
+          id = UUID.randomUUID().toString(),
+          sessionId = id,
+          ordinal = ordinal,
+          actionLog = json.encodeToString(log),
+          outcome = outcome.name,
+          cost = cost?.let { json.encodeToString(it) },
+      )
+    }
+  }
+
+  override suspend fun getRuns(id: String): List<SessionRun> =
+      withContext(Dispatchers.IO) {
+        database.sessionRunQueries.selectForSession(id).executeAsList().map { row ->
+          SessionRun(
+              ordinal = row.ordinal,
+              log = json.decodeFromString(row.action_log),
+              outcome = AgentRunOutcome.valueOf(row.outcome),
+              cost = row.cost?.let { json.decodeFromString(it) },
+              createdAt = row.created_at.toInstant(),
+          )
+        }
+      }
 
   override suspend fun listForOrgs(installationIds: List<Long>): List<Session> =
       withContext(Dispatchers.IO) {

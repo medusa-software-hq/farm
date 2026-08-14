@@ -35,7 +35,7 @@ class CldStreamParserTest {
   }
 
   @Test
-  fun `assistant text blocks are concatenated and tool uses summarized`() {
+  fun `assistant text blocks are concatenated and tool uses parsed`() {
     val message =
         CldStreamParser.parseLine(
             """{"type":"assistant","message":{"content":[""" +
@@ -46,18 +46,32 @@ class CldStreamParserTest {
         )
     val assistant = assertIs<CldMessage.Assistant>(message)
     assertEquals("Looking into it", assistant.text)
-    assertEquals(listOf("edited `src/A.kt`", "ran `gradle test`"), assistant.toolActions)
+    assertEquals(
+        listOf(
+            CldToolUse(name = "Edit", filePath = "src/A.kt", command = null, pattern = null),
+            CldToolUse(
+                name = "Bash",
+                filePath = null,
+                command = "gradle test\nmore",
+                pattern = null,
+            ),
+        ),
+        assistant.toolUses,
+    )
   }
 
   @Test
-  fun `an unrecognized tool degrades to a generic summary`() {
+  fun `an unrecognized tool is still captured by name`() {
     val message =
         CldStreamParser.parseLine(
             """{"type":"assistant","message":{"content":[""" +
                 """{"type":"tool_use","name":"Sorcery","input":{}}]}}"""
         )
     val assistant = assertIs<CldMessage.Assistant>(message)
-    assertEquals(listOf("used Sorcery"), assistant.toolActions)
+    assertEquals(
+        listOf(CldToolUse(name = "Sorcery", filePath = null, command = null, pattern = null)),
+        assistant.toolUses,
+    )
   }
 
   @Test
