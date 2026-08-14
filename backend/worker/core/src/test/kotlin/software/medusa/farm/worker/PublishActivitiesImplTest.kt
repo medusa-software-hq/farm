@@ -6,6 +6,7 @@ import java.time.Clock
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -32,10 +33,11 @@ class PublishActivitiesImplTest {
   private val author = GitCliAuthor("Farm", "farm@medusa.software")
   private val sessions = InMemorySessionStore(Clock.systemUTC())
 
-  /** A summarizer that reports nothing — the run is still recorded, just without a summary. */
-  private object FakeSummarizer : SumRunSummarizer {
-    override suspend fun summarize(log: AgentRunLog): RunSummary = RunSummary.Unavailable
+  private class FakeSummarizer(private val result: RunSummary) : SumRunSummarizer {
+    override suspend fun summarize(log: AgentRunLog): RunSummary = result
   }
+
+  private val available = FakeSummarizer(RunSummary.Available("a summary"))
 
   /** Records the workspace it ran in and reports a clean completion. */
   private class FakeAgent : CldAgent {
@@ -98,7 +100,12 @@ class PublishActivitiesImplTest {
     }
   }
 
-  private fun activities(gitCli: GitCli, agent: CldAgent, server: FakeGitHubServer) =
+  private fun activities(
+      gitCli: GitCli,
+      agent: CldAgent,
+      server: FakeGitHubServer,
+      summarizer: SumRunSummarizer = available,
+  ) =
       PublishActivitiesImpl(
           clientProvider =
               GhProperInstallationApiClientProvider(
@@ -111,7 +118,7 @@ class PublishActivitiesImplTest {
           gitCli = gitCli,
           cldSessionStore = CldProperSessionStore(Files.createTempDirectory("publish-it")),
           sessionStore = sessions,
-          summarizer = FakeSummarizer,
+          summarizer = summarizer,
           commitAuthor = author,
           signingKey = null,
       )
@@ -152,6 +159,22 @@ class PublishActivitiesImplTest {
       assertContains(gitCli.calls, "commit")
       assertContains(gitCli.calls, "push:farm/issue-7")
       assertEquals(1, runBlocking { sessions.getRuns("session-1") }.size, "the run is recorded")
+    }
+  }
+
+  @Test
+  fun `throws when the summary is unavailable, so Temporal retries`() {
+    FakeGitHubServer(::handle).use { server ->
+      val unavailable =
+          activities(
+              FakeGitCli(hasChanges = true),
+              FakeAgent(),
+              server,
+              FakeSummarizer(RunSummary.Unavailable),
+          )
+      assertFailsWith<IllegalStateException> {
+        unavailable.attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
+      }
     }
   }
 

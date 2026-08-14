@@ -113,14 +113,23 @@ class PublishActivitiesImpl(
   /** Maps the run's message stream to the action log, summarizes it, and stores the run. */
   private suspend fun recordRun(sessionId: String, messages: List<CldMessage>) {
     val mapped = AgentRunMapper.map(messages)
-    val summary = summarizer.summarize(mapped.log)
+    // The summary is a required part of the next run's context, so treat the model as an
+    // assumed-available dependency (like the agent itself): throw when it isn't, so Temporal
+    // retries
+    // — and, if it stays down, fails the session. The throw is before the PR is opened, so a retry
+    // just re-runs the attempt cleanly. Rare in practice.
+    val summary =
+        when (val result = summarizer.summarize(mapped.log)) {
+          is RunSummary.Available -> result.text
+          RunSummary.Unavailable -> error("run summary unavailable")
+        }
     sessionStore.recordRun(
         id = sessionId,
         ordinal = INITIAL_RUN_ORDINAL,
         log = mapped.log,
         outcome = mapped.outcome,
         cost = mapped.cost,
-        summary = (summary as? RunSummary.Available)?.text,
+        summary = summary,
     )
   }
 
