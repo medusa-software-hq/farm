@@ -8,8 +8,13 @@ name: Deploy API
 on:
   push:
     branches: ["trunk/*"]
+    # The API image bundles these modules (api → shared + github-client), and it applies Flyway
+    # migrations from backend/shared on startup — so a change to any of them must redeploy the API,
+    # else the migration (or the embedded code) never reaches production.
     paths:
       - "backend/api/**"
+      - "backend/shared/**"
+      - "backend/github-client/**"
 
   workflow_dispatch:
 
