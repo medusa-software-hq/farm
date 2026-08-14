@@ -65,7 +65,11 @@ class PublishActivitiesImpl(
 
       gitCli.stageAll(clone)
       if (!gitCli.hasStagedChanges(clone)) {
-        return@runBlocking IssueAttemptOutcome(pullRequestUrl = null)
+        return@runBlocking IssueAttemptOutcome(
+            pullRequestUrl = null,
+            pullRequestNumber = null,
+            pullRequestHeadSha = null,
+        )
       }
 
       val branch = "farm/issue-$number"
@@ -80,7 +84,11 @@ class PublishActivitiesImpl(
               title = title,
               body = "Refs #$number\n\n🌱 Opened by Farm.",
           )
-      IssueAttemptOutcome(pullRequestUrl = pullRequest.url)
+      IssueAttemptOutcome(
+          pullRequestUrl = pullRequest.url,
+          pullRequestNumber = pullRequest.number,
+          pullRequestHeadSha = pullRequest.headSha,
+      )
     } finally {
       workspace.toFile().deleteRecursively()
       home.toFile().deleteRecursively()

@@ -33,6 +33,13 @@ class ProcessIssueActivitiesImpl(
         .createIssueComment(GhRepoFullName(repoFullName), number, body)
   }
 
+  override fun recordPullRequest(
+      sessionId: String,
+      number: Int,
+      url: String,
+      headSha: String,
+  ) = runBlocking { sessionStore.recordPullRequest(sessionId, number, url, headSha) }
+
   override fun completeSession(sessionId: String) = runBlocking { sessionStore.complete(sessionId) }
 
   override fun failSession(sessionId: String) = runBlocking { sessionStore.fail(sessionId) }

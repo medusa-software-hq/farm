@@ -170,6 +170,19 @@ class FarmServiceRepositoriesTest {
 
     assertEquals("s1", response.session.id)
     assertEquals("RUNNING", response.session.state)
+    assertEquals("", response.session.pullRequestUrl)
+  }
+
+  @Test
+  fun `GetSession surfaces the recorded pull request`() = runBlocking {
+    sessions.create("s1", 100L, 1L, 7, "acme/one", "Only")
+    sessions.recordPullRequest("s1", 12, "https://github.com/acme/one/pull/12", "abc123")
+    sessions.complete("s1")
+
+    val response = service.getSession(GetSessionRequest.newBuilder().setId("s1").build())
+
+    assertEquals("COMPLETED", response.session.state)
+    assertEquals("https://github.com/acme/one/pull/12", response.session.pullRequestUrl)
   }
 
   // The link state surfaces on its own — an org reads as linked before any repo has synced.

@@ -21,6 +21,9 @@ interface SessionStore {
   /** Marks the session failed. */
   suspend fun fail(id: String)
 
+  /** Records the pull request the session opened. Idempotent on the session id. */
+  suspend fun recordPullRequest(id: String, number: Int, url: String, headSha: String)
+
   suspend fun listForOrgs(installationIds: List<Long>): List<Session>
 
   suspend fun get(id: String): Session?
