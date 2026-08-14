@@ -22,6 +22,7 @@ import software.medusa.farm.shared.InMemoryRepoStore
 import software.medusa.farm.shared.InMemorySessionStore
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 import software.medusa.farm.worker.TemporalWorkerHost
+import software.medusa.farm.worker.WorkerConfig
 
 private const val localPort = 8081
 private const val localCorsOriginRegex = """http://localhost(:\d+)?"""
@@ -66,10 +67,13 @@ fun main() {
           sessionStore = farmStore.session,
           linkedOrgStore = farmStore.linkedOrg,
           gitHubClientProvider = devGitHubApp.clientProvider,
+          appApiClient = devGitHubApp.appApiClient,
           // The dev's own claude token; the in-process worker runs the `claude` binary locally.
           claudeOauthToken =
               System.getenv("CLAUDE_CODE_OAUTH_TOKEN")
                   ?: error("CLAUDE_CODE_OAUTH_TOKEN is required (from `claude setup-token`)"),
+          commitAuthor = WorkerConfig.commitAuthorFrom(System.getenv()),
+          signingKey = WorkerConfig.signingKeyFrom(System.getenv()),
       )
       .start()
 

@@ -19,30 +19,28 @@ import software.medusa.farm.shared.ProcessIssueWorkflow
 import software.medusa.farm.shared.SessionState
 
 /**
- * Drives the issue-processing workflow against Temporal's test server, GitHub, and a fake agent.
+ * Drives the issue-processing workflow against Temporal's test server, GitHub, and a fake attempt.
  */
 class ProcessIssueWorkflowTest {
   private val installationId = 100L
   private val appKey = TestAppKey()
 
-  // Flip to make the agent run fail, so the failure path can be exercised.
-  private var failSummary = false
+  // Flip to make the attempt fail, so the failure path can be exercised.
+  private var failAttempt = false
 
   private val server = FakeGitHubServer(::handle)
   private val sessions = InMemorySessionStore(Clock.systemUTC())
 
-  /**
-   * A stand-in [AgentActivities]: returns a canned summary, or throws when [failSummary] is set.
-   */
-  private inner class FakeAgentActivities : AgentActivities {
-    override fun summarizeIssue(
+  /** A stand-in [PublishActivities]: reports a PR, or throws when [failAttempt] is set. */
+  private inner class FakePublishActivities : PublishActivities {
+    override fun attemptIssue(
         installationId: Long,
         repoFullName: String,
         number: Int,
         title: String,
-    ): String {
-      check(!failSummary) { "agent boom" }
-      return "This issue asks to fix the thing."
+    ): IssueAttemptOutcome {
+      check(!failAttempt) { "attempt boom" }
+      return IssueAttemptOutcome(pullRequestUrl = "https://github.com/acme/one/pull/12")
     }
   }
 
@@ -66,7 +64,7 @@ class ProcessIssueWorkflowTest {
     worker.registerWorkflowImplementationTypes(ProcessIssueWorkflowImpl::class.java)
     worker.registerActivitiesImplementations(
         ProcessIssueActivitiesImpl(clientProvider, sessions),
-        FakeAgentActivities(),
+        FakePublishActivities(),
     )
     env.start()
   }
@@ -87,7 +85,7 @@ class ProcessIssueWorkflowTest {
   }
 
   @Test
-  fun `opens a session, posts the agent's summary, and completes the session`() {
+  fun `opens a session, posts the attempt result, and completes the session`() {
     process()
 
     val session = runBlocking { sessions.listForOrgs(listOf(installationId)) }.single()
@@ -101,9 +99,9 @@ class ProcessIssueWorkflowTest {
   }
 
   @Test
-  fun `marks the session failed when the agent run cannot complete`() {
-    failSummary = true
-    // The workflow fails after the agent activity exhausts its retries; swallow that here.
+  fun `marks the session failed when the attempt cannot complete`() {
+    failAttempt = true
+    // The workflow fails after the attempt activity exhausts its retries; swallow that here.
     runCatching { process() }
 
     val session = runBlocking { sessions.listForOrgs(listOf(installationId)) }.single()
