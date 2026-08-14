@@ -34,7 +34,18 @@ class CldProperAgentTest {
         FakeCldProcess.of(
             listOf(
                 CldMessage.SystemInit(sessionId = "sess-1", model = "opus", tools = listOf("Read")),
-                CldMessage.Assistant(text = "working", toolActions = listOf("edited `a`")),
+                CldMessage.Assistant(
+                    text = "working",
+                    toolUses =
+                        listOf(
+                            CldToolUse(
+                                name = "Edit",
+                                filePath = "a",
+                                command = null,
+                                pattern = null,
+                            )
+                        ),
+                ),
                 CldMessage.Result(
                     isError = false,
                     subtype = "success",

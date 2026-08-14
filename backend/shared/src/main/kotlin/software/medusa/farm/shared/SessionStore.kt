@@ -24,6 +24,21 @@ interface SessionStore {
   /** Records the pull request the session opened. Idempotent on the session id. */
   suspend fun recordPullRequest(id: String, number: Int, url: String, headSha: String)
 
+  /**
+   * Records an agent run's action log and outcome. Idempotent on ([id], [ordinal]) so an activity
+   * retry overwrites that run with its latest attempt.
+   */
+  suspend fun recordRun(
+      id: String,
+      ordinal: Int,
+      log: AgentRunLog,
+      outcome: AgentRunOutcome,
+      cost: AgentRunCost?,
+  )
+
+  /** The session's agent runs, ordered by [SessionRun.ordinal]. */
+  suspend fun getRuns(id: String): List<SessionRun>
+
   suspend fun listForOrgs(installationIds: List<Long>): List<Session>
 
   suspend fun get(id: String): Session?

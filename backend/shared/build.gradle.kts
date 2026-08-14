@@ -1,5 +1,6 @@
 plugins {
   alias(libs.plugins.kotlin.jvm)
+  alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.sqldelight)
   `java-library`
 }
@@ -8,6 +9,8 @@ dependencies {
   // api() (not implementation) so consumers get Hikari's transitive slf4j-api at compile time.
   api(libs.hikaricp)
   api(libs.kotlinx.coroutines.core)
+  // The agent-run action log is modeled as @Serializable types stored as JSON on session_run.
+  implementation(libs.kotlinx.serialization.json)
   // api() because WorkflowServiceAuthConfig exposes WorkflowServiceStubsOptions.Builder in its
   // public signature.
   api(libs.temporal.sdk)
