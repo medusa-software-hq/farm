@@ -6,6 +6,8 @@ plugins { alias(libs.plugins.kotlin.jvm) }
 // A pure seam — no Temporal, no GitHub, no DB.
 dependencies {
   api(libs.kotlinx.coroutines.core)
+  // The action-log model summarize() takes; a String is only used internally to prompt the model.
+  api(project(":backend:shared"))
   implementation(libs.medusa.commons.openaiClient)
 
   testImplementation(libs.kotlin.test)

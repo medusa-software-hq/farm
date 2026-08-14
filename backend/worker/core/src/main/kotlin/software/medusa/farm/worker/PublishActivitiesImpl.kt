@@ -5,6 +5,7 @@ import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import software.medusa.farm.claude.CldAgent
 import software.medusa.farm.claude.CldCompletion
+import software.medusa.farm.claude.CldMessage
 import software.medusa.farm.claude.CldRunRequest
 import software.medusa.farm.claude.CldSessionSelector
 import software.medusa.farm.claude.CldSessionStore
@@ -14,6 +15,9 @@ import software.medusa.farm.github.GhAppApiClient
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhRepoFullName
+import software.medusa.farm.shared.SessionStore
+import software.medusa.farm.summary.RunSummary
+import software.medusa.farm.summary.SumRunSummarizer
 
 /**
  * Clones the issue's repo, runs the agent against it, and publishes the result: if the working tree
@@ -28,11 +32,14 @@ class PublishActivitiesImpl(
     private val tokenMinter: GhAppApiClient,
     private val agent: CldAgent,
     private val gitCli: GitCli,
-    private val sessionStore: CldSessionStore,
+    private val cldSessionStore: CldSessionStore,
+    private val sessionStore: SessionStore,
+    private val summarizer: SumRunSummarizer,
     private val commitAuthor: GitCliAuthor,
     private val signingKey: String?,
 ) : PublishActivities {
   override fun attemptIssue(
+      sessionId: String,
       installationId: Long,
       repoFullName: String,
       number: Int,
@@ -44,24 +51,32 @@ class PublishActivitiesImpl(
     val body = client.getIssueBody(repo, number)
     val token = tokenMinter.mintInstallationToken(installation).token
 
-    val sessionId = UUID.randomUUID().toString()
-    val home = sessionStore.prepare(CldSessionSelector.Fresh(sessionId))
+    val cldSessionId = UUID.randomUUID().toString()
+    val home = cldSessionStore.prepare(CldSessionSelector.Fresh(cldSessionId))
     val workspace = Files.createTempDirectory("farm-attempt")
     val clone = workspace.resolve("repo")
     try {
       gitCli.clone(cloneUrl(repo), clone, token)
       val baseBranch = gitCli.currentBranch(clone)
 
+      val messages = mutableListOf<CldMessage>()
       val result =
           agent.run(
               CldRunRequest(
                   workspace = clone,
                   home = home,
                   prompt = taskPrompt(title, body),
-                  session = CldSessionSelector.Fresh(sessionId),
+                  session = CldSessionSelector.Fresh(cldSessionId),
               )
-          ) {}
+          ) {
+            messages += it
+          }
       check(result.completion is CldCompletion.Ok) { "agent run ended in ${result.completion}" }
+
+      // Record what the agent did (and a cheap summary of it) before publishing — a no-change run
+      // is
+      // still a run worth showing. ordinal 0 is the initial attempt; fixups will be 1+.
+      recordRun(sessionId, messages)
 
       gitCli.stageAll(clone)
       if (!gitCli.hasStagedChanges(clone)) {
@@ -95,8 +110,26 @@ class PublishActivitiesImpl(
     }
   }
 
+  /** Maps the run's message stream to the action log, summarizes it, and stores the run. */
+  private suspend fun recordRun(sessionId: String, messages: List<CldMessage>) {
+    val mapped = AgentRunMapper.map(messages)
+    val summary = summarizer.summarize(mapped.log)
+    sessionStore.recordRun(
+        id = sessionId,
+        ordinal = INITIAL_RUN_ORDINAL,
+        log = mapped.log,
+        outcome = mapped.outcome,
+        cost = mapped.cost,
+        summary = (summary as? RunSummary.Available)?.text,
+    )
+  }
+
   private fun cloneUrl(repo: GhRepoFullName): String = "https://github.com/${repo.value}.git"
 
   private fun taskPrompt(title: String, body: String): String =
       "$title\n\n${body.ifBlank { "(no description)" }}"
+
+  private companion object {
+    const val INITIAL_RUN_ORDINAL = 0
+  }
 }

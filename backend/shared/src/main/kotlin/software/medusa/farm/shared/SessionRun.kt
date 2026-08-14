@@ -12,5 +12,6 @@ data class SessionRun(
     val log: AgentRunLog,
     val outcome: AgentRunOutcome,
     val cost: AgentRunCost?,
+    val summary: String?,
     val createdAt: Instant,
 )

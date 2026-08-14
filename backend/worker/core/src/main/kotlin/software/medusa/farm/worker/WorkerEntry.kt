@@ -4,6 +4,7 @@ import software.medusa.farm.github.GhCachingInstallationApiClientProvider
 import software.medusa.farm.github.GhProperAppApiClient
 import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.shared.FarmStore
+import software.medusa.farm.summary.SumRunSummarizer
 
 /** Runs the farm's Temporal worker over [config] and blocks, staying up to process tasks. */
 fun runTemporalWorker(config: WorkerConfig) {
@@ -23,6 +24,10 @@ fun runTemporalWorker(config: WorkerConfig) {
           clientProvider,
           appApiClient,
           config.claudeOauthToken,
+          // The run summarizer reads OPENROUTER_API_KEY from the launch environment, like the
+          // claude
+          // token above — the worker runs on the operator's machine.
+          SumRunSummarizer.fromEnv(System::getenv),
           config.commitAuthor,
           config.signingKey,
       )

@@ -50,7 +50,8 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
     val sessionId = Workflow.randomUUID().toString()
     activities.createSession(sessionId, installationId, githubRepoId, number, repoFullName, title)
     try {
-      val outcome = publishActivities.attemptIssue(installationId, repoFullName, number, title)
+      val outcome =
+          publishActivities.attemptIssue(sessionId, installationId, repoFullName, number, title)
       if (
           outcome.pullRequestUrl != null &&
               outcome.pullRequestNumber != null &&

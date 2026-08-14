@@ -13,6 +13,7 @@ interface PublishActivities {
    */
   @ActivityMethod
   fun attemptIssue(
+      sessionId: String,
       installationId: Long,
       repoFullName: String,
       number: Int,

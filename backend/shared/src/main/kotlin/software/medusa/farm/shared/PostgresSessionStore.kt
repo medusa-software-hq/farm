@@ -63,6 +63,7 @@ class PostgresSessionStore(
       log: AgentRunLog,
       outcome: AgentRunOutcome,
       cost: AgentRunCost?,
+      summary: String?,
   ) {
     withContext(Dispatchers.IO) {
       database.sessionRunQueries.recordRun(
@@ -72,6 +73,7 @@ class PostgresSessionStore(
           actionLog = json.encodeToString(log),
           outcome = outcome.name,
           cost = cost?.let { json.encodeToString(it) },
+          summary = summary,
       )
     }
   }
@@ -84,6 +86,7 @@ class PostgresSessionStore(
               log = json.decodeFromString(row.action_log),
               outcome = AgentRunOutcome.valueOf(row.outcome),
               cost = row.cost?.let { json.decodeFromString(it) },
+              summary = row.summary,
               createdAt = row.created_at.toInstant(),
           )
         }

@@ -34,6 +34,7 @@ class ProcessIssueWorkflowTest {
   /** A stand-in [PublishActivities]: reports a PR, or throws when [failAttempt] is set. */
   private inner class FakePublishActivities : PublishActivities {
     override fun attemptIssue(
+        sessionId: String,
         installationId: Long,
         repoFullName: String,
         number: Int,

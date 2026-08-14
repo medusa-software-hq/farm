@@ -34,6 +34,7 @@ interface SessionStore {
       log: AgentRunLog,
       outcome: AgentRunOutcome,
       cost: AgentRunCost?,
+      summary: String?,
   )
 
   /** The session's agent runs, ordered by [SessionRun.ordinal]. */

@@ -21,6 +21,7 @@ import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
 import software.medusa.farm.shared.InMemorySessionStore
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
+import software.medusa.farm.summary.SumRunSummarizer
 import software.medusa.farm.worker.TemporalWorkerHost
 import software.medusa.farm.worker.WorkerConfig
 
@@ -72,6 +73,7 @@ fun main() {
           claudeOauthToken =
               System.getenv("CLAUDE_CODE_OAUTH_TOKEN")
                   ?: error("CLAUDE_CODE_OAUTH_TOKEN is required (from `claude setup-token`)"),
+          summarizer = SumRunSummarizer.fromEnv(System::getenv),
           commitAuthor = WorkerConfig.commitAuthorFrom(System.getenv()),
           signingKey = WorkerConfig.signingKeyFrom(System.getenv()),
       )

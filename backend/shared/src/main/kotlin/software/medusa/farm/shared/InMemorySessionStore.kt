@@ -59,6 +59,7 @@ class InMemorySessionStore(private val clock: Clock) : SessionStore {
       log: AgentRunLog,
       outcome: AgentRunOutcome,
       cost: AgentRunCost?,
+      summary: String?,
   ) {
     val run =
         SessionRun(
@@ -66,6 +67,7 @@ class InMemorySessionStore(private val clock: Clock) : SessionStore {
             log = log,
             outcome = outcome,
             cost = cost,
+            summary = summary,
             createdAt = clock.instant(),
         )
     runs.getOrPut(id) { ConcurrentHashMap() }[ordinal] = run
