@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
 class InMemorySessionStore(private val clock: Clock) : SessionStore {
   private val rows = ConcurrentHashMap<String, Session>()
   private val prs = ConcurrentHashMap<String, SessionPullRequest>()
+  private val runs = ConcurrentHashMap<String, MutableMap<Int, SessionRun>>()
   private val order = java.util.Collections.synchronizedList(mutableListOf<String>())
 
   override suspend fun create(
@@ -51,6 +52,27 @@ class InMemorySessionStore(private val clock: Clock) : SessionStore {
   override suspend fun recordPullRequest(id: String, number: Int, url: String, headSha: String) {
     prs[id] = SessionPullRequest(number = number, url = url, headSha = headSha, mergedAt = null)
   }
+
+  override suspend fun recordRun(
+      id: String,
+      ordinal: Int,
+      log: AgentRunLog,
+      outcome: AgentRunOutcome,
+      cost: AgentRunCost?,
+  ) {
+    val run =
+        SessionRun(
+            ordinal = ordinal,
+            log = log,
+            outcome = outcome,
+            cost = cost,
+            createdAt = clock.instant(),
+        )
+    runs.getOrPut(id) { ConcurrentHashMap() }[ordinal] = run
+  }
+
+  override suspend fun getRuns(id: String): List<SessionRun> =
+      runs[id]?.values.orEmpty().sortedBy { it.ordinal }
 
   private fun transition(id: String, state: SessionState) {
     val now = clock.instant()

@@ -1,0 +1,28 @@
+-- Mirror of the Flyway migration for this table; SQLDelight verifies the queries below against it at
+-- compile time, so the two must stay identical.
+--
+-- One agent run within a session. action_log is the AgentRunLog as JSON; outcome/cost are metadata.
+CREATE TABLE session_run (
+  id          TEXT        NOT NULL PRIMARY KEY,
+  session_id  TEXT        NOT NULL REFERENCES sessions(id),
+  ordinal     INTEGER     NOT NULL,
+  action_log  TEXT        NOT NULL,
+  outcome     TEXT        NOT NULL,
+  cost        TEXT,
+  created_at  TIMESTAMPTZ NOT NULL,
+  UNIQUE (session_id, ordinal)
+);
+
+-- Records a run's action log and outcome. Idempotent on (session_id, ordinal) so an activity retry
+-- overwrites the run with the latest attempt rather than inserting a duplicate.
+recordRun:
+INSERT INTO session_run (id, session_id, ordinal, action_log, outcome, cost, created_at)
+VALUES (:id, :sessionId, :ordinal, :actionLog, :outcome, :cost, now())
+ON CONFLICT (session_id, ordinal) DO UPDATE
+SET action_log = excluded.action_log, outcome = excluded.outcome, cost = excluded.cost;
+
+selectForSession:
+SELECT ordinal, action_log, outcome, cost, created_at
+FROM session_run
+WHERE session_id = :sessionId
+ORDER BY ordinal;

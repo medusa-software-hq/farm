@@ -19,13 +19,13 @@ sealed interface CldMessage {
   ) : CldMessage
 
   /**
-   * An `assistant` turn: its concatenated [text] blocks plus one-line [toolActions] summaries for
-   * any `tool_use` blocks (e.g. "edited `x/y.kt`", "ran `gradle test`"), both pre-formatted by
-   * [CldStreamParser]. Either may be empty.
+   * An `assistant` turn: its concatenated [text] blocks plus the structured [toolUses] for any
+   * `tool_use` blocks. Either may be empty. The consumer classifies the tool uses into semantic
+   * actions.
    */
   data class Assistant(
       val text: String,
-      val toolActions: List<String>,
+      val toolUses: List<CldToolUse>,
   ) : CldMessage
 
   /**

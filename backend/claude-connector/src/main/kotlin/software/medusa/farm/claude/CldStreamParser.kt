@@ -74,48 +74,25 @@ object CldStreamParser {
             .mapNotNull { it.stringField("text") }
             .joinToString(separator = "\n")
 
-    val toolActions =
-        blocks.filter { it.stringField("type") == "tool_use" }.mapNotNull { toolActionSummary(it) }
+    val toolUses = blocks.filter { it.stringField("type") == "tool_use" }.mapNotNull { toolUse(it) }
 
-    return CldMessage.Assistant(text = text, toolActions = toolActions)
+    return CldMessage.Assistant(text = text, toolUses = toolUses)
   }
 
   /**
-   * Renders a `tool_use` block into a one-line human summary. All tool-action wire access lives
-   * here so callers stay protocol-agnostic; an unrecognized tool degrades to "used <name>".
+   * Reads a `tool_use` block into a [CldToolUse]: the tool name plus the input fields the connector
+   * exposes. All tool-use wire access lives here so callers stay protocol-agnostic.
    */
-  private fun toolActionSummary(block: JsonObject): String? {
+  private fun toolUse(block: JsonObject): CldToolUse? {
     val name = block.stringField("name") ?: return null
     val input = block["input"]?.jsonObjectOrNull()
-    val filePath = input?.stringField("file_path")
-    val command = input?.stringField("command")
-    val pattern = input?.stringField("pattern")
-
-    return when (name) {
-      "Edit",
-      "MultiEdit" -> filePath?.let { "edited `$it`" } ?: "edited a file"
-      "Write",
-      "NotebookEdit" -> filePath?.let { "wrote `$it`" } ?: "wrote a file"
-      "Read" -> filePath?.let { "read `$it`" } ?: "read a file"
-      "Bash" -> command?.let { "ran `${summarizeCommand(it)}`" } ?: "ran a command"
-      "Glob",
-      "Grep" -> pattern?.let { "searched `$it`" } ?: "searched the code"
-      "WebFetch",
-      "WebSearch" -> "looked something up"
-      else -> "used $name"
-    }
+    return CldToolUse(
+        name = name,
+        filePath = input?.stringField("file_path"),
+        command = input?.stringField("command"),
+        pattern = input?.stringField("pattern"),
+    )
   }
-
-  /**
-   * First line of a command, trimmed and truncated so a long invocation stays one readable line.
-   */
-  private fun summarizeCommand(command: String): String {
-    val firstLine = command.trim().lineSequence().firstOrNull().orEmpty().trim()
-    return if (firstLine.length <= maxCommandSummaryLength) firstLine
-    else firstLine.take(maxCommandSummaryLength).trimEnd() + "…"
-  }
-
-  private const val maxCommandSummaryLength = 60
 
   private fun parseResult(root: JsonObject): CldMessage =
       CldMessage.Result(
