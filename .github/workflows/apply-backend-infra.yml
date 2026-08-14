@@ -1,4 +1,4 @@
-name: Apply API infra
+name: Apply backend infra
 
 on:
   push:

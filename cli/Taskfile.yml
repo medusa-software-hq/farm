@@ -4,37 +4,9 @@ version: '3'
   - '**/*.kt'
   - '**/*.kts'
 
+# Formatting/lint/compile/test are the whole-build `gradleRoot:*` tasks (root Taskfile) — this file
+# keeps only what's specific to the CLI: building and running the installed binary.
 tasks:
-  checkFormatting:
-    desc: Check Kotlin formatting
-    sources: *kotlinSources
-    cmds:
-      - ../gradlew ktfmtCheck
-
-  fixFormatting:
-    desc: Fix Kotlin formatting
-    sources: *kotlinSources
-    cmds:
-      - ../gradlew ktfmtFormat
-
-  lint:
-    desc: Lint the Kotlin sources
-    sources: *kotlinSources
-    cmds:
-      - ../gradlew detekt
-
-  compile:
-    desc: Compile the Kotlin sources
-    sources: *kotlinSources
-    cmds:
-      - ../gradlew compileKotlin
-
-  test:
-    desc: Run tests
-    sources: *kotlinSources
-    cmds:
-      - ../gradlew test
-
   install:
     desc: Install the CLI locally (build/install/cli/bin/cli)
     sources: *kotlinSources

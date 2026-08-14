@@ -1,0 +1,40 @@
+name: Check backend
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: 21
+  NO_COLOR: 1
+
+jobs:
+  check-backend:
+    name: Check backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # One gate for every JVM module (api, shared, github-client, worker, git-cli, cli,
+      # claude-connector). The unqualified tasks fan out across all of them, so a new module is
+      # covered the moment it exists — no per-module job to remember. Gradle is invoked directly:
+      # `task` earns its keep for humans, not in CI. The claude-connector integration suite (real
+      # CLI + paid token) is the one thing left out — it lives in its own job.
+      - name: Check formatting
+        run: ./gradlew ktfmtCheck
+
+      - name: Lint
+        run: ./gradlew detekt
+
+      - name: Test
+        run: ./gradlew test

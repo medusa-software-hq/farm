@@ -31,28 +31,24 @@ jobs:
     name: Web app (implementation)
     uses: ./.github/workflows/check-web-app-impl.yml
 
-  check-api-infra:
-    name: API (infra)
-    uses: ./.github/workflows/check-api-infra.yml
+  # backend/infra provisions shared backend infrastructure — the Neon database (used by the API and
+  # the worker), the app-pem/database-url secrets, the service account — not anything API-specific.
+  check-backend-infra:
+    name: Backend (infra)
+    uses: ./.github/workflows/check-backend-infra.yml
 
   check-api-domain-mapping:
     name: API (domain mapping)
     uses: ./.github/workflows/check-api-domain-mapping.yml
 
-  check-api-impl:
-    name: API (implementation)
-    uses: ./.github/workflows/check-api-impl.yml
-
-  check-cli:
-    name: CLI
-    uses: ./.github/workflows/check-cli.yml
+  # One gate for every JVM module (api, shared, github-client, worker, git-cli, cli, and the
+  # connector's unit tests) — formatting, lint, and the full test suite.
+  check-backend:
+    name: Backend
+    uses: ./.github/workflows/check-backend.yml
 
   check-claude-connector:
     name: claude-connector
     uses: ./.github/workflows/check-claude-connector.yml
     # For the real-CLI integration suite's CLAUDE_CODE_OAUTH_TOKEN (paid checks skip without it).
     secrets: inherit
-
-  check-git-cli:
-    name: git-cli
-    uses: ./.github/workflows/check-git-cli.yml

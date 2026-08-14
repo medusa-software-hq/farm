@@ -1,0 +1,48 @@
+version: '3'
+
+# The whole-repo Gradle build, driven from the root. One place for the aggregate tasks that used to
+# be copy-pasted into a Taskfile per JVM module — the unqualified tasks already fan out across every
+# module (api, shared, github-client, worker, git-cli, cli, claude-connector), so there's nothing
+# per-module to keep in sync. CI doesn't use these: it calls `./gradlew` directly (see check-backend).
+
+.kotlinSources: &kotlinSources
+  - '**/*.kt'
+  - '**/*.kts'
+  - '**/*.sq'
+
+tasks:
+  checkFormatting:
+    desc: Check Kotlin formatting across every module
+    sources: *kotlinSources
+    cmds:
+      - ./gradlew ktfmtCheck
+
+  fixFormatting:
+    desc: Fix Kotlin formatting across every module
+    sources: *kotlinSources
+    cmds:
+      - ./gradlew ktfmtFormat
+
+  lint:
+    desc: Lint every module
+    sources: *kotlinSources
+    cmds:
+      - ./gradlew detekt
+
+  compile:
+    desc: Compile every module (main + tests)
+    sources: *kotlinSources
+    cmds:
+      - ./gradlew testClasses
+
+  test:
+    desc: Run every module's unit tests
+    cmds:
+      - ./gradlew test
+
+  integrationTest:
+    desc: Run the claude-connector integration suite against the real claude CLI
+    cmds:
+      # --no-daemon so CLAUDE_CODE_OAUTH_TOKEN reaches the forked test JVM (a reused daemon keeps
+      # its start-up environment and would drop it).
+      - ./gradlew --no-daemon :backend:claude-connector:integrationTest

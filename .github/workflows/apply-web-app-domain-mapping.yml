@@ -28,7 +28,7 @@ jobs:
     # apart. Production's workspace is `default` (its state predates the split).
     # The domain-mapper SA, Cloudflare zone and WI provider are shared, so those
     # vars resolve to their repository-level values for both. Staging first;
-    # fail-fast gates production on it (see apply-api-infra.yml).
+    # fail-fast gates production on it (see apply-backend-infra.yml).
     strategy:
       fail-fast: true
       max-parallel: 1
