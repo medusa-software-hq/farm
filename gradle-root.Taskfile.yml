@@ -3,7 +3,7 @@ version: '3'
 # The whole-repo Gradle build, driven from the root. One place for the aggregate tasks that used to
 # be copy-pasted into a Taskfile per JVM module — the unqualified tasks already fan out across every
 # module (api, shared, github-client, worker, git-cli, cli, claude-connector), so there's nothing
-# per-module to keep in sync. CI doesn't use these: it calls `./gradlew` directly (see check-backend).
+# per-module to keep in sync. CI doesn't use these: it calls `./gradlew` directly (check-backend-impl).
 
 .kotlinSources: &kotlinSources
   - '**/*.kt'

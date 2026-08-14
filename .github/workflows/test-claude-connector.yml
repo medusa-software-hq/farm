@@ -1,7 +1,7 @@
-name: Check claude-connector
+name: Test claude-connector
 
 # Only the integration suite lives here — it needs the real claude CLI (and a paid token for the
-# behavioral checks), which the plain `check-backend` gate deliberately doesn't set up. The
+# behavioral checks), which the plain check-backend-impl gate deliberately doesn't set up. The
 # connector's formatting/lint/compile/unit tests run there with every other JVM module.
 
 on:
@@ -39,7 +39,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           git fetch --no-tags origin "$BASE_REF"
-          pattern='^(backend/claude-connector/|gradle/libs.versions.toml|.github/workflows/check-claude-connector.yml)'
+          pattern='^(backend/claude-connector/|gradle/libs.versions.toml|.github/workflows/test-claude-connector.yml)'
           if git diff --name-only "origin/$BASE_REF...HEAD" | grep -qE "$pattern"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else

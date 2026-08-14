@@ -38,7 +38,7 @@ locals {
   check_web_app_impl_job_name           = "Web app (implementation)"
   check_backend_infra_job_name          = "Backend (infra)"
   check_api_domain_mapping_job_name     = "API (domain mapping)"
-  check_backend_job_name                = "Backend"
+  check_backend_impl_job_name           = "Backend (implementation)"
   check_claude_connector_job_name       = "claude-connector"
 }
 
@@ -116,7 +116,7 @@ resource "github_repository_ruleset" "default_branch" {
 
       # One gate for every JVM module (formatting/lint/full test suite), the worker's tests included.
       required_check {
-        context        = "${local.check_backend_job_name} / Check backend"
+        context        = "${local.check_backend_impl_job_name} / Check"
         integration_id = local.gh_actions_integration_id
       }
 

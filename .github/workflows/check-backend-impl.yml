@@ -1,4 +1,4 @@
-name: Check backend
+name: Check backend implementation
 
 on:
   workflow_call:
@@ -11,8 +11,8 @@ env:
   NO_COLOR: 1
 
 jobs:
-  check-backend:
-    name: Check backend
+  check:
+    name: Check
     runs-on: ubuntu-latest
 
     steps:

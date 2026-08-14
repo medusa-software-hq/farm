@@ -43,12 +43,14 @@ jobs:
 
   # One gate for every JVM module (api, shared, github-client, worker, git-cli, cli, and the
   # connector's unit tests) — formatting, lint, and the full test suite.
-  check-backend:
-    name: Backend
-    uses: ./.github/workflows/check-backend.yml
+  check-backend-impl:
+    name: Backend (implementation)
+    uses: ./.github/workflows/check-backend-impl.yml
 
-  check-claude-connector:
+  # The connector's real-CLI integration suite only — a test job, not a full check (its
+  # formatting/lint/compile/unit tests run in check-backend-impl with the other JVM modules).
+  test-claude-connector:
     name: claude-connector
-    uses: ./.github/workflows/check-claude-connector.yml
+    uses: ./.github/workflows/test-claude-connector.yml
     # For the real-CLI integration suite's CLAUDE_CODE_OAUTH_TOKEN (paid checks skip without it).
     secrets: inherit
