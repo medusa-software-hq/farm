@@ -20,7 +20,7 @@ class FarmStore(
     /**
      * Applies pending Flyway migrations to the database and returns the number applied, then
      * releases the pool. Migrations are a dedicated deploy step (run once for the shared database),
-     * so neither the API nor the worker migrates on startup — they [buildWithoutMigrations].
+     * so neither the API nor the worker migrates on startup — they just [build].
      */
     fun migrate(jdbcUrl: String): Int =
         buildDataSource(jdbcUrl).use { dataSource ->
@@ -28,7 +28,7 @@ class FarmStore(
         }
 
     /** Builds the [FarmStore]. Schema migrations are applied separately — see [migrate]. */
-    fun buildWithoutMigrations(jdbcUrl: String): FarmStore = storesOver(buildDataSource(jdbcUrl))
+    fun build(jdbcUrl: String): FarmStore = storesOver(buildDataSource(jdbcUrl))
 
     private fun storesOver(dataSource: DataSource): FarmStore {
       val database = FarmDatabase(dataSource.asJdbcDriver())

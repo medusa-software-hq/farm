@@ -7,7 +7,7 @@ import software.medusa.farm.shared.FarmStore
 
 /** Runs the farm's Temporal worker over [config] and blocks, staying up to process tasks. */
 fun runTemporalWorker(config: WorkerConfig) {
-  val store = FarmStore.buildWithoutMigrations(config.databaseUrl)
+  val store = FarmStore.build(config.databaseUrl)
   // One App client, used both to mint the per-installation API clients and to mint raw git tokens.
   val appApiClient = GhProperAppApiClient.build(config.gitHubApp.clientId, config.gitHubApp.pem)
   val clientProvider =
