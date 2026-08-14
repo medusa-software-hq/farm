@@ -1,0 +1,33 @@
+version: '3'
+
+.kotlinSources: &kotlinSources
+  - '**/*.kt'
+  - '**/*.kts'
+
+tasks:
+  checkFormatting:
+    desc: Check Kotlin formatting
+    sources: *kotlinSources
+    cmds:
+      - ../../gradlew :backend:git-cli:ktfmtCheck
+    interactive: true
+
+  lint:
+    desc: Lint the Kotlin sources
+    sources: *kotlinSources
+    cmds:
+      - ../../gradlew :backend:git-cli:detekt
+    interactive: true
+
+  compile:
+    desc: Compile all source sets
+    sources: *kotlinSources
+    cmds:
+      - ../../gradlew :backend:git-cli:compileKotlin :backend:git-cli:compileTestKotlin
+    interactive: true
+
+  test:
+    desc: Run the tests (drive the real git binary against local repositories)
+    cmds:
+      - ../../gradlew :backend:git-cli:test
+    interactive: true
