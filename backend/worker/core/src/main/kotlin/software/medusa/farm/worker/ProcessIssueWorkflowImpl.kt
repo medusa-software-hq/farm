@@ -8,10 +8,10 @@ import java.time.Duration
 import software.medusa.farm.shared.ProcessIssueWorkflow
 
 /**
- * The processing run: open a session, run the agent to summarize the issue, post the summary as a
- * comment, close the session. The summary is a deliberately small first real task — no git, no PR —
- * that puts an actual Claude call in the pipeline. The session id is drawn from the workflow's
- * deterministic RNG so an activity retry reuses it rather than opening a second session.
+ * The processing run: open a session, attempt the issue with the agent (clone → code → open a PR if
+ * anything changed), post the result as a comment, close the session. The session id is drawn from
+ * the workflow's deterministic RNG so an activity retry reuses it rather than opening a second
+ * session.
  *
  * If the work fails (an activity exhausts its bounded retries), the session is marked FAILED and
  * the workflow itself fails — so a broken run is visible instead of sitting RUNNING forever.
@@ -27,15 +27,15 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
               .build(),
       )
 
-  // The agent run gets a longer timeout (a real Claude call) and fewer retries (each attempt
-  // costs).
-  private val agentActivities =
+  // The attempt clones and runs a real coding agent, so it gets a long timeout and few retries
+  // (each attempt is expensive, and a repeated failure is usually a real problem, not a blip).
+  private val publishActivities =
       Workflow.newActivityStub(
-          AgentActivities::class.java,
+          PublishActivities::class.java,
           ActivityOptions.newBuilder()
-              .setStartToCloseTimeout(Duration.ofMinutes(5))
+              .setStartToCloseTimeout(Duration.ofMinutes(45))
               .setRetryOptions(
-                  RetryOptions.newBuilder().setMaximumAttempts(AGENT_MAX_ATTEMPTS).build()
+                  RetryOptions.newBuilder().setMaximumAttempts(ATTEMPT_MAX_ATTEMPTS).build()
               )
               .build(),
       )
@@ -50,8 +50,8 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
     val sessionId = Workflow.randomUUID().toString()
     activities.createSession(sessionId, installationId, githubRepoId, number, repoFullName, title)
     try {
-      val summary = agentActivities.summarizeIssue(installationId, repoFullName, number, title)
-      activities.postIssueComment(installationId, repoFullName, number, summaryComment(summary))
+      val outcome = publishActivities.attemptIssue(installationId, repoFullName, number, title)
+      activities.postIssueComment(installationId, repoFullName, number, resultComment(outcome))
       activities.completeSession(sessionId)
     } catch (e: ActivityFailure) {
       activities.failSession(sessionId)
@@ -64,10 +64,13 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
     // leave the session stuck RUNNING).
     private const val MAX_ATTEMPTS = 5
 
-    // Fewer attempts for the agent: a run is expensive, and a repeated failure is usually a real
-    // problem (bad token, exhausted budget) rather than a transient blip.
-    private const val AGENT_MAX_ATTEMPTS = 3
+    private const val ATTEMPT_MAX_ATTEMPTS = 2
 
-    private fun summaryComment(summary: String): String = "🌱 **Farm summary**\n\n$summary"
+    private fun resultComment(outcome: IssueAttemptOutcome): String =
+        if (outcome.pullRequestUrl != null) {
+          "🌱 Farm opened a pull request: ${outcome.pullRequestUrl}"
+        } else {
+          "🌱 Farm looked into this but didn't find anything to change."
+        }
   }
 }

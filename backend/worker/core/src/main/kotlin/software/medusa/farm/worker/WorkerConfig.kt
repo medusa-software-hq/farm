@@ -1,5 +1,6 @@
 package software.medusa.farm.worker
 
+import software.medusa.farm.gitcli.GitCliAuthor
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 /** Everything the worker needs to reach its database, Temporal, and GitHub. */
@@ -11,8 +12,23 @@ data class WorkerConfig(
     val gitHubApp: GitHubAppConfig,
     // The claude CLI auth token the agent runs under (from `claude setup-token`).
     val claudeOauthToken: String,
+    // The identity Farm's commits carry, and the optional GPG key to sign them with.
+    val commitAuthor: GitCliAuthor,
+    val signingKey: String?,
 ) {
   companion object {
+    private const val defaultCommitAuthorName = "Farm"
+    private const val defaultCommitAuthorEmail = "farm@medusa.software"
+
+    /** Farm's commit identity, overridable per deployment; the signing key is optional. */
+    fun commitAuthorFrom(env: Map<String, String>): GitCliAuthor =
+        GitCliAuthor(
+            name = env["FARM_COMMIT_AUTHOR_NAME"] ?: defaultCommitAuthorName,
+            email = env["FARM_COMMIT_AUTHOR_EMAIL"] ?: defaultCommitAuthorEmail,
+        )
+
+    fun signingKeyFrom(env: Map<String, String>): String? = env["FARM_COMMIT_SIGNING_KEY"]
+
     fun fromEnvironment(env: Map<String, String> = System.getenv()): WorkerConfig =
         WorkerConfig(
             databaseUrl = env["DATABASE_URL"] ?: error("DATABASE_URL is required"),
@@ -32,6 +48,8 @@ data class WorkerConfig(
                 ),
             claudeOauthToken =
                 env["CLAUDE_CODE_OAUTH_TOKEN"] ?: error("CLAUDE_CODE_OAUTH_TOKEN is required"),
+            commitAuthor = commitAuthorFrom(env),
+            signingKey = signingKeyFrom(env),
         )
   }
 }

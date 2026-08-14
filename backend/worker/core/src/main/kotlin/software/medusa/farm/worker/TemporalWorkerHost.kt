@@ -16,14 +16,15 @@ import io.temporal.serviceclient.WorkflowServiceStubsOptions
 import io.temporal.worker.WorkerFactory
 import java.nio.file.Files
 import java.time.Duration
-import kotlin.time.Duration.Companion.minutes
 import software.medusa.commons.system.SysExecutableHandle
 import software.medusa.commons.system.SysProcessSpawner
 import software.medusa.farm.claude.CldEngineConfig
 import software.medusa.farm.claude.CldProperAgent
 import software.medusa.farm.claude.CldProperProcess
 import software.medusa.farm.claude.CldProperSessionStore
-import software.medusa.farm.claude.CldToolPolicy
+import software.medusa.farm.gitcli.GitCliAuthor
+import software.medusa.farm.gitcli.GitCliProper
+import software.medusa.farm.github.GhAppApiClient
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.IssueStore
@@ -44,7 +45,10 @@ class TemporalWorkerHost(
     sessionStore: SessionStore,
     linkedOrgStore: LinkedOrgStore,
     gitHubClientProvider: GhInstallationApiClientProvider,
+    appApiClient: GhAppApiClient,
     claudeOauthToken: String,
+    commitAuthor: GitCliAuthor,
+    signingKey: String?,
 ) {
   private val client: WorkflowClient
   private val factory: WorkerFactory
@@ -68,13 +72,18 @@ class TemporalWorkerHost(
         SyncAllReposWorkflowImpl::class.java,
         ProcessIssueWorkflowImpl::class.java,
     )
+    val spawner = SysProcessSpawner()
     worker.registerActivitiesImplementations(
         RepoSyncActivitiesImpl(gitHubClientProvider, repoStore, issueStore, linkedOrgStore, client),
         ProcessIssueActivitiesImpl(gitHubClientProvider, sessionStore),
-        AgentActivitiesImpl(
+        PublishActivitiesImpl(
             gitHubClientProvider,
-            buildAgent(claudeOauthToken),
+            appApiClient,
+            buildAgent(claudeOauthToken, spawner),
+            GitCliProper(spawner, SysExecutableHandle.locate("git")),
             buildCldSessionStore(),
+            commitAuthor,
+            signingKey,
         ),
     )
     ensureRepoSyncSchedule(service, namespace)
@@ -130,30 +139,20 @@ class TemporalWorkerHost(
     // it here to change the cadence.
     private val REPO_SYNC_SWEEP_INTERVAL: Duration = Duration.ofHours(1)
 
-    // A summary is a small, tool-free text task; cap it tightly.
-    private const val SUMMARY_MAX_BUDGET_USD = 0.50
-    private val SUMMARY_TIMEOUT = 2.minutes
-
-    // The connector that drives the real `claude` binary. Locating it here means a worker launched
-    // without claude on PATH fails loudly at startup rather than mid-run.
-    private fun buildAgent(claudeOauthToken: String): CldProperAgent {
+    // The connector driving the real `claude` binary, with the default coding config (real tools +
+    // the issue-as-task framing). Locating claude here means a worker launched without it on PATH
+    // fails loudly at startup rather than mid-run.
+    private fun buildAgent(claudeOauthToken: String, spawner: SysProcessSpawner): CldProperAgent {
       val config =
           CldEngineConfig.default(
-                  environment =
-                      mapOf(
-                          "PATH" to (System.getenv("PATH") ?: ""),
-                          "CLAUDE_CODE_OAUTH_TOKEN" to claudeOauthToken,
-                      )
-              )
-              .copy(
-                  // No coding framing (the summary prompt is self-contained) and no tools.
-                  appendSystemPrompt = "",
-                  maxBudgetUsd = SUMMARY_MAX_BUDGET_USD,
-                  wallClockTimeout = SUMMARY_TIMEOUT,
-                  toolPolicy = CldToolPolicy.default().copy(allowedTools = emptyList()),
-              )
+              environment =
+                  mapOf(
+                      "PATH" to (System.getenv("PATH") ?: ""),
+                      "CLAUDE_CODE_OAUTH_TOKEN" to claudeOauthToken,
+                  )
+          )
       return CldProperAgent(
-          CldProperProcess(SysProcessSpawner(), SysExecutableHandle.locate("claude")),
+          CldProperProcess(spawner, SysExecutableHandle.locate("claude")),
           config,
       )
     }

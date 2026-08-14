@@ -43,6 +43,8 @@ fun main() {
             claudeOauthToken =
                 System.getenv(claudeOauthTokenEnvVarName)
                     ?: error("$claudeOauthTokenEnvVarName is required (from `claude setup-token`)"),
+            commitAuthor = WorkerConfig.commitAuthorFrom(System.getenv()),
+            signingKey = WorkerConfig.signingKeyFrom(System.getenv()),
         )
       }
   runTemporalWorker(config)
