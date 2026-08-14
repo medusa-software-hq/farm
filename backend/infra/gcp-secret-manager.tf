@@ -21,6 +21,15 @@ resource "google_secret_manager_secret_iam_member" "primary_service_sa_database_
   member    = "serviceAccount:${google_service_account.primary_service_sa.email}"
 }
 
+# The deploy pipeline's migrate step runs Flyway as the CI/CD SA, so it too must read the
+# connection string. Read-only, on this one secret — the CI/CD SA already deploys against this DB.
+resource "google_secret_manager_secret_iam_member" "cicd_sa_database_url_accessor" {
+  project   = var.gcp_project_id
+  secret_id = google_secret_manager_secret.database_url.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.gcp_cicd_sa_email}"
+}
+
 # Secret holding the GitHub App private key (PKCS#8 PEM), injected into Cloud Run.
 resource "google_secret_manager_secret" "github_app_pem" {
   project   = var.gcp_project_id
