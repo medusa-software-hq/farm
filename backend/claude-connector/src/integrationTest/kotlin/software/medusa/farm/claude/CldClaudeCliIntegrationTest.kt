@@ -25,9 +25,8 @@ class CldClaudeCliIntegrationTest {
   private val spawner = SysProcessSpawner()
 
   // The connector no longer bounds wall-clock time — that is a use-site concern. Here the use-site
-  // is
-  // the test, so each run is wrapped in this timeout; a trip cancels the coroutine, and `use { }`
-  // closes the run (killing the process tree).
+  // is the test, so each run is wrapped in this timeout; a trip cancels the coroutine, which leaves
+  // the run's block and so kills the process tree.
   private val runBudget = 3.minutes
 
   private fun claudeOrSkip(): SysExecutableHandle {
@@ -45,7 +44,7 @@ class CldClaudeCliIntegrationTest {
   }
 
   @Test
-  fun `the CLI still exposes every flag the connector builds`() = runBlocking {
+  fun `the CLI still exposes every flag the connector builds`(): Unit = runBlocking {
     val claude = claudeOrSkip()
 
     val help = spawner.spawn(executable = claude, arguments = listOf("--help")).standardOutput
@@ -68,19 +67,19 @@ class CldClaudeCliIntegrationTest {
   }
 
   @Test
-  fun `a fresh run streams parseable steps and persists the session under HOME`() = runBlocking {
-    val claude = claudeOrSkip()
-    val token = tokenOrSkip()
+  fun `a fresh run streams parseable steps and persists the session under HOME`(): Unit =
+      runBlocking {
+        val claude = claudeOrSkip()
+        val token = tokenOrSkip()
 
-    val store = CldProperSessionStore(Files.createTempDirectory("cld-it-store"))
-    val sessionId = UUID.randomUUID().toString()
-    val home = store.prepare(CldSessionSelector.Fresh(sessionId))
-    val agent = CldProperAgent(spawner, claude, behavioralConfig(token), CldLoggingReporter())
+        val store = CldProperSessionStore(Files.createTempDirectory("cld-it-store"))
+        val sessionId = UUID.randomUUID().toString()
+        val home = store.prepare(CldSessionSelector.Fresh(sessionId))
+        val agent = CldProperAgent(spawner, claude, behavioralConfig(token), CldLoggingReporter())
 
-    val (runSessionId, steps, result) =
-        withTimeout(runBudget) {
-          agent
-              .launch(
+        val (runSessionId, steps, result) =
+            withTimeout(runBudget) {
+              agent.run(
                   CldRunRequest(
                       workspace = Files.createTempDirectory("cld-it-work"),
                       home = home,
@@ -88,30 +87,33 @@ class CldClaudeCliIntegrationTest {
                           "Reply with exactly the word PONG and nothing else. Do not use any tools.",
                       session = CldSessionSelector.Fresh(sessionId),
                   )
-              )
-              .use { Triple(it.info.sessionId, it.steps.toList(), it.result.await()) }
-        }
+              ) {
+                Triple(info.sessionId, steps.toList(), await())
+              }
+            }
 
-    // The CLI accepted our flags and produced its typed protocol...
-    assertTrue(steps.isNotEmpty(), "no assistant steps")
-    assertTrue(
-        result.completion is CldCompletion.Ok,
-        "did not complete cleanly: ${result.completion}",
-    )
-    assertTrue(runSessionId.isNotBlank(), "no session id")
+        // The CLI accepted our flags and produced its typed protocol...
+        assertTrue(steps.isNotEmpty(), "no assistant steps")
+        assertTrue(
+            result.completion is CldCompletion.Ok,
+            "did not complete cleanly: ${result.completion}",
+        )
+        assertTrue(runSessionId.isNotBlank(), "no session id")
 
-    // ...and persisted the transcript under the HOME we handed it, in the layout the store expects.
-    val projects = home.resolve(".claude/projects")
-    assertTrue(projects.exists(), "no .claude/projects under HOME")
-    val transcripts = projects.listDirectoryEntries().flatMap { it.listDirectoryEntries("*.jsonl") }
-    assertTrue(transcripts.isNotEmpty(), "no session transcript persisted")
+        // ...and persisted the transcript under the HOME we handed it, in the layout the store
+        // expects.
+        val projects = home.resolve(".claude/projects")
+        assertTrue(projects.exists(), "no .claude/projects under HOME")
+        val transcripts =
+            projects.listDirectoryEntries().flatMap { it.listDirectoryEntries("*.jsonl") }
+        assertTrue(transcripts.isNotEmpty(), "no session transcript persisted")
 
-    val ref = store.snapshot(runSessionId, home)
-    assertTrue(Files.size(ref.snapshot) > 0, "empty snapshot")
-  }
+        val ref = store.snapshot(runSessionId, home)
+        assertTrue(Files.size(ref.snapshot) > 0, "empty snapshot")
+      }
 
   @Test
-  fun `a snapshotted session resumes with its context on another HOME`() = runBlocking {
+  fun `a snapshotted session resumes with its context on another HOME`(): Unit = runBlocking {
     val claude = claudeOrSkip()
     val token = tokenOrSkip()
     val agent = CldProperAgent(spawner, claude, behavioralConfig(token), CldLoggingReporter())
@@ -129,19 +131,17 @@ class CldClaudeCliIntegrationTest {
     val homeA = workerA.prepare(CldSessionSelector.Fresh(sessionId))
     val firstSessionId =
         withTimeout(runBudget) {
-          agent
-              .launch(
-                  CldRunRequest(
-                      workspace = workspace,
-                      home = homeA,
-                      prompt = "Remember this codeword for later: MEDUSA. Reply with just: OK.",
-                      session = CldSessionSelector.Fresh(sessionId),
-                  )
+          agent.run(
+              CldRunRequest(
+                  workspace = workspace,
+                  home = homeA,
+                  prompt = "Remember this codeword for later: MEDUSA. Reply with just: OK.",
+                  session = CldSessionSelector.Fresh(sessionId),
               )
-              .use {
-                it.result.await()
-                it.info.sessionId
-              }
+          ) {
+            await()
+            info.sessionId
+          }
         }
     val ref = workerA.snapshot(firstSessionId, homeA)
 
@@ -150,23 +150,18 @@ class CldClaudeCliIntegrationTest {
     val homeB = workerB.prepare(CldSessionSelector.Resume(ref))
     val steps =
         withTimeout(runBudget) {
-          agent
-              .launch(
-                  CldRunRequest(
-                      workspace = workspace,
-                      home = homeB,
-                      prompt = "What was the codeword I gave you? Reply with just that word.",
-                      session = CldSessionSelector.Resume(ref),
-                  )
+          agent.run(
+              CldRunRequest(
+                  workspace = workspace,
+                  home = homeB,
+                  prompt = "What was the codeword I gave you? Reply with just that word.",
+                  session = CldSessionSelector.Resume(ref),
               )
-              .use {
-                val collected = it.steps.toList()
-                assertTrue(
-                    it.result.await().completion is CldCompletion.Ok,
-                    "resume did not complete",
-                )
-                collected
-              }
+          ) {
+            val collected = steps.toList()
+            assertTrue(await().completion is CldCompletion.Ok, "resume did not complete")
+            collected
+          }
         }
 
     val said = steps.joinToString(" ") { it.text }

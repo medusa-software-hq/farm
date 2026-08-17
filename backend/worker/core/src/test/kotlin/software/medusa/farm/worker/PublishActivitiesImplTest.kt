@@ -8,15 +8,14 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.emptyFlow
 import software.medusa.farm.claude.CldAgent
 import software.medusa.farm.claude.CldCompletion
 import software.medusa.farm.claude.CldProperSessionStore
-import software.medusa.farm.claude.CldRun
 import software.medusa.farm.claude.CldRunInfo
 import software.medusa.farm.claude.CldRunRequest
 import software.medusa.farm.claude.CldRunResult
+import software.medusa.farm.claude.CldRunScope
 import software.medusa.farm.claude.CldStep
 import software.medusa.farm.gitcli.GitCli
 import software.medusa.farm.gitcli.GitCliAuthor
@@ -33,15 +32,17 @@ class PublishActivitiesImplTest {
   private class FakeAgent : CldAgent {
     var ranIn: Path? = null
 
-    override suspend fun launch(request: CldRunRequest): CldRun {
+    override suspend fun <T> run(request: CldRunRequest, body: suspend CldRunScope.() -> T): T {
       ranIn = request.workspace
-      return object : CldRun {
-        override val info = CldRunInfo(request.session.sessionId, model = null, tools = emptyList())
-        override val steps = emptyFlow<CldStep>()
-        override val result = CompletableDeferred(CldRunResult(CldCompletion.Ok, cost = null))
+      val scope =
+          object : CldRunScope {
+            override val info =
+                CldRunInfo(request.session.sessionId, model = null, tools = emptyList())
+            override val steps = emptyFlow<CldStep>()
 
-        override fun close() = Unit
-      }
+            override suspend fun await() = CldRunResult(CldCompletion.Ok, cost = null)
+          }
+      return scope.body()
     }
   }
 

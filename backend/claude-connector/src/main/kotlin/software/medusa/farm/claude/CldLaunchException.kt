@@ -1,11 +1,12 @@
 package software.medusa.farm.claude
 
 /**
- * A failure to *launch* a run — surfaced synchronously from [CldAgent.launch], up to and including
- * the opening `init` handshake. Deliberately opaque: the caller decides what to do with a failed
- * launch (fail the activity, let Temporal re-drive it), not how to read it. The diagnostic detail —
- * the spawn cause, the offending first line — is on [CldReporter], the one place the library keeps
- * debug data, so a public failure never leaks exit codes or stderr strings the caller can't act on.
+ * A failure to *launch* a run — thrown out of [CldAgent.run] up to and including the opening `init`
+ * handshake, before the block is ever entered. Deliberately opaque: the caller decides what to do
+ * with a failed launch (fail the activity, let Temporal re-drive it), not how to read it. The
+ * diagnostic detail — the spawn cause, the offending first line — is on [CldReporter], the one
+ * place the library keeps debug data, so a public failure never leaks exit codes or stderr strings
+ * the caller can't act on.
  */
 sealed class CldLaunchException : RuntimeException() {
   // A typed signal, not a diagnostic: the debug data is in CldReporter, and these are singletons,

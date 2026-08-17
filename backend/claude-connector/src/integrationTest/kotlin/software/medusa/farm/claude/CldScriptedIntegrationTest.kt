@@ -8,6 +8,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.measureTime
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import software.medusa.commons.system.SysExecutableHandle
@@ -24,9 +27,8 @@ class CldScriptedIntegrationTest {
   private val spawner = SysProcessSpawner()
 
   @Test
-  fun `a happy stream yields the steps and a clean result`() = runBlocking {
-    val (steps, result) =
-        agent(HAPPY).launch(request()).use { it.steps.toList() to it.result.await() }
+  fun `a happy stream yields the steps and a clean result`(): Unit = runBlocking {
+    val (steps, result) = agent(HAPPY).run(request()) { steps.toList() to await() }
 
     assertEquals(1, steps.size)
     assertEquals("working", steps[0].text)
@@ -36,56 +38,87 @@ class CldScriptedIntegrationTest {
   }
 
   @Test
-  fun `an errored result is reported on the result, not thrown`() = runBlocking {
-    val result = agent(ERRORED).launch(request()).use { it.result.await() }
+  fun `an errored result is reported on the result, not thrown`(): Unit = runBlocking {
+    val result = agent(ERRORED).run(request()) { await() }
     val errored = assertIs<CldCompletion.Errored>(result.completion)
     assertEquals("error_max_budget_usd", errored.subtype)
   }
 
   @Test
-  fun `exit without a result fails the run and is reported`() = runBlocking {
+  fun `exit without a result fails the run and is reported`(): Unit = runBlocking {
     val reporter = RecordingReporter()
     assertFailsWith<CldIllegalExitException> {
-      agent(EXIT_WITHOUT_RESULT, reporter).launch(request()).use { it.result.await() }
+      agent(EXIT_WITHOUT_RESULT, reporter).run(request()) { await() }
     }
     assertNotNull(reporter.exitWithoutResult, "the missing result was not reported")
   }
 
   @Test
-  fun `a message after the result is reported but the run still completes`() = runBlocking {
+  fun `a message after the result is reported but the run still completes`(): Unit = runBlocking {
     val reporter = RecordingReporter()
-    val result = agent(MESSAGE_AFTER_RESULT, reporter).launch(request()).use { it.result.await() }
+    val result = agent(MESSAGE_AFTER_RESULT, reporter).run(request()) { await() }
     assertEquals(CldCompletion.Ok, result.completion)
     assertTrue(reporter.afterResult.isNotEmpty(), "the trailing line was not reported")
   }
 
   @Test
-  fun `a stream that does not open with init is reported and fails the run`() = runBlocking {
+  fun `a stream that does not open with init is reported and fails the run`(): Unit = runBlocking {
     val reporter = RecordingReporter()
     assertFailsWith<CldIllegalStartupException> {
-      agent(MISSING_INIT, reporter).launch(request()).use { it.result.await() }
+      agent(MISSING_INIT, reporter).run(request()) { await() }
     }
     assertTrue(reporter.missingInit, "the missing init was not reported")
   }
 
   @Test
-  fun `a process that lingers after its result completes the run but is reported`() = runBlocking {
-    val reporter = RecordingReporter()
-    val result = agent(LINGER, reporter).launch(request()).use { it.result.await() }
-    assertEquals(CldCompletion.Ok, result.completion)
-    assertTrue(reporter.lingered, "the lingering process was not reported")
-  }
+  fun `a process that lingers after its result completes the run but is reported`(): Unit =
+      runBlocking {
+        val reporter = RecordingReporter()
+        val result = agent(LINGER, reporter).run(request()) { await() }
+        assertEquals(CldCompletion.Ok, result.completion)
+        assertTrue(reporter.lingered, "the lingering process was not reported")
+      }
 
   @Test
-  fun `a non-zero exit after a success result is reported`() = runBlocking {
+  fun `a non-zero exit after a success result is reported`(): Unit = runBlocking {
     val reporter = RecordingReporter()
-    val result = agent(EXIT_DISAGREE, reporter).launch(request()).use { it.result.await() }
+    val result = agent(EXIT_DISAGREE, reporter).run(request()) { await() }
     assertEquals(CldCompletion.Ok, result.completion)
     assertEquals(3, reporter.exitDisagreed)
   }
 
   @Test
-  fun `a fresh run passes --session-id and a resume passes --resume`() = runBlocking {
+  fun `an operational death fails the run even when the body never awaits`(): Unit = runBlocking {
+    // The body only sits there: nothing asks for the outcome. The run must still fail, which is the
+    // point of reconciling in the background rather than inside await().
+    assertFailsWith<CldIllegalExitException> {
+      agent(EXIT_WITHOUT_RESULT).run(request()) { awaitCancellation() }
+    }
+  }
+
+  @Test
+  fun `returning early kills a lingering process instead of waiting for it out`(): Unit =
+      runBlocking {
+        // LINGER sleeps well past this bound after its result. Leaving the block must kill the
+        // tree, not
+        // join the reader that is still blocked on the pipe.
+        val elapsed = measureTime { agent(LINGER).run(request()) { info.sessionId } }
+        assertTrue(
+            elapsed < 5.seconds,
+            "leaving the block waited for the lingering process: $elapsed",
+        )
+      }
+
+  @Test
+  fun `noise before the init is skipped, not treated as a missing handshake`(): Unit = runBlocking {
+    val reporter = RecordingReporter()
+    val result = agent(NOISE_BEFORE_INIT, reporter).run(request()) { await() }
+    assertEquals(CldCompletion.Ok, result.completion)
+    assertFalse(reporter.missingInit, "leading noise was mistaken for a missing init")
+  }
+
+  @Test
+  fun `a fresh run passes --session-id and a resume passes --resume`(): Unit = runBlocking {
     val fresh = argvOf(request(CldSessionSelector.Fresh("sess-7")))
     assertTrue(fresh.containsInOrder("--session-id", "sess-7"))
     assertTrue(fresh.contains("stream-json"))
@@ -107,7 +140,7 @@ class CldScriptedIntegrationTest {
             config(mapOf("FAKE_ARGV_OUT" to argvFile.toString())),
             RecordingReporter(),
         )
-    agent.launch(request).use { it.result.await() }
+    agent.run(request) { await() }
     return Files.readAllLines(argvFile)
   }
 
@@ -201,6 +234,14 @@ class CldScriptedIntegrationTest {
             """{"type":"result","is_error":false,"subtype":"success"}""",
             """{"type":"assistant","message":{"content":[{"type":"text","text":"late"}]}}""",
         )
+
+    // Blank and non-JSON lines are not part of the protocol; the handshake must look past them.
+    val NOISE_BEFORE_INIT =
+        "#!/usr/bin/env bash\n" +
+            "echo ''\n" +
+            "echo 'not json at all'\n" +
+            "echo '{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s\"}'\n" +
+            "echo '{\"type\":\"result\",\"is_error\":false,\"subtype\":\"success\"}'\n"
 
     val MISSING_INIT =
         line(
