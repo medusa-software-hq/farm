@@ -2,7 +2,10 @@ package software.medusa.farm.worker
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import software.medusa.farm.claude.CldMessage
+import software.medusa.farm.claude.CldCompletion
+import software.medusa.farm.claude.CldRunCost
+import software.medusa.farm.claude.CldRunResult
+import software.medusa.farm.claude.CldStep
 import software.medusa.farm.claude.CldToolUse
 import software.medusa.farm.shared.AgentRunCost
 import software.medusa.farm.shared.AgentRunOutcome
@@ -12,8 +15,8 @@ import software.medusa.farm.shared.AgentToolAction
 class AgentRunMapperTest {
   @Test
   fun `classifies each tool use into its semantic action`() {
-    val assistant =
-        CldMessage.Assistant(
+    val step =
+        CldStep(
             text = "working",
             toolUses =
                 listOf(
@@ -26,8 +29,9 @@ class AgentRunMapperTest {
                 ),
         )
 
-    val step = AgentRunMapper.map(listOf(assistant)).log.steps.single()
-    assertEquals("working", step.text)
+    val mapped = AgentRunMapper.map(listOf(step), okResult())
+    val actions = mapped.log.steps.single().toolActions
+    assertEquals("working", mapped.log.steps.single().text)
     assertEquals(
         listOf(
             AgentToolAction.EditFile("src/A.kt"),
@@ -37,16 +41,16 @@ class AgentRunMapperTest {
             AgentToolAction.Search("TODO"),
             AgentToolAction.Other("Sorcery"),
         ),
-        step.toolActions,
+        actions,
     )
   }
 
   @Test
   fun `a tool use missing its wire field degrades to Other`() {
-    val assistant = CldMessage.Assistant(text = "", toolUses = listOf(use("Edit")))
+    val step = CldStep(text = "", toolUses = listOf(use("Edit")))
     assertEquals(
         listOf<AgentToolAction>(AgentToolAction.Other("Edit")),
-        AgentRunMapper.map(listOf(assistant)).log.steps.single().toolActions,
+        AgentRunMapper.map(listOf(step), okResult()).log.steps.single().toolActions,
     )
   }
 
@@ -54,19 +58,31 @@ class AgentRunMapperTest {
   fun `maps the result to outcome and cost`() {
     val ok =
         AgentRunMapper.map(
-            listOf(result(isError = false, cost = 0.42, turns = 3, durationMs = 1200))
+            emptyList(),
+            CldRunResult("s", CldCompletion.Ok, CldRunCost(0.42, 3, 1200)),
         )
     assertEquals(AgentRunOutcome.SUCCEEDED, ok.outcome)
     assertEquals(AgentRunCost(usd = 0.42, turns = 3, durationMs = 1200), ok.cost)
 
-    val errored = AgentRunMapper.map(listOf(result(isError = true)))
+    val errored =
+        AgentRunMapper.map(emptyList(), CldRunResult("s", CldCompletion.Errored("boom"), null))
     assertEquals(AgentRunOutcome.ERRORED, errored.outcome)
     assertEquals(null, errored.cost)
   }
 
   @Test
-  fun `an empty stream is an empty succeeded run`() {
-    val mapped = AgentRunMapper.map(emptyList())
+  fun `an incomplete cost is dropped whole`() {
+    val mapped =
+        AgentRunMapper.map(
+            emptyList(),
+            CldRunResult("s", CldCompletion.Ok, CldRunCost(0.1, null, 5)),
+        )
+    assertEquals(null, mapped.cost)
+  }
+
+  @Test
+  fun `an empty run is an empty succeeded log`() {
+    val mapped = AgentRunMapper.map(emptyList(), okResult())
     assertEquals(emptyList<AgentStep>(), mapped.log.steps)
     assertEquals(AgentRunOutcome.SUCCEEDED, mapped.outcome)
   }
@@ -78,17 +94,5 @@ class AgentRunMapperTest {
       pattern: String? = null,
   ) = CldToolUse(name = name, filePath = filePath, command = command, pattern = pattern)
 
-  private fun result(
-      isError: Boolean,
-      cost: Double? = null,
-      turns: Int? = null,
-      durationMs: Long? = null,
-  ) =
-      CldMessage.Result(
-          isError = isError,
-          subtype = null,
-          totalCostUsd = cost,
-          numTurns = turns,
-          durationMs = durationMs,
-      )
+  private fun okResult() = CldRunResult("s", CldCompletion.Ok, null)
 }

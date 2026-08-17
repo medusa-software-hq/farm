@@ -8,12 +8,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.emptyFlow
 import software.medusa.farm.claude.CldAgent
 import software.medusa.farm.claude.CldCompletion
-import software.medusa.farm.claude.CldMessage
 import software.medusa.farm.claude.CldProperSessionStore
+import software.medusa.farm.claude.CldRun
 import software.medusa.farm.claude.CldRunRequest
 import software.medusa.farm.claude.CldRunResult
+import software.medusa.farm.claude.CldStep
 import software.medusa.farm.gitcli.GitCli
 import software.medusa.farm.gitcli.GitCliAuthor
 import software.medusa.farm.github.FakeGitHubServer
@@ -25,16 +28,21 @@ class PublishActivitiesImplTest {
   private val appKey = TestAppKey()
   private val author = GitCliAuthor("Farm", "farm@medusa.software")
 
-  /** Records the workspace it ran in and reports a clean completion. */
+  /** Records the workspace it ran in, streams nothing, and reports a clean completion. */
   private class FakeAgent : CldAgent {
     var ranIn: Path? = null
 
-    override suspend fun run(
-        request: CldRunRequest,
-        onMessage: (CldMessage) -> Unit,
-    ): CldRunResult {
+    override suspend fun <T> run(request: CldRunRequest, consume: suspend (CldRun) -> T): T {
       ranIn = request.workspace
-      return CldRunResult(request.session.sessionId, CldCompletion.Ok, cost = null)
+      val run =
+          object : CldRun {
+            override val steps = emptyFlow<CldStep>()
+            override val result =
+                CompletableDeferred(
+                    CldRunResult(request.session.sessionId, CldCompletion.Ok, cost = null)
+                )
+          }
+      return consume(run)
     }
   }
 

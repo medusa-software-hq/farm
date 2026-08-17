@@ -1,30 +1,20 @@
 package software.medusa.farm.claude
 
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.Flow
 
 /**
- * A live handle to the running subprocess.
- *
- * Lifecycle: collect [messages] to consume stdout, then [awaitTermination] for the exit code and
- * captured stderr; always [close] (kills the process tree). A `use { }` block is the intended
- * pattern so cancellation or a timeout tears the whole tree down.
+ * A live run, handed to the block passed to [CldAgent.run]. Collect [steps] to observe the agent's
+ * actions as they stream; await [result] for the terminal outcome. Both are valid only within that
+ * block — the process is torn down when the block returns.
  */
-interface CldRun : AutoCloseable {
+interface CldRun {
+  /** The agent's steps as they stream; completes when the process closes stdout. */
+  val steps: Flow<CldStep>
+
   /**
-   * Parsed NDJSON stdout messages, in order; the flow completes when the process closes stdout.
-   * Cold: collecting it consumes the single underlying stream (do not collect twice).
+   * The terminal outcome — completes once the `result` message and a clean exit are seen, or fails
+   * with [CldConnectorException] if the process died without a result.
    */
-  val messages: Flow<CldMessage>
-
-  /** Suspends until the process exits, then reports how it ended. */
-  suspend fun awaitTermination(): Termination
-
-  /** Kills the process tree. Idempotent; safe to call after normal termination. */
-  override fun close()
-
-  data class Termination(
-      val exitCode: Int,
-      /** Captured stderr; the driver surfaces its tail in failure messages. */
-      val standardError: String,
-  )
+  val result: Deferred<CldRunResult>
 }

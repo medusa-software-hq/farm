@@ -7,7 +7,7 @@ package software.medusa.farm.claude
  * `type`s and unknown fields, and every wire field the connector reads is confined to that one
  * parser. Protocol drift is therefore a localized fix, not something scattered across callers.
  */
-sealed interface CldMessage {
+internal sealed interface CldMessage {
   /**
    * The opening `system`/`init` banner. Carries the run's identity: its [sessionId] (the resume
    * anchor), the resolved [model], and the [tools] the CLI enabled.

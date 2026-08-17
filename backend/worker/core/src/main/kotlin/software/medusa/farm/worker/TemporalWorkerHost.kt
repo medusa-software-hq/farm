@@ -19,8 +19,8 @@ import java.time.Duration
 import software.medusa.commons.system.SysExecutableHandle
 import software.medusa.commons.system.SysProcessSpawner
 import software.medusa.farm.claude.CldEngineConfig
+import software.medusa.farm.claude.CldLoggingReporter
 import software.medusa.farm.claude.CldProperAgent
-import software.medusa.farm.claude.CldProperProcess
 import software.medusa.farm.claude.CldProperSessionStore
 import software.medusa.farm.gitcli.GitCliAuthor
 import software.medusa.farm.gitcli.GitCliProper
@@ -152,8 +152,10 @@ class TemporalWorkerHost(
                   )
           )
       return CldProperAgent(
-          CldProperProcess(spawner, SysExecutableHandle.locate("claude")),
+          spawner,
+          SysExecutableHandle.locate("claude"),
           config,
+          CldLoggingReporter(),
       )
     }
 

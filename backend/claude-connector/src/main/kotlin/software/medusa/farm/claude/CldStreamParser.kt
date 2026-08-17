@@ -20,7 +20,7 @@ import kotlinx.serialization.json.longOrNull
  * rather than `@Serializable` classes so an unexpected or renamed field degrades to `null` instead
  * of throwing.
  */
-object CldStreamParser {
+internal object CldStreamParser {
   private val json = Json { ignoreUnknownKeys = true }
 
   /**

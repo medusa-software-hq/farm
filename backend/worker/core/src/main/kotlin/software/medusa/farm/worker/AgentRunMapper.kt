@@ -1,6 +1,9 @@
 package software.medusa.farm.worker
 
-import software.medusa.farm.claude.CldMessage
+import software.medusa.farm.claude.CldCompletion
+import software.medusa.farm.claude.CldRunCost
+import software.medusa.farm.claude.CldRunResult
+import software.medusa.farm.claude.CldStep
 import software.medusa.farm.claude.CldToolUse
 import software.medusa.farm.shared.AgentRunCost
 import software.medusa.farm.shared.AgentRunLog
@@ -9,26 +12,26 @@ import software.medusa.farm.shared.AgentStep
 import software.medusa.farm.shared.AgentToolAction
 
 /**
- * Maps a claude run's [CldMessage] stream into the backend-neutral [AgentRunLog] and run metadata.
- * This is where Claude's tool vocabulary becomes Farm's semantic actions; a future backend gets its
- * own mapper into the same model.
+ * Maps a claude run — its streamed [CldStep]s and terminal [CldRunResult] — into the
+ * backend-neutral [AgentRunLog] and run metadata. This is where Claude's tool vocabulary becomes
+ * Farm's semantic actions; a future backend gets its own mapper into the same model.
  */
 object AgentRunMapper {
-  fun map(messages: List<CldMessage>): MappedAgentRun {
-    val steps =
-        messages.filterIsInstance<CldMessage.Assistant>().map { assistant ->
-          AgentStep(text = assistant.text, toolActions = assistant.toolUses.map(::action))
-        }
-    val result = messages.filterIsInstance<CldMessage.Result>().lastOrNull()
+  fun map(steps: List<CldStep>, result: CldRunResult): MappedAgentRun {
+    val log =
+        AgentRunLog(
+            steps.map { AgentStep(text = it.text, toolActions = it.toolUses.map(::action)) }
+        )
     val outcome =
-        if (result?.isError == true) AgentRunOutcome.ERRORED else AgentRunOutcome.SUCCEEDED
-    return MappedAgentRun(log = AgentRunLog(steps), outcome = outcome, cost = result?.let(::cost))
+        if (result.completion is CldCompletion.Errored) AgentRunOutcome.ERRORED
+        else AgentRunOutcome.SUCCEEDED
+    return MappedAgentRun(log = log, outcome = outcome, cost = cost(result.cost))
   }
 
-  private fun cost(result: CldMessage.Result): AgentRunCost? {
-    val usd = result.totalCostUsd ?: return null
-    val turns = result.numTurns ?: return null
-    val durationMs = result.durationMs ?: return null
+  private fun cost(cost: CldRunCost?): AgentRunCost? {
+    val usd = cost?.totalCostUsd ?: return null
+    val turns = cost.numTurns ?: return null
+    val durationMs = cost.durationMs ?: return null
     return AgentRunCost(usd = usd, turns = turns, durationMs = durationMs)
   }
 

@@ -7,19 +7,18 @@ import kotlin.io.path.listDirectoryEntries
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import software.medusa.commons.system.SysExecutableHandle
 import software.medusa.commons.system.SysProcessSpawner
 
 /**
- * Exercises the real connector classes against the real `claude` CLI to validate the assumptions
- * they bake in about its flag surface, stream-json output, and on-disk session persistence — the
- * things a `FakeCldProcess` cannot catch because it only replays those assumptions back.
- *
- * Kept out of the pure `test` source set; run via the `integrationTest` task. Skips keep it a no-op
- * when unconfigured: the flag-surface check needs only the binary, while the behavioral checks make
- * real, paid calls and additionally need a `CLAUDE_CODE_OAUTH_TOKEN`.
+ * Exercises the real driver against the real `claude` CLI — its flag surface, stream-json output,
+ * and on-disk session persistence — the assumptions the scripted fakes only replay back. Run via
+ * the `integrationTest` task; skips keep it a no-op when unconfigured: the flag check needs only
+ * the binary, the behavioral checks make real, paid calls and additionally need a
+ * CLAUDE_CODE_OAUTH_TOKEN.
  */
 class CldClaudeCliIntegrationTest {
   private val spawner = SysProcessSpawner()
@@ -62,18 +61,16 @@ class CldClaudeCliIntegrationTest {
   }
 
   @Test
-  fun `a fresh run streams a parseable session and persists it under HOME`() = runBlocking {
+  fun `a fresh run streams parseable steps and persists the session under HOME`() = runBlocking {
     val claude = claudeOrSkip()
     val token = tokenOrSkip()
 
     val store = CldProperSessionStore(Files.createTempDirectory("cld-it-store"))
     val sessionId = UUID.randomUUID().toString()
     val home = store.prepare(CldSessionSelector.Fresh(sessionId))
+    val agent = CldProperAgent(spawner, claude, behavioralConfig(token), CldLoggingReporter())
 
-    val agent = CldProperAgent(CldProperProcess(spawner, claude), behavioralConfig(token))
-
-    val messages = mutableListOf<CldMessage>()
-    val result =
+    val (steps, result) =
         agent.run(
             CldRunRequest(
                 workspace = Files.createTempDirectory("cld-it-work"),
@@ -82,20 +79,18 @@ class CldClaudeCliIntegrationTest {
                 session = CldSessionSelector.Fresh(sessionId),
             )
         ) {
-          messages += it
+          it.steps.toList() to it.result.await()
         }
 
     // The CLI accepted our flags and produced its typed protocol...
-    assertTrue(messages.any { it is CldMessage.SystemInit }, "no system init banner")
-    assertTrue(messages.any { it is CldMessage.Assistant }, "no assistant turn")
+    assertTrue(steps.isNotEmpty(), "no assistant steps")
     assertTrue(
         result.completion is CldCompletion.Ok,
         "did not complete cleanly: ${result.completion}",
     )
     assertTrue(result.sessionId.isNotBlank(), "no session id")
 
-    // ...and it persisted the transcript under the HOME we handed it, in the layout the store
-    // expects.
+    // ...and persisted the transcript under the HOME we handed it, in the layout the store expects.
     val projects = home.resolve(".claude/projects")
     assertTrue(projects.exists(), "no .claude/projects under HOME")
     val transcripts = projects.listDirectoryEntries().flatMap { it.listDirectoryEntries("*.jsonl") }
@@ -109,7 +104,7 @@ class CldClaudeCliIntegrationTest {
   fun `a snapshotted session resumes with its context on another HOME`() = runBlocking {
     val claude = claudeOrSkip()
     val token = tokenOrSkip()
-    val agent = CldProperAgent(CldProperProcess(spawner, claude), behavioralConfig(token))
+    val agent = CldProperAgent(spawner, claude, behavioralConfig(token), CldLoggingReporter())
 
     // The workspace path is fixed across both runs: claude files a session's transcript under a
     // slug
@@ -130,14 +125,15 @@ class CldClaudeCliIntegrationTest {
                 prompt = "Remember this codeword for later: MEDUSA. Reply with just: OK.",
                 session = CldSessionSelector.Fresh(sessionId),
             )
-        ) {}
+        ) {
+          it.result.await()
+        }
     val ref = workerA.snapshot(first.sessionId, homeA)
 
     // Run 2 on "worker B": a different store/HOME, resuming only from the snapshot.
     val workerB = CldProperSessionStore(Files.createTempDirectory("cld-it-b"))
     val homeB = workerB.prepare(CldSessionSelector.Resume(ref))
-    val messages = mutableListOf<CldMessage>()
-    val second =
+    val steps =
         agent.run(
             CldRunRequest(
                 workspace = workspace,
@@ -146,14 +142,12 @@ class CldClaudeCliIntegrationTest {
                 session = CldSessionSelector.Resume(ref),
             )
         ) {
-          messages += it
+          val collected = it.steps.toList()
+          assertTrue(it.result.await().completion is CldCompletion.Ok, "resume did not complete")
+          collected
         }
 
-    assertTrue(
-        second.completion is CldCompletion.Ok,
-        "resume did not complete: ${second.completion}",
-    )
-    val said = messages.filterIsInstance<CldMessage.Assistant>().joinToString(" ") { it.text }
+    val said = steps.joinToString(" ") { it.text }
     assertTrue(
         said.contains("MEDUSA", ignoreCase = true),
         "resumed session lost prior context: '$said'",

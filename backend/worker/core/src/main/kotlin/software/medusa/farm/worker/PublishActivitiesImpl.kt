@@ -60,7 +60,9 @@ class PublishActivitiesImpl(
                   prompt = taskPrompt(title, body),
                   session = CldSessionSelector.Fresh(sessionId),
               )
-          ) {}
+          ) {
+            it.result.await()
+          }
       check(result.completion is CldCompletion.Ok) { "agent run ended in ${result.completion}" }
 
       gitCli.stageAll(clone)
