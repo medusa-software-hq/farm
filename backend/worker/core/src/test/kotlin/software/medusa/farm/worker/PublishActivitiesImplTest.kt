@@ -32,7 +32,7 @@ class PublishActivitiesImplTest {
   private class FakeAgent : CldAgent {
     var ranIn: Path? = null
 
-    override fun launch(request: CldRunRequest): CldRun {
+    override suspend fun launch(request: CldRunRequest): CldRun {
       ranIn = request.workspace
       return object : CldRun {
         override val steps = emptyFlow<CldStep>()

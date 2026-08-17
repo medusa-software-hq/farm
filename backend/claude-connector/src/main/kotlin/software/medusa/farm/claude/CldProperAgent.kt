@@ -15,9 +15,8 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
-import kotlinx.coroutines.channels.consume
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.mapNotNull
@@ -49,17 +48,49 @@ class CldProperAgent(
     private val config: CldEngineConfig,
     private val reporter: CldReporter,
 ) : CldAgent {
-  override fun launch(request: CldRunRequest): CldRun {
+  override suspend fun launch(request: CldRunRequest): CldRun {
     val handle = spawn(request)
     // A detached scope for the run's coroutines: it outlives `launch`, so it can't be a child of
     // the
     // caller's frame. close() cancels it (and kills the process); nothing else keeps it alive.
     val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    val parsed = parse(handle, scope)
-    val termination = scope.async { handle.awaitTermination() }
-    // The final result surfaces reconcile's return/throw straight onto the caller's await().
-    val result = scope.async { reconcile(request, parsed, termination) }
-    return ProperRun(parsed.steps, result, handle, scope)
+    return try {
+      // Rendezvous: don't read the process ahead of the state machine. `steps` (UNLIMITED) is the
+      // buffer that keeps a slow step-consumer from ever stalling the pipe.
+      val messages =
+          handle.standardOutputLines
+              .mapNotNull { line -> CldStreamParser.parseLine(line)?.let { line to it } }
+              .buffer(Channel.RENDEZVOUS)
+              .produceIn(scope)
+
+      // The handshake: wait for the opening `init` before handing back a live run (like HTTP
+      // headers before the body). No init in time is a failed launch, process or not.
+      val init = awaitInit(messages)
+
+      val steps = Channel<CldStep>(Channel.UNLIMITED)
+      val result = CompletableDeferred<CldMessage.Result>()
+      val drained = scope.launch { readBody(messages, steps, result) }
+      val termination = scope.async { handle.awaitTermination() }
+      // The final result surfaces reconcile's return/throw straight onto the caller's await().
+      val runResult = scope.async { reconcile(request, init, result, drained, termination) }
+      ProperRun(steps.receiveAsFlow(), runResult, handle, scope)
+    } catch (@Suppress("TooGenericExceptionCaught") failure: Throwable) {
+      scope.cancel()
+      handle.close()
+      throw failure
+    }
+  }
+
+  private suspend fun awaitInit(
+      messages: ReceiveChannel<Pair<String, CldMessage>>
+  ): CldMessage.SystemInit {
+    val opening =
+        withTimeoutOrNull(config.initTimeout) { messages.receiveCatching().getOrNull() }?.second
+    if (opening !is CldMessage.SystemInit) {
+      reporter.missingInit()
+      throw CldConnectorException.missingInit()
+    }
+    return opening
   }
 
   private fun spawn(request: CldRunRequest): SysProcessHandle {
@@ -80,65 +111,18 @@ class CldProperAgent(
     return handle
   }
 
-  private class Parsed(
-      val init: Deferred<CldMessage.SystemInit>,
-      val steps: Flow<CldStep>,
-      val result: Deferred<CldMessage.Result>,
-      /** Completes when the reader has consumed the stream to its end. */
-      val drained: Job,
-  )
-
   /**
-   * Starts reading the stream. The first message must be the `init` banner; the rest stream out as
-   * steps until the terminal `result`. [Parsed.init] and [Parsed.result] surface as deferreds so
-   * the run can *race* the result against process termination; anomalies go to the reporter.
+   * Reads the body — everything after the `init` handshake — streaming steps until the terminal
+   * `result`; anything after it is reported, not acted on. If the stream ends with no result,
+   * [result] stays pending and reconcile's termination path turns the exit into the verdict.
    */
-  private fun parse(handle: SysProcessHandle, scope: CoroutineScope): Parsed {
-    val init = CompletableDeferred<CldMessage.SystemInit>()
-    val steps = Channel<CldStep>(Channel.UNLIMITED)
-    val result = CompletableDeferred<CldMessage.Result>()
-    val drained = scope.launch {
-      try {
-        readStream(handle, init, steps, result)
-      } catch (cancellation: CancellationException) {
-        throw cancellation // close() cancelled the run — not a failure to surface.
-      } catch (@Suppress("TooGenericExceptionCaught") failure: Throwable) {
-        init.completeExceptionally(failure)
-        result.completeExceptionally(failure)
-      } finally {
-        steps.close()
-      }
-    }
-    return Parsed(init, steps.receiveAsFlow(), result, drained)
-  }
-
-  private suspend fun readStream(
-      handle: SysProcessHandle,
-      init: CompletableDeferred<CldMessage.SystemInit>,
+  private suspend fun readBody(
+      messages: ReceiveChannel<Pair<String, CldMessage>>,
       steps: SendChannel<CldStep>,
       result: CompletableDeferred<CldMessage.Result>,
-  ) = coroutineScope {
-    // Rendezvous: don't read the process ahead of the state machine. `steps` (UNLIMITED) is the
-    // buffer that keeps a slow step-consumer from ever stalling the pipe.
-    val messages =
-        handle.standardOutputLines
-            .mapNotNull { line -> CldStreamParser.parseLine(line)?.let { line to it } }
-            .buffer(Channel.RENDEZVOUS)
-            .produceIn(this)
-
-    messages.consume {
-      val opening = receiveCatching().getOrNull()?.second
-      if (opening !is CldMessage.SystemInit) {
-        // A stream that doesn't open with init (or is empty) is a broken contract: fail the run.
-        reporter.missingInit()
-        val failure = CldConnectorException.missingInit()
-        init.completeExceptionally(failure)
-        result.completeExceptionally(failure)
-        return@consume
-      }
-      init.complete(opening)
-
-      for ((line, message) in this) {
+  ) {
+    try {
+      for ((line, message) in messages) {
         when {
           result.isCompleted -> reporter.messageAfterResult(line)
           message is CldMessage.Assistant -> steps.send(CldStep(message.text, message.toolUses))
@@ -146,8 +130,12 @@ class CldProperAgent(
           else -> Unit // a duplicate init or an unknown message — nothing to act on.
         }
       }
-      // Stream ended. If no result was seen, `result` stays pending — reconcile's termination path
-      // turns the exit into the verdict (a death without a result).
+    } catch (cancellation: CancellationException) {
+      throw cancellation // close() cancelled the run — not a failure to surface.
+    } catch (@Suppress("TooGenericExceptionCaught") failure: Throwable) {
+      result.completeExceptionally(failure)
+    } finally {
+      steps.close()
     }
   }
 
@@ -160,7 +148,9 @@ class CldProperAgent(
    */
   private suspend fun reconcile(
       request: CldRunRequest,
-      parsed: Parsed,
+      init: CldMessage.SystemInit,
+      result: Deferred<CldMessage.Result>,
+      drained: Job,
       termination: Deferred<SysProcessTermination>,
   ): CldRunResult =
       try {
@@ -168,11 +158,11 @@ class CldProperAgent(
           // Whichever end we observe first, wait a short grace for the other: after a result, for a
           // clean exit; after an exit, for a result still buffered in the pipe.
           val (resultMessage, exit) =
-              when (val first = race(parsed.result, termination)) {
+              when (val first = race(result, termination)) {
                 is JoinOrder.ResultFirst ->
                     first.result to withTimeoutOrNull(TERMINATION_GRACE) { termination.await() }
                 is JoinOrder.TerminationFirst -> {
-                  val buffered = withTimeoutOrNull(RESULT_GRACE) { parsed.result.await() }
+                  val buffered = withTimeoutOrNull(RESULT_GRACE) { result.await() }
                   if (buffered == null) {
                     reporter.exitWithoutResult(
                         first.termination.exitCode,
@@ -192,12 +182,12 @@ class CldProperAgent(
           } else {
             // The process is gone: let the reader finish (reporting any post-result lines), then
             // check the exit code against the verdict.
-            withTimeoutOrNull(DRAIN_GRACE) { parsed.drained.join() }
+            withTimeoutOrNull(DRAIN_GRACE) { drained.join() }
             if (exit.exitCode != 0 && !resultMessage.isError) {
               reporter.exitDisagreedWithResult(exit.exitCode)
             }
           }
-          buildResult(request, parsed, resultMessage)
+          buildResult(request, init, resultMessage)
         }
       } catch (_: TimeoutCancellationException) {
         throw CldConnectorException.timedOut()
@@ -211,14 +201,13 @@ class CldProperAgent(
     termination.onAwait { JoinOrder.TerminationFirst(it) }
   }
 
-  private suspend fun buildResult(
+  private fun buildResult(
       request: CldRunRequest,
-      parsed: Parsed,
+      init: CldMessage.SystemInit,
       result: CldMessage.Result,
   ): CldRunResult =
-      // A result implies the init preceded it, so `parsed.init` is already complete.
       CldRunResult(
-          sessionId = parsed.init.await().sessionId ?: request.session.sessionId,
+          sessionId = init.sessionId ?: request.session.sessionId,
           completion =
               if (result.isError) CldCompletion.Errored(result.subtype) else CldCompletion.Ok,
           cost = CldRunCost(result.totalCostUsd, result.numTurns, result.durationMs),

@@ -2,6 +2,7 @@ package software.medusa.farm.claude
 
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Static configuration for [CldProperAgent] — everything that varies per worker/deployment rather
@@ -15,6 +16,9 @@ import kotlin.time.Duration.Companion.minutes
  *   result subtype. `null` omits the flag.
  * @property wallClockTimeout the worker-side wall-clock cap (the pinned CLI has no `--max-turns`);
  *   exceeding it kills the process tree and throws [CldConnectorException].
+ * @property initTimeout how long to wait for the opening `init` handshake before a launch is
+ *   considered failed — the run "starts" when claude speaks its protocol, not when the OS process
+ *   does. Generous by default: it only guards a process that started but never answered.
  * @property toolPolicy the non-interactive permission posture.
  * @property appendSystemPrompt operating hints passed as `--append-system-prompt`, telling the
  *   otherwise-unframed agent that the message it receives **is** the task to solve, non-
@@ -25,6 +29,7 @@ data class CldEngineConfig(
     val model: String?,
     val maxBudgetUsd: Double?,
     val wallClockTimeout: Duration,
+    val initTimeout: Duration,
     val toolPolicy: CldToolPolicy,
     val appendSystemPrompt: String,
 ) {
@@ -33,6 +38,10 @@ data class CldEngineConfig(
     // tool-calls, so a sub-dollar cap would guillotine genuine work mid-run.
     const val defaultMaxBudgetUsd = 10.00
     val defaultWallClockTimeout: Duration = 30.minutes
+
+    // The init banner is claude's opening line, emitted before any model work; 30s is far more than
+    // it should ever take, so it only trips on a process that started but is not speaking.
+    val defaultInitTimeout: Duration = 30.seconds
 
     const val defaultAppendSystemPrompt =
         "You are an autonomous coding agent running non-interactively. The single message you are " +
@@ -50,6 +59,7 @@ data class CldEngineConfig(
             model = null,
             maxBudgetUsd = defaultMaxBudgetUsd,
             wallClockTimeout = defaultWallClockTimeout,
+            initTimeout = defaultInitTimeout,
             toolPolicy = CldToolPolicy.default(),
             appendSystemPrompt = defaultAppendSystemPrompt,
         )

@@ -1,16 +1,18 @@
 package software.medusa.farm.claude
 
 /**
- * Drives `claude`. [launch] starts the subprocess and returns a live [CldRun] — its streaming
- * [CldRun.steps] and terminal [CldRun.result] — which the caller must [CldRun.close] (a `use { }`
- * block is the intended pattern).
+ * Drives `claude`. [launch] starts the subprocess and waits for its opening `init` handshake — the
+ * run "starts" when claude speaks its protocol, not when the OS process does — then returns a live
+ * [CldRun] whose [CldRun.steps] stream and [CldRun.result] completes as the body arrives (like HTTP
+ * headers, then body). The caller must [CldRun.close] it (a `use { }` block is the intended
+ * pattern).
  *
  * The workspace is mutated in place — the connector returns no diff; the caller diffs the
- * directory. Operational failures (missing binary, dead process, timeout) surface as
- * [CldConnectorException] — thrown by [launch] for a missing binary, otherwise failing
- * [CldRun.result]; a run the agent itself ends with an error is [CldCompletion.Errored] on the
+ * directory. Operational failures surface as [CldConnectorException] — thrown by [launch] up to and
+ * including the handshake (missing binary, no `init`), and afterwards via [CldRun.result] (dead
+ * process, timeout); a run the agent itself ends with an error is [CldCompletion.Errored] on the
  * result, not a failure.
  */
 interface CldAgent {
-  fun launch(request: CldRunRequest): CldRun
+  suspend fun launch(request: CldRunRequest): CldRun
 }
