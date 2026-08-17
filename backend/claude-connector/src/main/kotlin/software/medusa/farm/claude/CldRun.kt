@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
  * reader and kills the process tree, so a leaked handle leaks a process.
  */
 interface CldRun : AutoCloseable {
+  /** What the opening `init` handshake reported — available now, not at the end of the run. */
+  val info: CldRunInfo
+
   /** The agent's steps as they stream; completes when the process closes stdout. */
   val steps: Flow<CldStep>
 

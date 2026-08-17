@@ -70,7 +70,7 @@ class CldClaudeCliIntegrationTest {
     val home = store.prepare(CldSessionSelector.Fresh(sessionId))
     val agent = CldProperAgent(spawner, claude, behavioralConfig(token), CldLoggingReporter())
 
-    val (steps, result) =
+    val (runSessionId, steps, result) =
         agent
             .launch(
                 CldRunRequest(
@@ -81,7 +81,7 @@ class CldClaudeCliIntegrationTest {
                     session = CldSessionSelector.Fresh(sessionId),
                 )
             )
-            .use { it.steps.toList() to it.result.await() }
+            .use { Triple(it.info.sessionId, it.steps.toList(), it.result.await()) }
 
     // The CLI accepted our flags and produced its typed protocol...
     assertTrue(steps.isNotEmpty(), "no assistant steps")
@@ -89,7 +89,7 @@ class CldClaudeCliIntegrationTest {
         result.completion is CldCompletion.Ok,
         "did not complete cleanly: ${result.completion}",
     )
-    assertTrue(result.sessionId.isNotBlank(), "no session id")
+    assertTrue(runSessionId.isNotBlank(), "no session id")
 
     // ...and persisted the transcript under the HOME we handed it, in the layout the store expects.
     val projects = home.resolve(".claude/projects")
@@ -97,7 +97,7 @@ class CldClaudeCliIntegrationTest {
     val transcripts = projects.listDirectoryEntries().flatMap { it.listDirectoryEntries("*.jsonl") }
     assertTrue(transcripts.isNotEmpty(), "no session transcript persisted")
 
-    val ref = store.snapshot(result.sessionId, home)
+    val ref = store.snapshot(runSessionId, home)
     assertTrue(Files.size(ref.snapshot) > 0, "empty snapshot")
   }
 
@@ -118,7 +118,7 @@ class CldClaudeCliIntegrationTest {
     val workerA = CldProperSessionStore(Files.createTempDirectory("cld-it-a"))
     val sessionId = UUID.randomUUID().toString()
     val homeA = workerA.prepare(CldSessionSelector.Fresh(sessionId))
-    val first =
+    val firstSessionId =
         agent
             .launch(
                 CldRunRequest(
@@ -128,8 +128,11 @@ class CldClaudeCliIntegrationTest {
                     session = CldSessionSelector.Fresh(sessionId),
                 )
             )
-            .use { it.result.await() }
-    val ref = workerA.snapshot(first.sessionId, homeA)
+            .use {
+              it.result.await()
+              it.info.sessionId
+            }
+    val ref = workerA.snapshot(firstSessionId, homeA)
 
     // Run 2 on "worker B": a different store/HOME, resuming only from the snapshot.
     val workerB = CldProperSessionStore(Files.createTempDirectory("cld-it-b"))

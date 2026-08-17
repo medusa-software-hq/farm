@@ -59,13 +59,12 @@ class AgentRunMapperTest {
     val ok =
         AgentRunMapper.map(
             emptyList(),
-            CldRunResult("s", CldCompletion.Ok, CldRunCost(0.42, 3, 1200)),
+            CldRunResult(CldCompletion.Ok, CldRunCost(0.42, 3, 1200)),
         )
     assertEquals(AgentRunOutcome.SUCCEEDED, ok.outcome)
     assertEquals(AgentRunCost(usd = 0.42, turns = 3, durationMs = 1200), ok.cost)
 
-    val errored =
-        AgentRunMapper.map(emptyList(), CldRunResult("s", CldCompletion.Errored("boom"), null))
+    val errored = AgentRunMapper.map(emptyList(), CldRunResult(CldCompletion.Errored("boom"), null))
     assertEquals(AgentRunOutcome.ERRORED, errored.outcome)
     assertEquals(null, errored.cost)
   }
@@ -75,7 +74,7 @@ class AgentRunMapperTest {
     val mapped =
         AgentRunMapper.map(
             emptyList(),
-            CldRunResult("s", CldCompletion.Ok, CldRunCost(0.1, null, 5)),
+            CldRunResult(CldCompletion.Ok, CldRunCost(0.1, null, 5)),
         )
     assertEquals(null, mapped.cost)
   }
@@ -94,5 +93,5 @@ class AgentRunMapperTest {
       pattern: String? = null,
   ) = CldToolUse(name = name, filePath = filePath, command = command, pattern = pattern)
 
-  private fun okResult() = CldRunResult("s", CldCompletion.Ok, null)
+  private fun okResult() = CldRunResult(CldCompletion.Ok, null)
 }

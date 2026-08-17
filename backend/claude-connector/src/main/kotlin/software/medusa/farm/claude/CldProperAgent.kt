@@ -66,14 +66,15 @@ class CldProperAgent(
       // The handshake: wait for the opening `init` before handing back a live run (like HTTP
       // headers before the body). No init in time is a failed launch, process or not.
       val init = awaitInit(messages)
+      val info = CldRunInfo(init.sessionId ?: request.session.sessionId, init.model, init.tools)
 
       val steps = Channel<CldStep>(Channel.UNLIMITED)
       val result = CompletableDeferred<CldMessage.Result>()
       val drained = scope.launch { readBody(messages, steps, result) }
       val termination = scope.async { handle.awaitTermination() }
       // The final result surfaces reconcile's return/throw straight onto the caller's await().
-      val runResult = scope.async { reconcile(request, init, result, drained, termination) }
-      ProperRun(steps.receiveAsFlow(), runResult, handle, scope)
+      val runResult = scope.async { reconcile(result, drained, termination) }
+      ProperRun(info, steps.receiveAsFlow(), runResult, handle, scope)
     } catch (@Suppress("TooGenericExceptionCaught") failure: Throwable) {
       scope.cancel()
       handle.close()
@@ -147,8 +148,6 @@ class CldProperAgent(
    * other.
    */
   private suspend fun reconcile(
-      request: CldRunRequest,
-      init: CldMessage.SystemInit,
       result: Deferred<CldMessage.Result>,
       drained: Job,
       termination: Deferred<SysProcessTermination>,
@@ -187,7 +186,7 @@ class CldProperAgent(
               reporter.exitDisagreedWithResult(exit.exitCode)
             }
           }
-          buildResult(request, init, resultMessage)
+          buildResult(resultMessage)
         }
       } catch (_: TimeoutCancellationException) {
         throw CldConnectorException.timedOut()
@@ -201,13 +200,8 @@ class CldProperAgent(
     termination.onAwait { JoinOrder.TerminationFirst(it) }
   }
 
-  private fun buildResult(
-      request: CldRunRequest,
-      init: CldMessage.SystemInit,
-      result: CldMessage.Result,
-  ): CldRunResult =
+  private fun buildResult(result: CldMessage.Result): CldRunResult =
       CldRunResult(
-          sessionId = init.sessionId ?: request.session.sessionId,
           completion =
               if (result.isError) CldCompletion.Errored(result.subtype) else CldCompletion.Ok,
           cost = CldRunCost(result.totalCostUsd, result.numTurns, result.durationMs),
@@ -220,6 +214,7 @@ class CldProperAgent(
   }
 
   private class ProperRun(
+      override val info: CldRunInfo,
       override val steps: Flow<CldStep>,
       override val result: Deferred<CldRunResult>,
       private val handle: SysProcessHandle,

@@ -14,6 +14,7 @@ import software.medusa.farm.claude.CldAgent
 import software.medusa.farm.claude.CldCompletion
 import software.medusa.farm.claude.CldProperSessionStore
 import software.medusa.farm.claude.CldRun
+import software.medusa.farm.claude.CldRunInfo
 import software.medusa.farm.claude.CldRunRequest
 import software.medusa.farm.claude.CldRunResult
 import software.medusa.farm.claude.CldStep
@@ -35,11 +36,9 @@ class PublishActivitiesImplTest {
     override suspend fun launch(request: CldRunRequest): CldRun {
       ranIn = request.workspace
       return object : CldRun {
+        override val info = CldRunInfo(request.session.sessionId, model = null, tools = emptyList())
         override val steps = emptyFlow<CldStep>()
-        override val result =
-            CompletableDeferred(
-                CldRunResult(request.session.sessionId, CldCompletion.Ok, cost = null)
-            )
+        override val result = CompletableDeferred(CldRunResult(CldCompletion.Ok, cost = null))
 
         override fun close() = Unit
       }
