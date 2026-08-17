@@ -18,6 +18,12 @@ private constructor(
     fun timedOut(): CldConnectorException =
         CldConnectorException("The `claude` run exceeded its wall-clock budget.", cause = null)
 
+    fun missingInit(): CldConnectorException =
+        CldConnectorException(
+            "The `claude` stream did not open with an init message.",
+            cause = null,
+        )
+
     fun diedWithoutResult(exitCode: Int, standardError: String): CldConnectorException =
         CldConnectorException(
             "The `claude` process exited $exitCode without a result. " +

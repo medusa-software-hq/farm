@@ -61,10 +61,11 @@ class CldScriptedIntegrationTest {
   }
 
   @Test
-  fun `a stream that does not open with init is reported but still runs`() = runBlocking {
+  fun `a stream that does not open with init is reported and fails the run`() = runBlocking {
     val reporter = RecordingReporter()
-    val result = agent(MISSING_INIT, reporter).launch(request()).use { it.result.await() }
-    assertEquals(CldCompletion.Ok, result.completion)
+    assertFailsWith<CldConnectorException> {
+      agent(MISSING_INIT, reporter).launch(request()).use { it.result.await() }
+    }
     assertTrue(reporter.missingInit, "the missing init was not reported")
   }
 

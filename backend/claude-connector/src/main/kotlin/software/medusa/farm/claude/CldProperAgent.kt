@@ -10,7 +10,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.produceIn
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -78,57 +84,80 @@ class CldProperAgent(
   }
 
   /**
-   * The run state machine: drains stdout — streaming steps and tracking the `init`/`result` framing
-   * — then reconciles against the exit code. Runs to completion so a post-result message or a
-   * missing result is caught even if the consumer stops reading early.
+   * Reconciles the two ends of a run — the stdout stream and the process exit — into [result].
+   *
+   * The `result` message is the authoritative terminus: when [readStream] reaches it, that *is* the
+   * verdict and there is nothing to wait for (the process is on its way out; [CldRun.close] makes
+   * sure of it). Only when the stream ends *without* a result do we ask the exit code why the
+   * process died. So the two are not raced — the stream leads, and termination is the fallback the
+   * no-result case falls back to; the wall-clock guard above covers a process that closes stdout
+   * but lingers.
    */
   private suspend fun drive(
       request: CldRunRequest,
       handle: SysProcessHandle,
-      steps: Channel<CldStep>,
+      steps: SendChannel<CldStep>,
       result: CompletableDeferred<CldRunResult>,
-  ) {
-    var init: CldMessage.SystemInit? = null
-    var terminal: CldMessage.Result? = null
-    var first = true
+  ) = coroutineScope {
+    // Rendezvous: don't read the process ahead of the state machine. `steps` (UNLIMITED) is the
+    // buffer that keeps a slow step-consumer from ever stalling the pipe.
+    val messages =
+        handle.standardOutputLines
+            .mapNotNull { line -> CldStreamParser.parseLine(line)?.let { line to it } }
+            .buffer(Channel.RENDEZVOUS)
+            .produceIn(this)
 
-    handle.standardOutputLines.collect { line ->
-      val message = CldStreamParser.parseLine(line) ?: return@collect
-      if (first) {
-        first = false
-        if (message !is CldMessage.SystemInit) reporter.missingInit()
-      }
-      if (terminal != null) {
-        reporter.messageAfterResult(line)
-        return@collect
-      }
-      when (message) {
-        is CldMessage.SystemInit -> init = message
-        is CldMessage.Assistant -> steps.send(CldStep(message.text, message.toolUses))
-        is CldMessage.Result -> terminal = message
-        is CldMessage.Unknown -> Unit
-      }
-    }
+    val outcome = readStream(messages, steps)
     steps.close()
 
-    val termination = handle.awaitTermination()
-    val seen = terminal
-    if (seen == null) {
+    val terminal = outcome.terminal
+    if (terminal != null) {
+      result.complete(
+          CldRunResult(
+              sessionId = outcome.sessionId ?: request.session.sessionId,
+              completion =
+                  if (terminal.isError) CldCompletion.Errored(terminal.subtype)
+                  else CldCompletion.Ok,
+              cost = CldRunCost(terminal.totalCostUsd, terminal.numTurns, terminal.durationMs),
+          )
+      )
+    } else {
+      val termination = handle.awaitTermination()
       reporter.exitWithoutResult(termination.exitCode, termination.errorOutput)
       result.completeExceptionally(
           CldConnectorException.diedWithoutResult(termination.exitCode, termination.errorOutput)
       )
-    } else {
-      result.complete(
-          CldRunResult(
-              sessionId = init?.sessionId ?: request.session.sessionId,
-              completion =
-                  if (seen.isError) CldCompletion.Errored(seen.subtype) else CldCompletion.Ok,
-              cost = CldRunCost(seen.totalCostUsd, seen.numTurns, seen.durationMs),
-          )
-      )
     }
   }
+
+  /**
+   * Consumes the parsed stream to its end. The first message must be the `init` banner — a stream
+   * that opens otherwise is a broken contract, reported and failed. The rest stream out as steps
+   * until the terminal `result`; anything after it is reported, not acted on.
+   */
+  private suspend fun readStream(
+      messages: ReceiveChannel<Pair<String, CldMessage>>,
+      steps: SendChannel<CldStep>,
+  ): StreamOutcome {
+    val init = messages.receiveCatching().getOrNull()?.second ?: return StreamOutcome(null, null)
+    if (init !is CldMessage.SystemInit) {
+      reporter.missingInit()
+      throw CldConnectorException.missingInit()
+    }
+
+    var terminal: CldMessage.Result? = null
+    for ((line, message) in messages) {
+      when {
+        terminal != null -> reporter.messageAfterResult(line)
+        message is CldMessage.Assistant -> steps.send(CldStep(message.text, message.toolUses))
+        message is CldMessage.Result -> terminal = message
+        else -> Unit
+      }
+    }
+    return StreamOutcome(init.sessionId, terminal)
+  }
+
+  private class StreamOutcome(val sessionId: String?, val terminal: CldMessage.Result?)
 
   private class ProperRun(
       override val steps: Flow<CldStep>,
