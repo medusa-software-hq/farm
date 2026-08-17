@@ -15,4 +15,10 @@ interface CldReporter {
 
   /** The process exited without ever emitting a `result`; the run also fails. */
   fun exitWithoutResult(exitCode: Int, standardError: String)
+
+  /** The process emitted its `result` but did not exit promptly afterwards. */
+  fun lingeredAfterResult()
+
+  /** The process exited non-zero despite reporting a successful `result`. */
+  fun exitDisagreedWithResult(exitCode: Int)
 }

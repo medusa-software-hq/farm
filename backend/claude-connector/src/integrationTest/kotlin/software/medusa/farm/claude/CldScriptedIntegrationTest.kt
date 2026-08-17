@@ -70,6 +70,22 @@ class CldScriptedIntegrationTest {
   }
 
   @Test
+  fun `a process that lingers after its result completes the run but is reported`() = runBlocking {
+    val reporter = RecordingReporter()
+    val result = agent(LINGER, reporter).launch(request()).use { it.result.await() }
+    assertEquals(CldCompletion.Ok, result.completion)
+    assertTrue(reporter.lingered, "the lingering process was not reported")
+  }
+
+  @Test
+  fun `a non-zero exit after a success result is reported`() = runBlocking {
+    val reporter = RecordingReporter()
+    val result = agent(EXIT_DISAGREE, reporter).launch(request()).use { it.result.await() }
+    assertEquals(CldCompletion.Ok, result.completion)
+    assertEquals(3, reporter.exitDisagreed)
+  }
+
+  @Test
   fun `a fresh run passes --session-id and a resume passes --resume`() = runBlocking {
     val fresh = argvOf(request(CldSessionSelector.Fresh("sess-7")))
     assertTrue(fresh.containsInOrder("--session-id", "sess-7"))
@@ -128,6 +144,8 @@ class CldScriptedIntegrationTest {
     var missingInit = false
     val afterResult = mutableListOf<String>()
     var exitWithoutResult: Pair<Int, String>? = null
+    var lingered = false
+    var exitDisagreed: Int? = null
 
     override fun missingInit() {
       missingInit = true
@@ -139,6 +157,14 @@ class CldScriptedIntegrationTest {
 
     override fun exitWithoutResult(exitCode: Int, standardError: String) {
       exitWithoutResult = exitCode to standardError
+    }
+
+    override fun lingeredAfterResult() {
+      lingered = true
+    }
+
+    override fun exitDisagreedWithResult(exitCode: Int) {
+      exitDisagreed = exitCode
     }
   }
 
@@ -174,6 +200,20 @@ class CldScriptedIntegrationTest {
             """{"type":"assistant","message":{"content":[{"type":"text","text":"no init"}]}}""",
             """{"type":"result","is_error":false,"subtype":"success"}""",
         )
+
+    // Emits a clean result, then hangs instead of exiting.
+    val LINGER =
+        line(
+            """{"type":"system","subtype":"init","session_id":"s"}""",
+            """{"type":"result","is_error":false,"subtype":"success"}""",
+        ) + "sleep 10\n"
+
+    // Emits a success result, then exits non-zero — an exit code at odds with the verdict.
+    val EXIT_DISAGREE =
+        line(
+            """{"type":"system","subtype":"init","session_id":"s"}""",
+            """{"type":"result","is_error":false,"subtype":"success"}""",
+        ) + "exit 3\n"
 
     // Records the arguments it was given, then emits a minimal happy stream.
     val ARGV =

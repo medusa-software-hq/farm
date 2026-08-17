@@ -20,6 +20,14 @@ class CldLoggingReporter : CldReporter {
     )
   }
 
+  override fun lingeredAfterResult() {
+    logger.warning("claude emitted its result but did not exit promptly")
+  }
+
+  override fun exitDisagreedWithResult(exitCode: Int) {
+    logger.warning("claude exited $exitCode despite a successful result")
+  }
+
   private companion object {
     const val LINE_TAIL = 500
     const val STDERR_TAIL = 2_000
