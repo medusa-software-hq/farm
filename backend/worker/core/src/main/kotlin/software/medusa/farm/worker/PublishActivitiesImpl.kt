@@ -53,16 +53,16 @@ class PublishActivitiesImpl(
       val baseBranch = gitCli.currentBranch(clone)
 
       val result =
-          agent.run(
-              CldRunRequest(
-                  workspace = clone,
-                  home = home,
-                  prompt = taskPrompt(title, body),
-                  session = CldSessionSelector.Fresh(sessionId),
+          agent
+              .launch(
+                  CldRunRequest(
+                      workspace = clone,
+                      home = home,
+                      prompt = taskPrompt(title, body),
+                      session = CldSessionSelector.Fresh(sessionId),
+                  )
               )
-          ) {
-            it.result.await()
-          }
+              .use { it.result.await() }
       check(result.completion is CldCompletion.Ok) { "agent run ended in ${result.completion}" }
 
       gitCli.stageAll(clone)

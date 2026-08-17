@@ -32,17 +32,17 @@ class PublishActivitiesImplTest {
   private class FakeAgent : CldAgent {
     var ranIn: Path? = null
 
-    override suspend fun <T> run(request: CldRunRequest, consume: suspend (CldRun) -> T): T {
+    override fun launch(request: CldRunRequest): CldRun {
       ranIn = request.workspace
-      val run =
-          object : CldRun {
-            override val steps = emptyFlow<CldStep>()
-            override val result =
-                CompletableDeferred(
-                    CldRunResult(request.session.sessionId, CldCompletion.Ok, cost = null)
-                )
-          }
-      return consume(run)
+      return object : CldRun {
+        override val steps = emptyFlow<CldStep>()
+        override val result =
+            CompletableDeferred(
+                CldRunResult(request.session.sessionId, CldCompletion.Ok, cost = null)
+            )
+
+        override fun close() = Unit
+      }
     }
   }
 

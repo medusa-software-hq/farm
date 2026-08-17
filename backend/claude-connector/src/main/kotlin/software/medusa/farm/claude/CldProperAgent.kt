@@ -1,11 +1,15 @@
 package software.medusa.farm.claude
 
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
@@ -31,25 +35,31 @@ class CldProperAgent(
     private val config: CldEngineConfig,
     private val reporter: CldReporter,
 ) : CldAgent {
-  override suspend fun <T> run(request: CldRunRequest, consume: suspend (CldRun) -> T): T {
-    val handle = launch(request)
-    try {
-      return withTimeout(config.wallClockTimeout) {
-        coroutineScope {
-          val result = CompletableDeferred<CldRunResult>()
-          val steps = Channel<CldStep>(Channel.UNLIMITED)
-          launch { drive(request, handle, steps, result) }
-          consume(ProperRun(steps.receiveAsFlow(), result))
-        }
+  override fun launch(request: CldRunRequest): CldRun {
+    val handle = spawn(request)
+    val steps = Channel<CldStep>(Channel.UNLIMITED)
+    val result = CompletableDeferred<CldRunResult>()
+    // A detached scope for the reader: the run outlives `launch`, so it can't be a child of the
+    // caller's frame. close() cancels it (and kills the process); nothing else keeps it alive.
+    val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    scope.launch {
+      try {
+        withTimeout(config.wallClockTimeout) { drive(request, handle, steps, result) }
+      } catch (_: TimeoutCancellationException) {
+        steps.close()
+        result.completeExceptionally(CldConnectorException.timedOut())
+      } catch (cancellation: CancellationException) {
+        throw cancellation // close() cancelled the run — not a failure to surface.
+      } catch (@Suppress("TooGenericExceptionCaught") failure: Throwable) {
+        // Marshal any reader failure to the awaiter rather than letting it vanish into the scope.
+        steps.close()
+        result.completeExceptionally(failure)
       }
-    } catch (_: TimeoutCancellationException) {
-      throw CldConnectorException.timedOut()
-    } finally {
-      handle.close()
     }
+    return ProperRun(steps.receiveAsFlow(), result, handle, scope)
   }
 
-  private fun launch(request: CldRunRequest): SysProcessHandle {
+  private fun spawn(request: CldRunRequest): SysProcessHandle {
     val handle =
         try {
           spawner.launch(
@@ -123,7 +133,14 @@ class CldProperAgent(
   private class ProperRun(
       override val steps: Flow<CldStep>,
       override val result: Deferred<CldRunResult>,
-  ) : CldRun
+      private val handle: SysProcessHandle,
+      private val scope: CoroutineScope,
+  ) : CldRun {
+    override fun close() {
+      scope.cancel()
+      handle.close()
+    }
+  }
 
   private fun buildArguments(request: CldRunRequest): List<String> {
     val args =

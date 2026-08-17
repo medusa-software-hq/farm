@@ -26,7 +26,8 @@ class CldScriptedIntegrationTest {
 
   @Test
   fun `a happy stream yields the steps and a clean result`() = runBlocking {
-    val (steps, result) = agent(HAPPY).run(request()) { it.steps.toList() to it.result.await() }
+    val (steps, result) =
+        agent(HAPPY).launch(request()).use { it.steps.toList() to it.result.await() }
 
     assertEquals(1, steps.size)
     assertEquals("working", steps[0].text)
@@ -37,7 +38,7 @@ class CldScriptedIntegrationTest {
 
   @Test
   fun `an errored result is reported on the result, not thrown`() = runBlocking {
-    val result = agent(ERRORED).run(request()) { it.result.await() }
+    val result = agent(ERRORED).launch(request()).use { it.result.await() }
     val errored = assertIs<CldCompletion.Errored>(result.completion)
     assertEquals("error_max_budget_usd", errored.subtype)
   }
@@ -46,7 +47,7 @@ class CldScriptedIntegrationTest {
   fun `exit without a result fails the run and is reported`() = runBlocking {
     val reporter = RecordingReporter()
     assertFailsWith<CldConnectorException> {
-      agent(EXIT_WITHOUT_RESULT, reporter).run(request()) { it.result.await() }
+      agent(EXIT_WITHOUT_RESULT, reporter).launch(request()).use { it.result.await() }
     }
     assertNotNull(reporter.exitWithoutResult, "the missing result was not reported")
   }
@@ -54,7 +55,7 @@ class CldScriptedIntegrationTest {
   @Test
   fun `a message after the result is reported but the run still completes`() = runBlocking {
     val reporter = RecordingReporter()
-    val result = agent(MESSAGE_AFTER_RESULT, reporter).run(request()) { it.result.await() }
+    val result = agent(MESSAGE_AFTER_RESULT, reporter).launch(request()).use { it.result.await() }
     assertEquals(CldCompletion.Ok, result.completion)
     assertTrue(reporter.afterResult.isNotEmpty(), "the trailing line was not reported")
   }
@@ -62,7 +63,7 @@ class CldScriptedIntegrationTest {
   @Test
   fun `a stream that does not open with init is reported but still runs`() = runBlocking {
     val reporter = RecordingReporter()
-    val result = agent(MISSING_INIT, reporter).run(request()) { it.result.await() }
+    val result = agent(MISSING_INIT, reporter).launch(request()).use { it.result.await() }
     assertEquals(CldCompletion.Ok, result.completion)
     assertTrue(reporter.missingInit, "the missing init was not reported")
   }
@@ -90,7 +91,7 @@ class CldScriptedIntegrationTest {
             config(mapOf("FAKE_ARGV_OUT" to argvFile.toString())),
             RecordingReporter(),
         )
-    agent.run(request) { it.result.await() }
+    agent.launch(request).use { it.result.await() }
     return Files.readAllLines(argvFile)
   }
 

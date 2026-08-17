@@ -71,16 +71,17 @@ class CldClaudeCliIntegrationTest {
     val agent = CldProperAgent(spawner, claude, behavioralConfig(token), CldLoggingReporter())
 
     val (steps, result) =
-        agent.run(
-            CldRunRequest(
-                workspace = Files.createTempDirectory("cld-it-work"),
-                home = home,
-                prompt = "Reply with exactly the word PONG and nothing else. Do not use any tools.",
-                session = CldSessionSelector.Fresh(sessionId),
+        agent
+            .launch(
+                CldRunRequest(
+                    workspace = Files.createTempDirectory("cld-it-work"),
+                    home = home,
+                    prompt =
+                        "Reply with exactly the word PONG and nothing else. Do not use any tools.",
+                    session = CldSessionSelector.Fresh(sessionId),
+                )
             )
-        ) {
-          it.steps.toList() to it.result.await()
-        }
+            .use { it.steps.toList() to it.result.await() }
 
     // The CLI accepted our flags and produced its typed protocol...
     assertTrue(steps.isNotEmpty(), "no assistant steps")
@@ -118,34 +119,39 @@ class CldClaudeCliIntegrationTest {
     val sessionId = UUID.randomUUID().toString()
     val homeA = workerA.prepare(CldSessionSelector.Fresh(sessionId))
     val first =
-        agent.run(
-            CldRunRequest(
-                workspace = workspace,
-                home = homeA,
-                prompt = "Remember this codeword for later: MEDUSA. Reply with just: OK.",
-                session = CldSessionSelector.Fresh(sessionId),
+        agent
+            .launch(
+                CldRunRequest(
+                    workspace = workspace,
+                    home = homeA,
+                    prompt = "Remember this codeword for later: MEDUSA. Reply with just: OK.",
+                    session = CldSessionSelector.Fresh(sessionId),
+                )
             )
-        ) {
-          it.result.await()
-        }
+            .use { it.result.await() }
     val ref = workerA.snapshot(first.sessionId, homeA)
 
     // Run 2 on "worker B": a different store/HOME, resuming only from the snapshot.
     val workerB = CldProperSessionStore(Files.createTempDirectory("cld-it-b"))
     val homeB = workerB.prepare(CldSessionSelector.Resume(ref))
     val steps =
-        agent.run(
-            CldRunRequest(
-                workspace = workspace,
-                home = homeB,
-                prompt = "What was the codeword I gave you? Reply with just that word.",
-                session = CldSessionSelector.Resume(ref),
+        agent
+            .launch(
+                CldRunRequest(
+                    workspace = workspace,
+                    home = homeB,
+                    prompt = "What was the codeword I gave you? Reply with just that word.",
+                    session = CldSessionSelector.Resume(ref),
+                )
             )
-        ) {
-          val collected = it.steps.toList()
-          assertTrue(it.result.await().completion is CldCompletion.Ok, "resume did not complete")
-          collected
-        }
+            .use {
+              val collected = it.steps.toList()
+              assertTrue(
+                  it.result.await().completion is CldCompletion.Ok,
+                  "resume did not complete",
+              )
+              collected
+            }
 
     val said = steps.joinToString(" ") { it.text }
     assertTrue(
