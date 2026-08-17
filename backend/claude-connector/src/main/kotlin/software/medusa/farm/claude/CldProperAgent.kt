@@ -11,7 +11,6 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -24,7 +23,6 @@ import kotlinx.coroutines.flow.produceIn
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import software.medusa.commons.system.SysExecutableHandle
 import software.medusa.commons.system.SysProcessHandle
@@ -85,13 +83,13 @@ class CldProperAgent(
   private suspend fun awaitInit(
       messages: ReceiveChannel<Pair<String, CldMessage>>
   ): CldMessage.SystemInit {
-    val opening =
-        withTimeoutOrNull(config.initTimeout) { messages.receiveCatching().getOrNull() }?.second
-    if (opening !is CldMessage.SystemInit) {
-      reporter.missingInit()
-      throw CldConnectorException.missingInit()
+    val opening = withTimeoutOrNull(config.initTimeout) { messages.receiveCatching().getOrNull() }
+    val message = opening?.second
+    if (message !is CldMessage.SystemInit) {
+      reporter.missingInit(opening?.first)
+      throw CldIllegalStartupException
     }
-    return opening
+    return message
   }
 
   private fun spawn(request: CldRunRequest): SysProcessHandle {
@@ -104,7 +102,8 @@ class CldProperAgent(
               environment = config.environment + ("HOME" to request.home.toString()),
           )
         } catch (e: IOException) {
-          throw CldConnectorException.binaryUnavailable(cause = e)
+          reporter.spawnFailed(e)
+          throw CldCorruptedInstallationException
         }
     // The connector drives claude through `-p` and never writes stdin; headless claude blocks
     // reading stdin until EOF, so close it now or the whole run hangs.
@@ -134,7 +133,11 @@ class CldProperAgent(
     } catch (cancellation: CancellationException) {
       throw cancellation // close() cancelled the run — not a failure to surface.
     } catch (@Suppress("TooGenericExceptionCaught") failure: Throwable) {
-      result.completeExceptionally(failure)
+      // The raw pipe/parse failure is debug data, not something the caller can act on: report it
+      // and
+      // surface an opaque run failure instead.
+      reporter.streamFailed(failure)
+      result.completeExceptionally(CldIllegalRunException)
     } finally {
       steps.close()
     }
@@ -151,46 +154,40 @@ class CldProperAgent(
       result: Deferred<CldMessage.Result>,
       drained: Job,
       termination: Deferred<SysProcessTermination>,
-  ): CldRunResult =
-      try {
-        withTimeout(config.wallClockTimeout) {
-          // Whichever end we observe first, wait a short grace for the other: after a result, for a
-          // clean exit; after an exit, for a result still buffered in the pipe.
-          val (resultMessage, exit) =
-              when (val first = race(result, termination)) {
-                is JoinOrder.ResultFirst ->
-                    first.result to withTimeoutOrNull(TERMINATION_GRACE) { termination.await() }
-                is JoinOrder.TerminationFirst -> {
-                  val buffered = withTimeoutOrNull(RESULT_GRACE) { result.await() }
-                  if (buffered == null) {
-                    reporter.exitWithoutResult(
-                        first.termination.exitCode,
-                        first.termination.errorOutput,
-                    )
-                    throw CldConnectorException.diedWithoutResult(
-                        first.termination.exitCode,
-                        first.termination.errorOutput,
-                    )
-                  }
-                  buffered to first.termination
-                }
-              }
-
-          if (exit == null) {
-            reporter.lingeredAfterResult()
-          } else {
-            // The process is gone: let the reader finish (reporting any post-result lines), then
-            // check the exit code against the verdict.
-            withTimeoutOrNull(DRAIN_GRACE) { drained.join() }
-            if (exit.exitCode != 0 && !resultMessage.isError) {
-              reporter.exitDisagreedWithResult(exit.exitCode)
+  ): CldRunResult {
+    // Whichever end we observe first, wait a short grace for the other: after a result, for a clean
+    // exit; after an exit, for a result still buffered in the pipe. There is no wall-clock here —
+    // the
+    // process terminating is the guaranteed backstop that resolves the race, and how long to
+    // tolerate
+    // a running agent is an application concern the caller bounds around result/close, not ours.
+    val (resultMessage, exit) =
+        when (val first = race(result, termination)) {
+          is JoinOrder.ResultFirst ->
+              first.result to withTimeoutOrNull(TERMINATION_GRACE) { termination.await() }
+          is JoinOrder.TerminationFirst -> {
+            val buffered = withTimeoutOrNull(RESULT_GRACE) { result.await() }
+            if (buffered == null) {
+              reporter.exitWithoutResult(first.termination.exitCode, first.termination.errorOutput)
+              throw CldIllegalExitException
             }
+            buffered to first.termination
           }
-          buildResult(resultMessage)
         }
-      } catch (_: TimeoutCancellationException) {
-        throw CldConnectorException.timedOut()
+
+    if (exit == null) {
+      reporter.lingeredAfterResult()
+    } else {
+      // The process is gone: let the reader finish (reporting any post-result lines), then check
+      // the
+      // exit code against the verdict.
+      withTimeoutOrNull(DRAIN_GRACE) { drained.join() }
+      if (exit.exitCode != 0 && !resultMessage.isError) {
+        reporter.exitDisagreedWithResult(exit.exitCode)
       }
+    }
+    return buildResult(resultMessage)
+  }
 
   private suspend fun race(
       result: Deferred<CldMessage.Result>,

@@ -3,7 +3,7 @@ package software.medusa.farm.claude
 /**
  * How the agent's own run ended, as the CLI reported it — *not* the downstream domain outcome (that
  * is assembled by the caller from this plus the git diff and any abort). An operational failure
- * never reaches here; it is thrown as [CldConnectorException].
+ * never reaches here; it is thrown as [CldLaunchException] or [CldRunException].
  */
 sealed interface CldCompletion {
   /** The `result` message reported success. */

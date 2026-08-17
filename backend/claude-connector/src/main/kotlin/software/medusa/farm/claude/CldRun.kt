@@ -18,7 +18,7 @@ interface CldRun : AutoCloseable {
 
   /**
    * The terminal outcome — completes once the `result` message and a clean exit are seen, or fails
-   * with [CldConnectorException] on an operational death (missing result, timeout).
+   * with [CldRunException] on an operational death (missing result, broken stream).
    */
   val result: Deferred<CldRunResult>
 

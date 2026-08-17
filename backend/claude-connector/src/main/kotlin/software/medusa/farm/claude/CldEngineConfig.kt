@@ -1,7 +1,6 @@
 package software.medusa.farm.claude
 
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -14,8 +13,6 @@ import kotlin.time.Duration.Companion.seconds
  * @property model optional `--model` override; `null` uses the CLI's default.
  * @property maxBudgetUsd the `--max-budget-usd` cap; a trip surfaces as an `error_max_budget_usd`
  *   result subtype. `null` omits the flag.
- * @property wallClockTimeout the worker-side wall-clock cap (the pinned CLI has no `--max-turns`);
- *   exceeding it kills the process tree and throws [CldConnectorException].
  * @property initTimeout how long to wait for the opening `init` handshake before a launch is
  *   considered failed — the run "starts" when claude speaks its protocol, not when the OS process
  *   does. Generous by default: it only guards a process that started but never answered.
@@ -28,7 +25,6 @@ data class CldEngineConfig(
     val environment: Map<String, String>,
     val model: String?,
     val maxBudgetUsd: Double?,
-    val wallClockTimeout: Duration,
     val initTimeout: Duration,
     val toolPolicy: CldToolPolicy,
     val appendSystemPrompt: String,
@@ -37,7 +33,6 @@ data class CldEngineConfig(
     // A runaway guard, not a target: a real multi-file task legitimately spends a few dollars of
     // tool-calls, so a sub-dollar cap would guillotine genuine work mid-run.
     const val defaultMaxBudgetUsd = 10.00
-    val defaultWallClockTimeout: Duration = 30.minutes
 
     // The init banner is claude's opening line, emitted before any model work; 30s is far more than
     // it should ever take, so it only trips on a process that started but is not speaking.
@@ -58,7 +53,6 @@ data class CldEngineConfig(
             environment = environment,
             model = null,
             maxBudgetUsd = defaultMaxBudgetUsd,
-            wallClockTimeout = defaultWallClockTimeout,
             initTimeout = defaultInitTimeout,
             toolPolicy = CldToolPolicy.default(),
             appendSystemPrompt = defaultAppendSystemPrompt,

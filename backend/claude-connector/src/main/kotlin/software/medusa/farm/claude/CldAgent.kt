@@ -8,10 +8,10 @@ package software.medusa.farm.claude
  * pattern).
  *
  * The workspace is mutated in place — the connector returns no diff; the caller diffs the
- * directory. Operational failures surface as [CldConnectorException] — thrown by [launch] up to and
- * including the handshake (missing binary, no `init`), and afterwards via [CldRun.result] (dead
- * process, timeout); a run the agent itself ends with an error is [CldCompletion.Errored] on the
- * result, not a failure.
+ * directory. Operational failures are opaque and split by phase: [launch] throws
+ * [CldLaunchException] up to and including the handshake (missing binary, no `init`), and
+ * afterwards [CldRun.result] fails with [CldRunException] (dead process, broken stream); a run the
+ * agent itself ends with an error is [CldCompletion.Errored] on the result, not a failure.
  */
 interface CldAgent {
   suspend fun launch(request: CldRunRequest): CldRun

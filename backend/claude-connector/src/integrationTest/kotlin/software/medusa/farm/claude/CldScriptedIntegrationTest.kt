@@ -8,7 +8,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import software.medusa.commons.system.SysExecutableHandle
@@ -46,7 +45,7 @@ class CldScriptedIntegrationTest {
   @Test
   fun `exit without a result fails the run and is reported`() = runBlocking {
     val reporter = RecordingReporter()
-    assertFailsWith<CldConnectorException> {
+    assertFailsWith<CldIllegalExitException> {
       agent(EXIT_WITHOUT_RESULT, reporter).launch(request()).use { it.result.await() }
     }
     assertNotNull(reporter.exitWithoutResult, "the missing result was not reported")
@@ -63,7 +62,7 @@ class CldScriptedIntegrationTest {
   @Test
   fun `a stream that does not open with init is reported and fails the run`() = runBlocking {
     val reporter = RecordingReporter()
-    assertFailsWith<CldConnectorException> {
+    assertFailsWith<CldIllegalStartupException> {
       agent(MISSING_INIT, reporter).launch(request()).use { it.result.await() }
     }
     assertTrue(reporter.missingInit, "the missing init was not reported")
@@ -117,8 +116,6 @@ class CldScriptedIntegrationTest {
 
   private fun config(extraEnv: Map<String, String> = emptyMap()) =
       CldEngineConfig.default(mapOf("PATH" to (System.getenv("PATH") ?: "")) + extraEnv)
-          // Scripts finish instantly; a short guard turns a misbehaving fake into a fast failure.
-          .copy(wallClockTimeout = 30.seconds)
 
   private fun request(session: CldSessionSelector = CldSessionSelector.Fresh("s-1")) =
       CldRunRequest(
@@ -141,14 +138,24 @@ class CldScriptedIntegrationTest {
   }
 
   private class RecordingReporter : CldReporter {
+    var spawnFailed: Throwable? = null
     var missingInit = false
+    var streamFailed: Throwable? = null
     val afterResult = mutableListOf<String>()
     var exitWithoutResult: Pair<Int, String>? = null
     var lingered = false
     var exitDisagreed: Int? = null
 
-    override fun missingInit() {
+    override fun spawnFailed(cause: Throwable) {
+      spawnFailed = cause
+    }
+
+    override fun missingInit(opening: String?) {
       missingInit = true
+    }
+
+    override fun streamFailed(cause: Throwable) {
+      streamFailed = cause
     }
 
     override fun messageAfterResult(line: String) {

@@ -9,6 +9,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import software.medusa.commons.system.SysExecutableHandle
 import software.medusa.commons.system.SysProcessSpawner
@@ -22,6 +23,12 @@ import software.medusa.commons.system.SysProcessSpawner
  */
 class CldClaudeCliIntegrationTest {
   private val spawner = SysProcessSpawner()
+
+  // The connector no longer bounds wall-clock time — that is a use-site concern. Here the use-site
+  // is
+  // the test, so each run is wrapped in this timeout; a trip cancels the coroutine, and `use { }`
+  // closes the run (killing the process tree).
+  private val runBudget = 3.minutes
 
   private fun claudeOrSkip(): SysExecutableHandle {
     val handle = runCatching { SysExecutableHandle.locate("claude") }.getOrNull()
@@ -71,17 +78,19 @@ class CldClaudeCliIntegrationTest {
     val agent = CldProperAgent(spawner, claude, behavioralConfig(token), CldLoggingReporter())
 
     val (runSessionId, steps, result) =
-        agent
-            .launch(
-                CldRunRequest(
-                    workspace = Files.createTempDirectory("cld-it-work"),
-                    home = home,
-                    prompt =
-                        "Reply with exactly the word PONG and nothing else. Do not use any tools.",
-                    session = CldSessionSelector.Fresh(sessionId),
-                )
-            )
-            .use { Triple(it.info.sessionId, it.steps.toList(), it.result.await()) }
+        withTimeout(runBudget) {
+          agent
+              .launch(
+                  CldRunRequest(
+                      workspace = Files.createTempDirectory("cld-it-work"),
+                      home = home,
+                      prompt =
+                          "Reply with exactly the word PONG and nothing else. Do not use any tools.",
+                      session = CldSessionSelector.Fresh(sessionId),
+                  )
+              )
+              .use { Triple(it.info.sessionId, it.steps.toList(), it.result.await()) }
+        }
 
     // The CLI accepted our flags and produced its typed protocol...
     assertTrue(steps.isNotEmpty(), "no assistant steps")
@@ -119,42 +128,46 @@ class CldClaudeCliIntegrationTest {
     val sessionId = UUID.randomUUID().toString()
     val homeA = workerA.prepare(CldSessionSelector.Fresh(sessionId))
     val firstSessionId =
-        agent
-            .launch(
-                CldRunRequest(
-                    workspace = workspace,
-                    home = homeA,
-                    prompt = "Remember this codeword for later: MEDUSA. Reply with just: OK.",
-                    session = CldSessionSelector.Fresh(sessionId),
-                )
-            )
-            .use {
-              it.result.await()
-              it.info.sessionId
-            }
+        withTimeout(runBudget) {
+          agent
+              .launch(
+                  CldRunRequest(
+                      workspace = workspace,
+                      home = homeA,
+                      prompt = "Remember this codeword for later: MEDUSA. Reply with just: OK.",
+                      session = CldSessionSelector.Fresh(sessionId),
+                  )
+              )
+              .use {
+                it.result.await()
+                it.info.sessionId
+              }
+        }
     val ref = workerA.snapshot(firstSessionId, homeA)
 
     // Run 2 on "worker B": a different store/HOME, resuming only from the snapshot.
     val workerB = CldProperSessionStore(Files.createTempDirectory("cld-it-b"))
     val homeB = workerB.prepare(CldSessionSelector.Resume(ref))
     val steps =
-        agent
-            .launch(
-                CldRunRequest(
-                    workspace = workspace,
-                    home = homeB,
-                    prompt = "What was the codeword I gave you? Reply with just that word.",
-                    session = CldSessionSelector.Resume(ref),
-                )
-            )
-            .use {
-              val collected = it.steps.toList()
-              assertTrue(
-                  it.result.await().completion is CldCompletion.Ok,
-                  "resume did not complete",
+        withTimeout(runBudget) {
+          agent
+              .launch(
+                  CldRunRequest(
+                      workspace = workspace,
+                      home = homeB,
+                      prompt = "What was the codeword I gave you? Reply with just that word.",
+                      session = CldSessionSelector.Resume(ref),
+                  )
               )
-              collected
-            }
+              .use {
+                val collected = it.steps.toList()
+                assertTrue(
+                    it.result.await().completion is CldCompletion.Ok,
+                    "resume did not complete",
+                )
+                collected
+              }
+        }
 
     val said = steps.joinToString(" ") { it.text }
     assertTrue(
@@ -171,7 +184,7 @@ class CldClaudeCliIntegrationTest {
                       "CLAUDE_CODE_OAUTH_TOKEN" to token,
                   )
           )
-          // A tight budget and timeout: these are trivial prompts, and a runaway must not burn
-          // money.
-          .copy(maxBudgetUsd = 0.50, wallClockTimeout = 3.minutes)
+          // A tight spend cap: these are trivial prompts, and a runaway must not burn money. The
+          // wall-clock bound is at the use-site (runBudget), not in the config.
+          .copy(maxBudgetUsd = 0.50)
 }
