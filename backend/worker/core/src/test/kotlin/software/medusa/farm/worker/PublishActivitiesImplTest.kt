@@ -25,22 +25,20 @@ import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.github.TestAppKey
 import software.medusa.farm.shared.AgentRunLog
 import software.medusa.farm.shared.InMemorySessionStore
-import software.medusa.farm.summary.RunSummary
-import software.medusa.farm.summary.SumBackendUnreachableError
-import software.medusa.farm.summary.SumRunSummarizer
 
 class PublishActivitiesImplTest {
   private val appKey = TestAppKey()
   private val author = GitCliAuthor("Farm", "farm@medusa.software")
   private val sessions = InMemorySessionStore(Clock.systemUTC())
 
-  private class FakeSummarizer(private val summary: RunSummary) : SumRunSummarizer {
+  private class FakeSummarizer(private val summary: RunSummary) : RunSummarizer {
     override suspend fun summarize(log: AgentRunLog): RunSummary = summary
   }
 
   /** A summarizer whose backend will not answer. */
-  private object UnreachableSummarizer : SumRunSummarizer {
-    override suspend fun summarize(log: AgentRunLog): RunSummary = throw SumBackendUnreachableError
+  private object UnreachableSummarizer : RunSummarizer {
+    override suspend fun summarize(log: AgentRunLog): RunSummary =
+        throw RunSummaryBackendUnreachableError
   }
 
   private val available = FakeSummarizer(RunSummary("a summary"))
@@ -110,7 +108,7 @@ class PublishActivitiesImplTest {
       gitCli: GitCli,
       agent: CldAgent,
       server: FakeGitHubServer,
-      summarizer: SumRunSummarizer = available,
+      summarizer: RunSummarizer = available,
   ) =
       PublishActivitiesImpl(
           clientProvider =
@@ -174,7 +172,7 @@ class PublishActivitiesImplTest {
       val activities =
           activities(FakeGitCli(hasChanges = true), FakeAgent(), server, UnreachableSummarizer)
 
-      assertFailsWith<SumBackendUnreachableError> {
+      assertFailsWith<RunSummaryBackendUnreachableError> {
         activities.attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
       }
 

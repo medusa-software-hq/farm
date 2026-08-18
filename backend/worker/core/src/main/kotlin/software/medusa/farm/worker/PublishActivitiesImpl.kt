@@ -16,7 +16,6 @@ import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhRepoFullName
 import software.medusa.farm.shared.SessionStore
-import software.medusa.farm.summary.SumRunSummarizer
 
 /**
  * Clones the issue's repo, runs the agent against it, and publishes the result: if the working tree
@@ -33,7 +32,7 @@ class PublishActivitiesImpl(
     private val gitCli: GitCli,
     private val cldSessionStore: CldSessionStore,
     private val sessionStore: SessionStore,
-    private val summarizer: SumRunSummarizer,
+    private val summarizer: RunSummarizer,
     private val commitAuthor: GitCliAuthor,
     private val signingKey: String?,
 ) : PublishActivities {

@@ -34,7 +34,6 @@ import software.medusa.farm.shared.SessionStore
 import software.medusa.farm.shared.SyncAllReposWorkflow
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 import software.medusa.farm.shared.syncAllReposWorkflowId
-import software.medusa.farm.summary.SumRunSummarizer
 
 /** Registers the farm's workflows and activities on one task queue and runs the worker. */
 class TemporalWorkerHost(
@@ -48,7 +47,7 @@ class TemporalWorkerHost(
     gitHubClientProvider: GhInstallationApiClientProvider,
     appApiClient: GhAppApiClient,
     claudeOauthToken: String,
-    summarizer: SumRunSummarizer,
+    summarizer: RunSummarizer,
     commitAuthor: GitCliAuthor,
     signingKey: String?,
 ) {

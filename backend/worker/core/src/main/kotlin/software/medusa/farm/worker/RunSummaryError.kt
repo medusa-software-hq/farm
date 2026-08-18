@@ -1,4 +1,4 @@
-package software.medusa.farm.summary
+package software.medusa.farm.worker
 
 /**
  * The backend would not produce a summary, so the run it was asked about cannot be described.
@@ -8,7 +8,7 @@ package software.medusa.farm.summary
  * part of what the system records about a run, so there is no outcome here that means "carry on
  * without one" — the caller retries or fails.
  */
-sealed class SumError : Exception() {
+sealed class RunSummaryError : Exception() {
   // A typed signal, not a diagnostic: the debug data is with the reporter, and these are
   // singletons,
   // so a captured stack trace would only point at the first throw. Drop it.
@@ -17,8 +17,8 @@ sealed class SumError : Exception() {
 
 /** The backend could not be reached, or would not answer. */
 @Suppress("ObjectInheritsException", "JavaIoSerializableObjectMustHaveReadResolve")
-data object SumBackendUnreachableError : SumError()
+data object RunSummaryBackendUnreachableError : RunSummaryError()
 
 /** The backend answered, but with nothing that could be used as a summary. */
 @Suppress("ObjectInheritsException", "JavaIoSerializableObjectMustHaveReadResolve")
-data object SumEmptyAnswerError : SumError()
+data object RunSummaryEmptyAnswerError : RunSummaryError()

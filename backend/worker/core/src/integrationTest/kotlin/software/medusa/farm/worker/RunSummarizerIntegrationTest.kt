@@ -1,4 +1,4 @@
-package software.medusa.farm.summary
+package software.medusa.farm.worker
 
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -8,7 +8,7 @@ import software.medusa.farm.shared.AgentStep
 import software.medusa.farm.shared.AgentToolAction
 
 /** Drives the real model (DeepSeek over OpenRouter) to validate the openai-client wiring. */
-class SumRunSummarizerIntegrationTest {
+class RunSummarizerIntegrationTest {
   @Test
   fun `summarizes a run log`() {
     val key = openRouterApiKey()
@@ -28,7 +28,7 @@ class SumRunSummarizerIntegrationTest {
                 )
         )
 
-    val summary = runBlocking { SumRunSummarizer.from(key).summarize(log) }
+    val summary = runBlocking { RunSummarizer.from(key).summarize(log) }
     assertTrue(summary.text.isNotBlank(), "expected a non-empty summary")
   }
 

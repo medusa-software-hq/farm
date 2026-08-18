@@ -1,4 +1,4 @@
-package software.medusa.farm.summary
+package software.medusa.farm.worker
 
 /** A distillation of what a coding-agent run did. */
 @JvmInline

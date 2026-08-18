@@ -1,4 +1,4 @@
-package software.medusa.farm.summary
+package software.medusa.farm.worker
 
 import software.medusa.commons.openai_client.OaiChatHistory
 import software.medusa.commons.openai_client.OaiConfiguredClient
@@ -8,7 +8,7 @@ import software.medusa.commons.openai_client.messages.OaiUserMessage
 import software.medusa.farm.shared.AgentRunLog
 import software.medusa.farm.shared.AgentToolAction
 
-internal class SumProperRunSummarizer(private val client: OaiConfiguredClient) : SumRunSummarizer {
+internal class ProperRunSummarizer(private val client: OaiConfiguredClient) : RunSummarizer {
   override suspend fun summarize(log: AgentRunLog): RunSummary {
     val history =
         OaiChatHistory(

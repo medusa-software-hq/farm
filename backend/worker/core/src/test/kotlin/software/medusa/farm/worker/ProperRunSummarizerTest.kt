@@ -1,4 +1,4 @@
-package software.medusa.farm.summary
+package software.medusa.farm.worker
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,7 +19,7 @@ import software.medusa.farm.shared.AgentRunLog
 import software.medusa.farm.shared.AgentStep
 import software.medusa.farm.shared.AgentToolAction
 
-class SumProperRunSummarizerTest {
+class ProperRunSummarizerTest {
   private val log =
       AgentRunLog(
           steps =
@@ -37,35 +37,35 @@ class SumProperRunSummarizerTest {
 
   @Test
   fun `a complete answer is the summary`(): Unit = runBlocking {
-    val summary = SumProperRunSummarizer(reply("- fixed the base case")).summarize(log)
+    val summary = ProperRunSummarizer(reply("- fixed the base case")).summarize(log)
     assertEquals(RunSummary("- fixed the base case"), summary)
   }
 
   @Test
   fun `a backend that cannot be reached raises`() {
-    assertFailsWith<SumBackendUnreachableError> {
-      runBlocking { SumProperRunSummarizer(FailingClient).summarize(log) }
+    assertFailsWith<RunSummaryBackendUnreachableError> {
+      runBlocking { ProperRunSummarizer(FailingClient).summarize(log) }
     }
   }
 
   @Test
   fun `a blank answer raises rather than passing for a summary`() {
-    assertFailsWith<SumEmptyAnswerError> {
-      runBlocking { SumProperRunSummarizer(reply("   ")).summarize(log) }
+    assertFailsWith<RunSummaryEmptyAnswerError> {
+      runBlocking { ProperRunSummarizer(reply("   ")).summarize(log) }
     }
   }
 
   @Test
   fun `an answer that could not be understood raises`() {
-    assertFailsWith<SumEmptyAnswerError> {
-      runBlocking { SumProperRunSummarizer(CorruptedClient).summarize(log) }
+    assertFailsWith<RunSummaryEmptyAnswerError> {
+      runBlocking { ProperRunSummarizer(CorruptedClient).summarize(log) }
     }
   }
 
   @Test
   fun `the rendered log reaches the model with its actions`(): Unit = runBlocking {
     val client = reply("ok")
-    SumProperRunSummarizer(client).summarize(log)
+    ProperRunSummarizer(client).summarize(log)
     val rendered = client.lastHistory!!.messages.filterIsInstance<OaiUserMessage>().single().content
     assertIs<String>(rendered)
     assertTrue(rendered.contains("edited src/A.kt"), "missing the edit action")

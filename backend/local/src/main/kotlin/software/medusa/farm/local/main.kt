@@ -21,7 +21,7 @@ import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
 import software.medusa.farm.shared.InMemorySessionStore
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
-import software.medusa.farm.summary.SumRunSummarizer
+import software.medusa.farm.worker.RunSummarizer
 import software.medusa.farm.worker.TemporalWorkerHost
 import software.medusa.farm.worker.WorkerConfig
 
@@ -75,7 +75,7 @@ fun main() {
                   ?: error("CLAUDE_CODE_OAUTH_TOKEN is required (from `claude setup-token`)"),
           // The dev's own OpenRouter key; the in-process worker summarizes each run it records.
           summarizer =
-              SumRunSummarizer.from(
+              RunSummarizer.from(
                   System.getenv("OPENROUTER_API_KEY")
                       ?: error("OPENROUTER_API_KEY is required (an OpenRouter API key)")
               ),

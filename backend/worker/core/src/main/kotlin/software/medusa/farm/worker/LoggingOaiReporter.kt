@@ -1,4 +1,4 @@
-package software.medusa.farm.summary
+package software.medusa.farm.worker
 
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -8,8 +8,8 @@ import software.medusa.commons.openai_client.OaiReporter
  * Logs each anomaly the openai-client folds into its coarse result tree instead of raising, so a
  * degraded summary run isn't silently swallowed. Uses [java.util.logging] to avoid a logging dep.
  */
-class SumLoggingOaiReporter : OaiReporter {
-  private val logger: Logger = Logger.getLogger("software.medusa.farm.summary.openai")
+class LoggingOaiReporter : OaiReporter {
+  private val logger: Logger = Logger.getLogger("software.medusa.farm.worker.summary")
 
   override fun reportNoChoices() {
     logger.warning("OpenAI response contained no choices")
