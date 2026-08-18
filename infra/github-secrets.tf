@@ -23,3 +23,20 @@ resource "github_actions_secret" "claude_code_oauth_token" {
     ignore_changes = [plaintext_value]
   }
 }
+
+# The OpenRouter key the run-summary integration suite runs under. Repo-scoped
+# on the same terms as the claude token above.
+resource "github_actions_secret" "openrouter_api_key" {
+  count = terraform.workspace == "default" ? 1 : 0
+
+  repository  = data.github_repository.this.name
+  secret_name = "OPENROUTER_API_KEY"
+
+  # Placeholder: the real key (from the OpenRouter dashboard) is set out of
+  # band, and Terraform ignores the value from then on.
+  plaintext_value = "set-out-of-band"
+
+  lifecycle {
+    ignore_changes = [plaintext_value]
+  }
+}
