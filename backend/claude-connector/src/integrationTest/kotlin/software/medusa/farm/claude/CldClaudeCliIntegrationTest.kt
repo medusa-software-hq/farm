@@ -8,7 +8,6 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import software.medusa.commons.system.SysExecutableHandle
 import software.medusa.commons.system.SysProcessSpawner
 
@@ -17,30 +16,28 @@ import software.medusa.commons.system.SysProcessSpawner
  * they bake in about its flag surface, stream-json output, and on-disk session persistence — the
  * things a `FakeCldProcess` cannot catch because it only replays those assumptions back.
  *
- * Kept out of the pure `test` source set; run via the `integrationTest` task. Skips keep it a no-op
- * when unconfigured: the flag-surface check needs only the binary, while the behavioral checks make
- * real, paid calls and additionally need a `CLAUDE_CODE_OAUTH_TOKEN`.
+ * Kept out of the pure `test` source set; run via the `integrationTest` task, so it runs only when
+ * asked for — and then the CLI and a real `CLAUDE_CODE_OAUTH_TOKEN` are required, not optional.
  */
 class CldClaudeCliIntegrationTest {
   private val spawner = SysProcessSpawner()
 
-  private fun claudeOrSkip(): SysExecutableHandle {
-    val handle = runCatching { SysExecutableHandle.locate("claude") }.getOrNull()
-    assumeTrue(handle != null, "`claude` is not on PATH")
-    return handle!!
-  }
+  private fun claude(): SysExecutableHandle =
+      runCatching { SysExecutableHandle.locate("claude") }.getOrNull()
+          ?: error("`claude` is not on PATH")
 
-  private fun tokenOrSkip(): String {
+  private fun oauthToken(): String {
     val token = System.getenv("CLAUDE_CODE_OAUTH_TOKEN")
-    // Only a real Anthropic token (sk-ant-…) runs these paid tests; the provisioned placeholder and
-    // any misconfiguration are treated as "not configured", so they skip rather than fail.
-    assumeTrue(token != null && token.startsWith("sk-ant-"), "no usable CLAUDE_CODE_OAUTH_TOKEN")
+    check(!token.isNullOrBlank()) { "CLAUDE_CODE_OAUTH_TOKEN is not set" }
+    // The provisioned placeholder is not a token. Failing on it is the point: skipping there is how
+    // an unkeyed suite reports green having called nothing.
+    check(token.startsWith("sk-ant-")) { "CLAUDE_CODE_OAUTH_TOKEN is not a real token" }
     return token
   }
 
   @Test
-  fun `the CLI still exposes every flag the connector builds`() = runBlocking {
-    val claude = claudeOrSkip()
+  fun `the CLI still exposes every flag the connector builds`(): Unit = runBlocking {
+    val claude = claude()
 
     val help = spawner.spawn(executable = claude, arguments = listOf("--help")).standardOutput
 
@@ -62,9 +59,9 @@ class CldClaudeCliIntegrationTest {
   }
 
   @Test
-  fun `a fresh run streams a parseable session and persists it under HOME`() = runBlocking {
-    val claude = claudeOrSkip()
-    val token = tokenOrSkip()
+  fun `a fresh run streams a parseable session and persists it under HOME`(): Unit = runBlocking {
+    val claude = claude()
+    val token = oauthToken()
 
     val store = CldProperSessionStore(Files.createTempDirectory("cld-it-store"))
     val sessionId = UUID.randomUUID().toString()
@@ -106,9 +103,9 @@ class CldClaudeCliIntegrationTest {
   }
 
   @Test
-  fun `a snapshotted session resumes with its context on another HOME`() = runBlocking {
-    val claude = claudeOrSkip()
-    val token = tokenOrSkip()
+  fun `a snapshotted session resumes with its context on another HOME`(): Unit = runBlocking {
+    val claude = claude()
+    val token = oauthToken()
     val agent = CldProperAgent(CldProperProcess(spawner, claude), behavioralConfig(token))
 
     // The workspace path is fixed across both runs: claude files a session's transcript under a
