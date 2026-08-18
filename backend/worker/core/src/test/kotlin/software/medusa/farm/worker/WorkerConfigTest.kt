@@ -17,6 +17,7 @@ class WorkerConfigTest {
           "GITHUB_APP_CLIENT_ID" to "Iv1.test",
           "GITHUB_APP_PEM" to "-----BEGIN PRIVATE KEY-----",
           "CLAUDE_CODE_OAUTH_TOKEN" to "sk-ant-oat01-test",
+          "OPENROUTER_API_KEY" to "sk-or-test",
       )
 
   @Test

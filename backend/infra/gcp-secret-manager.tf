@@ -57,3 +57,26 @@ resource "google_secret_manager_secret_iam_member" "primary_service_sa_github_ap
 # secret is in the cross-environment shared project, where the env CI/CD SA has no IAM-admin rights.
 # It is granted from infra/temporal (operator-applied, owns the secret), which reads this env's api-SA
 # email from the primary_service_sa_email output in gcp-service.tf.
+
+# Secret holding the OpenRouter API key the worker summarizes runs with. Per environment, unlike the
+# shared worker-temporal-api-key: one Temporal namespace serves the whole org, whereas each
+# environment spends against its own OpenRouter key.
+#
+# No version here — the value comes from the OpenRouter dashboard, so it is added out of band. This
+# pins the name the worker reads; a worker whose environment has no version fails at startup.
+resource "google_secret_manager_secret" "worker_openrouter_api_key" {
+  project   = var.gcp_project_id
+  secret_id = "worker-openrouter-api-key"
+
+  replication {
+    auto {}
+  }
+}
+
+# The worker authenticates as this environment's api-sa, so that is what must read the key.
+resource "google_secret_manager_secret_iam_member" "primary_service_sa_openrouter_api_key_accessor" {
+  project   = var.gcp_project_id
+  secret_id = google_secret_manager_secret.worker_openrouter_api_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.primary_service_sa.email}"
+}

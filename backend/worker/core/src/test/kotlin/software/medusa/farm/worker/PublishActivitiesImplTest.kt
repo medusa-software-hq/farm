@@ -2,12 +2,15 @@ package software.medusa.farm.worker
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Clock
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 import software.medusa.farm.claude.CldAgent
 import software.medusa.farm.claude.CldCompletion
 import software.medusa.farm.claude.CldMessage
@@ -20,10 +23,25 @@ import software.medusa.farm.github.FakeGitHubServer
 import software.medusa.farm.github.GhProperAppApiClient
 import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.github.TestAppKey
+import software.medusa.farm.shared.AgentRunLog
+import software.medusa.farm.shared.InMemorySessionStore
 
 class PublishActivitiesImplTest {
   private val appKey = TestAppKey()
   private val author = GitCliAuthor("Farm", "farm@medusa.software")
+  private val sessions = InMemorySessionStore(Clock.systemUTC())
+
+  private class FakeSummarizer(private val summary: RunSummary) : RunSummarizer {
+    override suspend fun summarize(log: AgentRunLog): RunSummary = summary
+  }
+
+  /** A summarizer whose backend will not answer. */
+  private object UnreachableSummarizer : RunSummarizer {
+    override suspend fun summarize(log: AgentRunLog): RunSummary =
+        throw RunSummaryBackendUnreachableError
+  }
+
+  private val available = FakeSummarizer(RunSummary("a summary"))
 
   /** Records the workspace it ran in and reports a clean completion. */
   private class FakeAgent : CldAgent {
@@ -86,7 +104,12 @@ class PublishActivitiesImplTest {
     }
   }
 
-  private fun activities(gitCli: GitCli, agent: CldAgent, server: FakeGitHubServer) =
+  private fun activities(
+      gitCli: GitCli,
+      agent: CldAgent,
+      server: FakeGitHubServer,
+      summarizer: RunSummarizer = available,
+  ) =
       PublishActivitiesImpl(
           clientProvider =
               GhProperInstallationApiClientProvider(
@@ -97,7 +120,9 @@ class PublishActivitiesImplTest {
               GhProperAppApiClient.build("Iv1.test", appKey.pkcs8Pem, baseUrl = server.baseUrl),
           agent = agent,
           gitCli = gitCli,
-          sessionStore = CldProperSessionStore(Files.createTempDirectory("publish-it")),
+          cldSessionStore = CldProperSessionStore(Files.createTempDirectory("publish-it")),
+          sessionStore = sessions,
+          summarizer = summarizer,
           commitAuthor = author,
           signingKey = null,
       )
@@ -128,7 +153,8 @@ class PublishActivitiesImplTest {
       val gitCli = FakeGitCli(hasChanges = true)
       val agent = FakeAgent()
 
-      val outcome = activities(gitCli, agent, server).attemptIssue(100L, "acme/one", 7, "Fix it")
+      val outcome =
+          activities(gitCli, agent, server).attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
 
       assertEquals("https://github.com/acme/one/pull/12", outcome.pullRequestUrl)
       assertEquals(gitCli.clonedInto, agent.ranIn, "the agent must run in the clone")
@@ -136,6 +162,24 @@ class PublishActivitiesImplTest {
       assertContains(gitCli.calls, "createBranch:farm/issue-7")
       assertContains(gitCli.calls, "commit")
       assertContains(gitCli.calls, "push:farm/issue-7")
+      assertEquals(1, runBlocking { sessions.getRuns("session-1") }.size, "the run is recorded")
+    }
+  }
+
+  @Test
+  fun `raises when the run cannot be summarized, so Temporal retries`() {
+    FakeGitHubServer(::handle).use { server ->
+      val activities =
+          activities(FakeGitCli(hasChanges = true), FakeAgent(), server, UnreachableSummarizer)
+
+      assertFailsWith<RunSummaryBackendUnreachableError> {
+        activities.attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
+      }
+
+      assertTrue(
+          server.requests.none { it.pathAndQuery.endsWith("/pulls") },
+          "the PR must not be opened when the run could not be recorded",
+      )
     }
   }
 
@@ -145,7 +189,8 @@ class PublishActivitiesImplTest {
       val gitCli = FakeGitCli(hasChanges = false)
 
       val outcome =
-          activities(gitCli, FakeAgent(), server).attemptIssue(100L, "acme/one", 7, "Fix it")
+          activities(gitCli, FakeAgent(), server)
+              .attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
 
       assertNull(outcome.pullRequestUrl)
       assertFalse(gitCli.calls.any { it.startsWith("createBranch") }, "should not branch")

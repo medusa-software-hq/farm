@@ -47,6 +47,7 @@ class TemporalWorkerHost(
     gitHubClientProvider: GhInstallationApiClientProvider,
     appApiClient: GhAppApiClient,
     claudeOauthToken: String,
+    summarizer: RunSummarizer,
     commitAuthor: GitCliAuthor,
     signingKey: String?,
 ) {
@@ -82,6 +83,8 @@ class TemporalWorkerHost(
             buildAgent(claudeOauthToken, spawner),
             GitCliProper(spawner, SysExecutableHandle.locate("git")),
             buildCldSessionStore(),
+            sessionStore,
+            summarizer,
             commitAuthor,
             signingKey,
         ),

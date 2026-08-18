@@ -23,6 +23,7 @@ fun runTemporalWorker(config: WorkerConfig) {
           clientProvider,
           appApiClient,
           config.claudeOauthToken,
+          RunSummarizer.from(config.openRouterApiKey),
           config.commitAuthor,
           config.signingKey,
       )

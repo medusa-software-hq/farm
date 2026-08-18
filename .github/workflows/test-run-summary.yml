@@ -1,0 +1,64 @@
+name: Test run-summary
+
+# Only the summarizer's integration suite lives here — it drives the real model over OpenRouter,
+# which costs money and the plain check-backend-impl gate deliberately doesn't key. Its
+# formatting/lint/compile/unit tests run there with every other JVM module.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: 21
+  NO_COLOR: 1
+
+jobs:
+  integration-test:
+    name: Integration test
+    runs-on: ubuntu-latest
+
+    steps:
+      # fetch-depth: 0 so the change-detection step below can diff against the PR base.
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      # This suite is paid (a real model call) and only breaks when the worker's own code changes —
+      # never from a frontend/infra/docs PR. The gate is the whole worker module rather than the
+      # summarizer's files: coarser than a file list, but it cannot rot as files are renamed. The job
+      # always runs (so the required "Integration test" context always reports) and only the paid
+      # step is conditional. Plain `git diff`, no third-party action: `paths:` can't live on a
+      # `workflow_call` file, and a caller-side skip would make the required context never report.
+      - name: Detect relevant changes
+        id: changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          pattern='^(backend/worker/core/|gradle/libs.versions.toml|.github/workflows/test-run-summary.yml)'
+          if git diff --name-only "origin/$BASE_REF...HEAD" | grep -qE "$pattern"; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "No worker changes — skipping the paid integration suite." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.changes.outputs.relevant == 'true'
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.changes.outputs.relevant == 'true'
+
+      # The suite skips itself unless OPENROUTER_API_KEY is provisioned. --no-daemon so this
+      # invocation's key reaches the forked test JVM: a reused daemon keeps its start-up environment
+      # and would drop it.
+      - name: Integration test
+        if: steps.changes.outputs.relevant == 'true'
+        run: ./gradlew --no-daemon :backend:worker:core:integrationTest
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

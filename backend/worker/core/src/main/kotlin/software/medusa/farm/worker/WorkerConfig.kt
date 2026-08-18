@@ -12,6 +12,8 @@ data class WorkerConfig(
     val gitHubApp: GitHubAppConfig,
     // The claude CLI auth token the agent runs under (from `claude setup-token`).
     val claudeOauthToken: String,
+    // Keys the model that summarizes each run; a run is not recorded without its summary.
+    val openRouterApiKey: String,
     // The identity Farm's commits carry, and the optional GPG key to sign them with.
     val commitAuthor: GitCliAuthor,
     val signingKey: String?,
@@ -48,6 +50,7 @@ data class WorkerConfig(
                 ),
             claudeOauthToken =
                 env["CLAUDE_CODE_OAUTH_TOKEN"] ?: error("CLAUDE_CODE_OAUTH_TOKEN is required"),
+            openRouterApiKey = env["OPENROUTER_API_KEY"] ?: error("OPENROUTER_API_KEY is required"),
             commitAuthor = commitAuthorFrom(env),
             signingKey = signingKeyFrom(env),
         )
