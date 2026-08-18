@@ -19,6 +19,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.8"
     }
+    github = {
+      source  = "integrations/github"
+      version = "~> 6.11"
+    }
   }
 }
 
@@ -34,5 +38,24 @@ module "common" {
 provider "google" {
   project = module.common.gcp_meta_project_id
   region  = module.common.gcp_primary_location
+}
+
+# GitHub provider for the account-level repo objects this root owns: the releases
+# repo and the Actions secrets. The repository itself is managed by the
+# .github/config root; here it is only referenced as data.
+
+variable "gh_token" {
+  description = "Organization-owned GitHub token."
+  type        = string
+  sensitive   = true
+}
+
+provider "github" {
+  owner = module.common.gh_organization_name
+  token = var.gh_token
+}
+
+data "github_repository" "this" {
+  full_name = "${module.common.gh_organization_name}/${module.common.gh_repo_name}"
 }
 
