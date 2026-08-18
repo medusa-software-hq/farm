@@ -16,7 +16,9 @@ dependencies {
 base { archivesName = "backend-run-summary" }
 
 // Integration tests hit the REAL model (DeepSeek over OpenRouter) to validate the wiring. Kept out
-// of the `test`/`check` lifecycle; each skips itself when OPENROUTER_API_KEY is absent.
+// of the `test`/`check` lifecycle, so they run only when asked for — and when asked for they are
+// required: a missing OPENROUTER_API_KEY fails them rather than skipping, since a suite that
+// reports green having run nothing is how an unprovisioned key stays invisible.
 val integrationTest by sourceSets.creating {
   compileClasspath += sourceSets["main"].output
   runtimeClasspath += sourceSets["main"].output
