@@ -63,7 +63,7 @@ class PostgresSessionStore(
       log: AgentRunLog,
       outcome: AgentRunOutcome,
       cost: AgentRunCost?,
-      summary: String?,
+      summary: String,
   ) {
     withContext(Dispatchers.IO) {
       database.sessionRunQueries.recordRun(

@@ -26,6 +26,7 @@ import software.medusa.farm.github.TestAppKey
 import software.medusa.farm.shared.AgentRunLog
 import software.medusa.farm.shared.InMemorySessionStore
 import software.medusa.farm.summary.RunSummary
+import software.medusa.farm.summary.SumBackendUnreachableError
 import software.medusa.farm.summary.SumRunSummarizer
 
 class PublishActivitiesImplTest {
@@ -33,11 +34,16 @@ class PublishActivitiesImplTest {
   private val author = GitCliAuthor("Farm", "farm@medusa.software")
   private val sessions = InMemorySessionStore(Clock.systemUTC())
 
-  private class FakeSummarizer(private val result: RunSummary) : SumRunSummarizer {
-    override suspend fun summarize(log: AgentRunLog): RunSummary = result
+  private class FakeSummarizer(private val summary: RunSummary) : SumRunSummarizer {
+    override suspend fun summarize(log: AgentRunLog): RunSummary = summary
   }
 
-  private val available = FakeSummarizer(RunSummary.Available("a summary"))
+  /** A summarizer whose backend will not answer. */
+  private object UnreachableSummarizer : SumRunSummarizer {
+    override suspend fun summarize(log: AgentRunLog): RunSummary = throw SumBackendUnreachableError
+  }
+
+  private val available = FakeSummarizer(RunSummary("a summary"))
 
   /** Records the workspace it ran in and reports a clean completion. */
   private class FakeAgent : CldAgent {
@@ -163,18 +169,19 @@ class PublishActivitiesImplTest {
   }
 
   @Test
-  fun `throws when the summary is unavailable, so Temporal retries`() {
+  fun `raises when the run cannot be summarized, so Temporal retries`() {
     FakeGitHubServer(::handle).use { server ->
-      val unavailable =
-          activities(
-              FakeGitCli(hasChanges = true),
-              FakeAgent(),
-              server,
-              FakeSummarizer(RunSummary.Unavailable),
-          )
-      assertFailsWith<IllegalStateException> {
-        unavailable.attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
+      val activities =
+          activities(FakeGitCli(hasChanges = true), FakeAgent(), server, UnreachableSummarizer)
+
+      assertFailsWith<SumBackendUnreachableError> {
+        activities.attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
       }
+
+      assertTrue(
+          server.requests.none { it.pathAndQuery.endsWith("/pulls") },
+          "the PR must not be opened when the run could not be recorded",
+      )
     }
   }
 

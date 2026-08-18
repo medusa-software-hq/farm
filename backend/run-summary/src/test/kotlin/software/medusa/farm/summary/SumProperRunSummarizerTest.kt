@@ -2,6 +2,7 @@ package software.medusa.farm.summary
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
@@ -35,24 +36,34 @@ class SumProperRunSummarizerTest {
       )
 
   @Test
-  fun `a complete response is an available summary`() = runBlocking {
+  fun `a complete answer is the summary`(): Unit = runBlocking {
     val summary = SumProperRunSummarizer(reply("- fixed the base case")).summarize(log)
-    assertEquals(RunSummary.Available("- fixed the base case"), summary)
+    assertEquals(RunSummary("- fixed the base case"), summary)
   }
 
   @Test
-  fun `a network error is unavailable, not an empty summary`() = runBlocking {
-    val summary = SumProperRunSummarizer(FailingClient).summarize(log)
-    assertEquals(RunSummary.Unavailable, summary)
+  fun `a backend that cannot be reached raises`() {
+    assertFailsWith<SumBackendUnreachableError> {
+      runBlocking { SumProperRunSummarizer(FailingClient).summarize(log) }
+    }
   }
 
   @Test
-  fun `a blank response is unavailable`() = runBlocking {
-    assertEquals(RunSummary.Unavailable, SumProperRunSummarizer(reply("   ")).summarize(log))
+  fun `a blank answer raises rather than passing for a summary`() {
+    assertFailsWith<SumEmptyAnswerError> {
+      runBlocking { SumProperRunSummarizer(reply("   ")).summarize(log) }
+    }
   }
 
   @Test
-  fun `the rendered log reaches the model with its actions`() = runBlocking {
+  fun `an answer that could not be understood raises`() {
+    assertFailsWith<SumEmptyAnswerError> {
+      runBlocking { SumProperRunSummarizer(CorruptedClient).summarize(log) }
+    }
+  }
+
+  @Test
+  fun `the rendered log reaches the model with its actions`(): Unit = runBlocking {
     val client = reply("ok")
     SumProperRunSummarizer(client).summarize(log)
     val rendered = client.lastHistory!!.messages.filterIsInstance<OaiUserMessage>().single().content
@@ -81,6 +92,13 @@ class SumProperRunSummarizerTest {
           )
       )
     }
+  }
+
+  private object CorruptedClient : OaiConfiguredClient {
+    override suspend fun completeChat(
+        chatHistory: OaiChatHistory,
+        inferenceParams: OaiInferenceParams,
+    ): OaiResult<OaiResponse> = OaiResult.ResponseReceived(OaiResponse.Corrupted)
   }
 
   private object FailingClient : OaiConfiguredClient {

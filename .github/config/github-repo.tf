@@ -40,6 +40,7 @@ locals {
   check_api_domain_mapping_job_name     = "API (domain mapping)"
   check_backend_impl_job_name           = "Backend (implementation)"
   check_claude_connector_job_name       = "claude-connector"
+  check_run_summary_job_name            = "run-summary"
 }
 
 # Branch protection ruleset for the default branch
@@ -123,6 +124,11 @@ resource "github_repository_ruleset" "default_branch" {
       # The connector's real-CLI integration suite (its unit tests run in the backend gate above).
       required_check {
         context        = "${local.check_claude_connector_job_name} / Integration test"
+        integration_id = local.gh_actions_integration_id
+      }
+
+      required_check {
+        context        = "${local.check_run_summary_job_name} / Integration test"
         integration_id = local.gh_actions_integration_id
       }
 

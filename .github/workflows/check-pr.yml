@@ -54,3 +54,11 @@ jobs:
     uses: ./.github/workflows/test-claude-connector.yml
     # For the real-CLI integration suite's CLAUDE_CODE_OAUTH_TOKEN (paid checks skip without it).
     secrets: inherit
+
+  # The summarizer's real-model integration suite only — a test job, not a full check (its
+  # formatting/lint/compile/unit tests run in check-backend-impl with the other JVM modules).
+  test-run-summary:
+    name: run-summary
+    uses: ./.github/workflows/test-run-summary.yml
+    # For the real-model integration suite's OPENROUTER_API_KEY (paid checks skip without it).
+    secrets: inherit

@@ -59,7 +59,7 @@ class InMemorySessionStore(private val clock: Clock) : SessionStore {
       log: AgentRunLog,
       outcome: AgentRunOutcome,
       cost: AgentRunCost?,
-      summary: String?,
+      summary: String,
   ) {
     val run =
         SessionRun(

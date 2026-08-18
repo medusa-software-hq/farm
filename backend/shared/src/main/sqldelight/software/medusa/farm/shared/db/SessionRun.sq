@@ -2,7 +2,7 @@
 -- compile time, so the two must stay identical.
 --
 -- One agent run within a session. action_log is the AgentRunLog as JSON; outcome/cost/summary are
--- the run's metadata (summary null when summarization was unavailable).
+-- the run's metadata; a run is never recorded without its summary.
 CREATE TABLE session_run (
   id          TEXT        NOT NULL PRIMARY KEY,
   session_id  TEXT        NOT NULL REFERENCES sessions(id),
@@ -10,7 +10,7 @@ CREATE TABLE session_run (
   action_log  TEXT        NOT NULL,
   outcome     TEXT        NOT NULL,
   cost        TEXT,
-  summary     TEXT,
+  summary     TEXT        NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL,
   UNIQUE (session_id, ordinal)
 );

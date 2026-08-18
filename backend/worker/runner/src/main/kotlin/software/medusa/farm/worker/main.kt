@@ -10,6 +10,7 @@ private const val claudeOauthTokenEnvVarName = "CLAUDE_CODE_OAUTH_TOKEN"
 private const val databaseUrlSecretId = "api-database-url"
 private const val temporalApiKeySecretId = "worker-temporal-api-key"
 private const val gitHubAppPemSecretId = "api-github-app-pem"
+private const val openRouterApiKeySecretId = "worker-openrouter-api-key"
 
 /**
  * Runs the worker locally against a remote database. The database URL comes from the target
@@ -43,6 +44,9 @@ fun main() {
             claudeOauthToken =
                 System.getenv(claudeOauthTokenEnvVarName)
                     ?: error("$claudeOauthTokenEnvVarName is required (from `claude setup-token`)"),
+            // Keys the summary model. A service credential reached over HTTP, so it comes from
+            // the environment's secrets rather than the launch environment.
+            openRouterApiKey = client.read(environment.gcpProjectId, openRouterApiKeySecretId),
             commitAuthor = WorkerConfig.commitAuthorFrom(System.getenv()),
             signingKey = WorkerConfig.signingKeyFrom(System.getenv()),
         )

@@ -24,10 +24,7 @@ fun runTemporalWorker(config: WorkerConfig) {
           clientProvider,
           appApiClient,
           config.claudeOauthToken,
-          // The run summarizer reads OPENROUTER_API_KEY from the launch environment, like the
-          // claude
-          // token above — the worker runs on the operator's machine.
-          SumRunSummarizer.fromEnv(System::getenv),
+          SumRunSummarizer.from(config.openRouterApiKey),
           config.commitAuthor,
           config.signingKey,
       )

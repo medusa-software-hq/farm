@@ -16,7 +16,6 @@ import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhRepoFullName
 import software.medusa.farm.shared.SessionStore
-import software.medusa.farm.summary.RunSummary
 import software.medusa.farm.summary.SumRunSummarizer
 
 /**
@@ -113,23 +112,18 @@ class PublishActivitiesImpl(
   /** Maps the run's message stream to the action log, summarizes it, and stores the run. */
   private suspend fun recordRun(sessionId: String, messages: List<CldMessage>) {
     val mapped = AgentRunMapper.map(messages)
-    // The summary is a required part of the next run's context, so treat the model as an
-    // assumed-available dependency (like the agent itself): throw when it isn't, so Temporal
-    // retries
-    // — and, if it stays down, fails the session. The throw is before the PR is opened, so a retry
-    // just re-runs the attempt cleanly. Rare in practice.
-    val summary =
-        when (val result = summarizer.summarize(mapped.log)) {
-          is RunSummary.Available -> result.text
-          RunSummary.Unavailable -> error("run summary unavailable")
-        }
+    // The summary is a required part of the next run's context, so the summarizer is an
+    // assumed-available dependency, like the agent itself: it raises when it cannot summarize, the
+    // activity fails, and Temporal retries — failing the session if it stays down. That happens
+    // before the PR is opened, so a retry re-runs the attempt cleanly.
+    val summary = summarizer.summarize(mapped.log)
     sessionStore.recordRun(
         id = sessionId,
         ordinal = INITIAL_RUN_ORDINAL,
         log = mapped.log,
         outcome = mapped.outcome,
         cost = mapped.cost,
-        summary = summary,
+        summary = summary.text,
     )
   }
 
