@@ -1,4 +1,5 @@
-# Actions secrets consumed by CI/CD jobs.
+# Actions secrets consumed by CI/CD jobs. Repo-scoped — one per account, not one
+# per environment — which is why they live in this non-workspaced root.
 #
 # Unlike the CI/CD variables, a secret's value is one Terraform cannot know, so
 # it is set out of band and this only pins the name: declaring the resource is
@@ -7,11 +8,7 @@
 # CI failure — here, the integration tests would quietly skip forever).
 
 # The claude CLI auth token the claude-connector integration suite runs under.
-# Repo-scoped, so — like the releases repo — it is owned by the prod (default)
-# workspace alone; the staging workspace must not fight it over the same secret.
 resource "github_actions_secret" "claude_code_oauth_token" {
-  count = terraform.workspace == "default" ? 1 : 0
-
   repository  = data.github_repository.this.name
   secret_name = "CLAUDE_CODE_OAUTH_TOKEN"
 
@@ -24,11 +21,8 @@ resource "github_actions_secret" "claude_code_oauth_token" {
   }
 }
 
-# The OpenRouter key the run-summary integration suite runs under. Repo-scoped
-# on the same terms as the claude token above.
+# The OpenRouter key the run-summary integration suite runs under.
 resource "github_actions_secret" "openrouter_api_key" {
-  count = terraform.workspace == "default" ? 1 : 0
-
   repository  = data.github_repository.this.name
   secret_name = "OPENROUTER_API_KEY"
 
