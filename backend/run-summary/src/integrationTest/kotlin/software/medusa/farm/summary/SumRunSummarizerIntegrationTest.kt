@@ -7,13 +7,7 @@ import software.medusa.farm.shared.AgentRunLog
 import software.medusa.farm.shared.AgentStep
 import software.medusa.farm.shared.AgentToolAction
 
-/**
- * Drives the real model (DeepSeek over OpenRouter) to validate the openai-client wiring.
- *
- * Requires OPENROUTER_API_KEY, and fails without it rather than skipping: this suite is outside the
- * `check` lifecycle, so it only runs when someone asked for it, and a suite that reports green
- * having proven nothing is worse than one that reports red.
- */
+/** Drives the real model (DeepSeek over OpenRouter) to validate the openai-client wiring. */
 class SumRunSummarizerIntegrationTest {
   @Test
   fun `summarizes a run log`() {
@@ -40,10 +34,7 @@ class SumRunSummarizerIntegrationTest {
 
   private fun openRouterApiKey(): String {
     val key = System.getenv("OPENROUTER_API_KEY")
-    check(!key.isNullOrBlank()) {
-      "OPENROUTER_API_KEY is not set, so this suite cannot prove anything. It is not skipped for " +
-          "you: a green check that ran nothing is how an unprovisioned key stays invisible."
-    }
+    check(!key.isNullOrBlank()) { "OPENROUTER_API_KEY is not set" }
     return key
   }
 }
