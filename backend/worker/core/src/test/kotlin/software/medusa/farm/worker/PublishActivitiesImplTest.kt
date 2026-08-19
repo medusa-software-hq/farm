@@ -10,13 +10,19 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
-import software.medusa.farm.claude.CldAgent
-import software.medusa.farm.claude.CldCompletion
-import software.medusa.farm.claude.CldMessage
-import software.medusa.farm.claude.CldProperSessionStore
-import software.medusa.farm.claude.CldRunRequest
+import software.medusa.farm.claude.CldAssistantStep
+import software.medusa.farm.claude.CldCost
+import software.medusa.farm.claude.CldEngine
+import software.medusa.farm.claude.CldModelId
 import software.medusa.farm.claude.CldRunResult
+import software.medusa.farm.claude.CldRunStatus
+import software.medusa.farm.claude.CldSessionConfig
+import software.medusa.farm.claude.CldSessionId
+import software.medusa.farm.claude.CldSessionInfo
+import software.medusa.farm.claude.CldSessionScope
 import software.medusa.farm.gitcli.GitCli
 import software.medusa.farm.gitcli.GitCliAuthor
 import software.medusa.farm.github.FakeGitHubServer
@@ -42,16 +48,37 @@ class PublishActivitiesImplTest {
 
   private val available = FakeSummarizer(RunSummary("a summary"))
 
-  /** Records the workspace it ran in and reports a clean completion. */
-  private class FakeAgent : CldAgent {
+  /** Records the workspace it ran in, takes no steps, and reports a clean session. */
+  private class FakeEngine : CldEngine {
     var ranIn: Path? = null
 
-    override suspend fun run(
-        request: CldRunRequest,
-        onMessage: (CldMessage) -> Unit,
-    ): CldRunResult {
-      ranIn = request.workspace
-      return CldRunResult(request.session.sessionId, CldCompletion.Ok, cost = null)
+    override suspend fun <ResultT> runSession(
+        config: CldSessionConfig,
+        prompt: String,
+        block: suspend CldSessionScope.() -> ResultT,
+    ): ResultT {
+      ranIn = config.workspacePath
+      val scope =
+          object : CldSessionScope {
+            override val info =
+                CldSessionInfo(
+                    sessionId = CldSessionId("session-fake"),
+                    modelId = CldModelId("claude-opus-5"),
+                    availableToolSpecifiers = emptySet(),
+                )
+
+            override val assistantStepChannel =
+                Channel<CldAssistantStep>(Channel.UNLIMITED).apply { close() }
+
+            override suspend fun awaitResult(): CldRunResult =
+                CldRunResult(
+                    status = CldRunStatus.Success,
+                    totalCost = CldCost(usdAmount = 0.0),
+                    turnCount = 0,
+                    sessionDuration = Duration.ZERO,
+                )
+          }
+      return scope.block()
     }
   }
 
@@ -105,7 +132,7 @@ class PublishActivitiesImplTest {
 
   private fun activities(
       gitCli: GitCli,
-      agent: CldAgent,
+      engine: CldEngine,
       server: FakeGitHubServer,
       summarizer: RunSummarizer = available,
   ) =
@@ -117,9 +144,8 @@ class PublishActivitiesImplTest {
               ),
           tokenMinter =
               GhProperAppApiClient.build("Iv1.test", appKey.pkcs8Pem, baseUrl = server.baseUrl),
-          agent = agent,
+          engine = engine,
           gitCli = gitCli,
-          cldSessionStore = CldProperSessionStore(Files.createTempDirectory("publish-it")),
           sessionStore = sessions,
           summarizer = summarizer,
           commitAuthor = author,
@@ -150,13 +176,14 @@ class PublishActivitiesImplTest {
   fun `runs the agent on the clone and opens a PR when there are changes`() {
     FakeGitHubServer(::handle).use { server ->
       val gitCli = FakeGitCli(hasChanges = true)
-      val agent = FakeAgent()
+      val engine = FakeEngine()
 
       val outcome =
-          activities(gitCli, agent, server).attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
+          activities(gitCli, engine, server)
+              .attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
 
       assertEquals("https://github.com/acme/one/pull/12", outcome.pullRequestUrl)
-      assertEquals(gitCli.clonedInto, agent.ranIn, "the agent must run in the clone")
+      assertEquals(gitCli.clonedInto, engine.ranIn, "the agent must run in the clone")
       assertContains(gitCli.calls, "clone")
       assertContains(gitCli.calls, "createBranch:farm/issue-7")
       assertContains(gitCli.calls, "commit")
@@ -169,7 +196,7 @@ class PublishActivitiesImplTest {
   fun `raises when the run cannot be summarized, so Temporal retries`() {
     FakeGitHubServer(::handle).use { server ->
       val activities =
-          activities(FakeGitCli(hasChanges = true), FakeAgent(), server, UnreachableSummarizer)
+          activities(FakeGitCli(hasChanges = true), FakeEngine(), server, UnreachableSummarizer)
 
       assertFailsWith<RunSummaryGenerationError> {
         activities.attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
@@ -188,7 +215,7 @@ class PublishActivitiesImplTest {
       val gitCli = FakeGitCli(hasChanges = false)
 
       val outcome =
-          activities(gitCli, FakeAgent(), server)
+          activities(gitCli, FakeEngine(), server)
               .attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
 
       assertNull(outcome.pullRequestUrl)
