@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { farm } from '../api.ts';
 import { IconActivity, IconArrowLeft, IconCheck, IconSprout, IconX } from '../icons.tsx';
+import { type Run, type RunAttempt, fetchRuns } from '../runs.ts';
 import { SessionBadge } from '../SessionBadge.tsx';
 import { clockTime, duration, relativeTime } from '../time.ts';
 import { useApiHeaders } from '../useApiHeaders.ts';
@@ -27,6 +28,7 @@ export function SessionDetail() {
   const { id } = useParams();
   const headers = useApiHeaders();
   const [loaded, setLoaded] = useState<Loaded>({ kind: 'loading' });
+  const [runs, setRuns] = useState<Run[]>([]);
 
   useEffect(() => {
     if (!id) {
@@ -40,6 +42,7 @@ export function SessionDetail() {
         if (cancelled || !s) {
           return;
         }
+        setRuns(await fetchRuns(s.id, headers));
         setLoaded({
           kind: 'ok',
           session: {
@@ -83,13 +86,13 @@ export function SessionDetail() {
           That session could not be found.
         </Text>
       ) : (
-        <Detail session={loaded.session} />
+        <Detail session={loaded.session} runs={runs} />
       )}
     </Stack>
   );
 }
 
-function Detail({ session }: { session: Session }) {
+function Detail({ session, runs }: { session: Session; runs: Run[] }) {
   const running = session.state === 'RUNNING';
   const failed = session.state === 'FAILED';
 
@@ -119,6 +122,20 @@ function Detail({ session }: { session: Session }) {
               </Text>
             </Timeline.Item>
 
+            {runs.flatMap((run) =>
+              run.attempts.map((attempt) => (
+                <Timeline.Item
+                  key={`${run.ordinal}-${attempt.number}`}
+                  bullet={<IconActivity size={13} />}
+                  title={attemptTitle(run, attempt)}
+                  color={attempt.state === 'abandoned' ? 'gray' : 'fern'}
+                  lineVariant={attempt.state === 'abandoned' ? 'dashed' : 'solid'}
+                >
+                  <AttemptEntries attempt={attempt} />
+                </Timeline.Item>
+              ))
+            )}
+
             {running ? (
               <Timeline.Item
                 bullet={<IconActivity size={13} />}
@@ -146,10 +163,11 @@ function Detail({ session }: { session: Session }) {
             )}
           </Timeline>
 
-          <Text size="xs" c="dimmed" mt="xl" style={{ maxWidth: '60ch' }}>
-            The agent's individual actions — comments, analysis, proposed changes — will appear here
-            on this timeline as real processing replaces today's stand-in run.
-          </Text>
+          {runs.length === 0 && (
+            <Text size="xs" c="dimmed" mt="xl" style={{ maxWidth: '60ch' }}>
+              The agent's actions will appear here as it takes them.
+            </Text>
+          )}
         </Grid.Col>
 
         <Grid.Col span={{ base: 12, sm: 4 }}>
@@ -212,5 +230,54 @@ function Detail({ session }: { session: Session }) {
         </Grid.Col>
       </Grid>
     </>
+  );
+}
+
+/** A run only names its try where there was more than one — otherwise the number is noise. */
+function attemptTitle(run: Run, attempt: RunAttempt): string {
+  const what = run.ordinal === 0 ? 'Implementing' : `Fixup ${run.ordinal}`;
+  if (run.attempts.length === 1) {
+    return what;
+  }
+  return attempt.state === 'abandoned'
+    ? `${what} — try ${attempt.number}, abandoned`
+    : `${what} — try ${attempt.number}`;
+}
+
+function AttemptEntries({ attempt }: { attempt: RunAttempt }) {
+  if (attempt.entries.length === 0) {
+    return (
+      <Text size="sm" c="dimmed">
+        {attempt.state === 'abandoned' ? 'Stopped before doing anything.' : 'Getting started…'}
+      </Text>
+    );
+  }
+
+  return (
+    <Stack gap={6} mt={4}>
+      {attempt.entries.map((entry, index) => (
+        <div key={index}>
+          {entry.kind === 'warning' ? (
+            <Text size="sm" c="yellow.7" ff="monospace">
+              {entry.text}
+            </Text>
+          ) : (
+            <>
+              {entry.text && <Text size="sm">{entry.text}</Text>}
+              {entry.actions.map((action, actionIndex) => (
+                <Text key={actionIndex} size="xs" c="dimmed" ff="monospace">
+                  {action}
+                </Text>
+              ))}
+            </>
+          )}
+        </div>
+      ))}
+      {attempt.summary && (
+        <Text size="xs" c="dimmed" mt={4} fs="italic">
+          {attempt.summary}
+        </Text>
+      )}
+    </Stack>
   );
 }
