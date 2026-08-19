@@ -2,14 +2,27 @@ package software.medusa.farm.server
 
 import io.grpc.Status
 import software.medusa.farm.github.GhOrgLogin
+import software.medusa.farm.shared.AgentRunCost
+import software.medusa.farm.shared.AgentRunEntry
+import software.medusa.farm.shared.AgentStep
+import software.medusa.farm.shared.AgentToolAction
+import software.medusa.farm.shared.AgentWarning
 import software.medusa.farm.shared.IssueStore
 import software.medusa.farm.shared.LinkedOrgStore
 import software.medusa.farm.shared.RepoStore
 import software.medusa.farm.shared.Session
+import software.medusa.farm.shared.SessionRun
+import software.medusa.farm.shared.SessionRunAttempt
 import software.medusa.farm.shared.SessionStore
+import software.medusa.farm.v1.AgentRunCost as AgentRunCostProto
+import software.medusa.farm.v1.AgentRunEntry as AgentRunEntryProto
+import software.medusa.farm.v1.AgentStep as AgentStepProto
+import software.medusa.farm.v1.AgentToolAction as AgentToolActionProto
 import software.medusa.farm.v1.FarmServiceGrpcKt
 import software.medusa.farm.v1.GetSessionRequest
 import software.medusa.farm.v1.GetSessionResponse
+import software.medusa.farm.v1.GetSessionRunsRequest
+import software.medusa.farm.v1.GetSessionRunsResponse
 import software.medusa.farm.v1.Issue as IssueProto
 import software.medusa.farm.v1.LinkOrgRequest
 import software.medusa.farm.v1.LinkOrgResponse
@@ -24,6 +37,9 @@ import software.medusa.farm.v1.ListSessionsRequest
 import software.medusa.farm.v1.ListSessionsResponse
 import software.medusa.farm.v1.Repository
 import software.medusa.farm.v1.Session as SessionProto
+import software.medusa.farm.v1.SessionRun as SessionRunProto
+import software.medusa.farm.v1.SessionRunAttempt as SessionRunAttemptProto
+import software.medusa.farm.v1.SessionRunAttemptOutcome
 import software.medusa.farm.v1.SyncRepositoriesRequest
 import software.medusa.farm.v1.SyncRepositoriesResponse
 
@@ -119,6 +135,74 @@ class FarmServiceImpl(
             ?: throw Status.NOT_FOUND.withDescription("No session ${request.id}")
                 .asRuntimeException()
     return GetSessionResponse.newBuilder().setSession(session.toProto()).build()
+  }
+
+  override suspend fun getSessionRuns(request: GetSessionRunsRequest): GetSessionRunsResponse {
+    // A session with no runs yet is an empty list, not a miss; only an unknown session is a miss.
+    sessionStore.get(request.sessionId)
+        ?: throw Status.NOT_FOUND.withDescription("No session ${request.sessionId}")
+            .asRuntimeException()
+
+    val runs = sessionStore.getRuns(request.sessionId)
+    return GetSessionRunsResponse.newBuilder().addAllRuns(runs.map { it.toProto() }).build()
+  }
+
+  private fun SessionRun.toProto(): SessionRunProto =
+      SessionRunProto.newBuilder()
+          .setOrdinal(ordinal)
+          .addAllAttempts(attempts.map { it.toProto() })
+          .build()
+
+  private fun SessionRunAttempt.toProto(): SessionRunAttemptProto {
+    val builder =
+        SessionRunAttemptProto.newBuilder()
+            .setNumber(number)
+            .setStartedAtMillis(startedAt.toEpochMilli())
+            .addAllEntries(log.entries.map { it.toProto() })
+
+    return when (this) {
+      is SessionRunAttempt.Running -> builder.setState("RUNNING")
+
+      is SessionRunAttempt.Abandoned -> builder.setState("ABANDONED")
+
+      is SessionRunAttempt.Finished -> {
+        val reportedCost = cost
+        val outcomeBuilder =
+            SessionRunAttemptOutcome.newBuilder().setOutcome(outcome.name).setSummary(summary)
+        if (reportedCost != null) outcomeBuilder.setCost(reportedCost.toProto())
+
+        builder.setState("FINISHED").setOutcome(outcomeBuilder.build())
+      }
+    }.build()
+  }
+
+  private fun AgentRunCost.toProto(): AgentRunCostProto =
+      AgentRunCostProto.newBuilder().setUsd(usd).setTurns(turns).setDurationMs(durationMs).build()
+
+  private fun AgentRunEntry.toProto(): AgentRunEntryProto =
+      when (this) {
+        is AgentStep ->
+            AgentRunEntryProto.newBuilder()
+                .setStep(
+                    AgentStepProto.newBuilder()
+                        .setText(text)
+                        .addAllToolActions(toolActions.map { it.toProto() })
+                        .build()
+                )
+                .build()
+
+        is AgentWarning -> AgentRunEntryProto.newBuilder().setWarning(text).build()
+      }
+
+  private fun AgentToolAction.toProto(): AgentToolActionProto {
+    val builder = AgentToolActionProto.newBuilder()
+    return when (this) {
+      is AgentToolAction.EditFile -> builder.setEditedPath(path)
+      is AgentToolAction.ReadFile -> builder.setReadPath(path)
+      is AgentToolAction.RunCommand -> builder.setCommand(command)
+      is AgentToolAction.Search -> builder.setQuery(query)
+      is AgentToolAction.Other -> builder.setOtherTool(tool)
+    }.build()
   }
 
   private fun Session.toProto(): SessionProto =
