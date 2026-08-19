@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json",
     "lint": "npm run oxlint && npm run stylelint",
     "oxlint": "oxlint .",
     "stylelint": "stylelint '**/*.css' --cache",

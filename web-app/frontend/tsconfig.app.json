@@ -20,8 +20,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Path aliases */
-    "baseUrl": ".",
+    /* Path aliases; resolved relative to this file, which is why there is no baseUrl */
     "paths": {
       "@/*": ["./src/*"],
       "@test-utils": ["./test-utils"]
