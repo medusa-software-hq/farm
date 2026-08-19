@@ -105,11 +105,16 @@ class ProcessIssueWorkflowTest {
     server.close()
   }
 
+  private val workflowId = "process-issue-test"
+
   private fun process() {
     env.workflowClient
         .newWorkflowStub(
             ProcessIssueWorkflow::class.java,
-            WorkflowOptions.newBuilder().setTaskQueue(FarmWorker.TASK_QUEUE).build(),
+            WorkflowOptions.newBuilder()
+                .setTaskQueue(FarmWorker.TASK_QUEUE)
+                .setWorkflowId(workflowId)
+                .build(),
         )
         .process(installationId, 1L, "acme/one", 7, "Fix the thing")
   }
@@ -239,6 +244,27 @@ class ProcessIssueWorkflowTest {
   }
 
   @Test
+  fun `waiting out the silence limit stays inside a workflow history`() {
+    // The poll interval and the silence limit are coupled through history: every pass costs events,
+    // and a workflow that runs out of history is terminated mid-wait. Measured rather than
+    // estimated, so that lowering the interval or raising the limit fails here instead of in a
+    // pull request nobody was watching.
+    process()
+
+    val perSilence = env.workflowClient.fetchHistory(workflowId).events.size
+
+    // Not the measured run alone: every fixup starts the silence over, so the most a run can spend
+    // is one silence per fixup allowed, plus the one before any of them.
+    val worstCase = perSilence * (ProcessIssueWorkflowImpl.MAX_FIXUP_RUNS + 1)
+
+    assertTrue(
+        worstCase < TEMPORAL_HISTORY_LIMIT,
+        "a silence costs $perSilence events, so the worst case spends $worstCase of " +
+            "Temporal's $TEMPORAL_HISTORY_LIMIT and the run would be terminated mid-wait",
+    )
+  }
+
+  @Test
   fun `marks the session failed when the attempt cannot complete`() {
     failAttempt = true
     // The workflow fails after the attempt activity exhausts its retries; swallow that here.
@@ -272,5 +298,10 @@ class ProcessIssueWorkflowTest {
           )
       else -> FakeGitHubServer.Response(404, "unexpected ${request.pathAndQuery}")
     }
+  }
+
+  private companion object {
+    // Temporal terminates a workflow execution whose history passes this.
+    const val TEMPORAL_HISTORY_LIMIT = 51_200
   }
 }

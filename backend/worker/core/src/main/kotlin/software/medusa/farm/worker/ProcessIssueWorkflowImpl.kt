@@ -146,21 +146,26 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
     private const val ATTEMPT_MAX_ATTEMPTS = 2
 
     // Nothing pushes review events to us — there is no webhook receiver — so the gate polls, as
-    // the issue sweep does. Every poll costs a timer and an activity in the workflow's history, so
-    // the interval is what keeps a week of waiting from growing a history Temporal would complain
-    // about, rather than a guess at how fast anyone reviews.
-    private val REVIEW_POLL_INTERVAL: Duration = Duration.ofMinutes(10)
+    // the issue sweep does. A minute is how long someone waits between merging and Farm noticing,
+    // which is the only thing this ought to be chosen by.
+    private val REVIEW_POLL_INTERVAL: Duration = Duration.ofMinutes(1)
 
     // A pull request nobody touches is not a failure, so waiting stops rather than the run does.
     // Reset by every fixup: the limit is on silence, not on how long a review conversation runs.
-    private val REVIEW_SILENCE_LIMIT: Duration = Duration.ofDays(7)
+    //
+    // Half a day, rather than the week it wants to be, because polling this often fills a
+    // workflow's history — and every fixup starts the silence over, so the budget is this limit
+    // times one more than the fixups allowed, not the limit itself. A day did not fit. The test
+    // measures it rather than trusting this paragraph. Webhooks would leave this loop as an
+    // occasional backstop and lift the limit on their own; failing that, continuing as new does.
+    private val REVIEW_SILENCE_LIMIT: Duration = Duration.ofHours(12)
 
     // Reviews are numbered from 1, so nothing has been acted on yet.
     private const val NO_REVIEW_YET = 0L
 
     // A bound on going round in circles, not on how much review a change deserves: past this the
     // pull request is still watched for a merge, but its reviews stop being worked.
-    private const val MAX_FIXUP_RUNS = 3
+    internal const val MAX_FIXUP_RUNS = 3
 
     private fun resultComment(outcome: IssueAttemptOutcome): String =
         if (outcome.pullRequestUrl != null) {
