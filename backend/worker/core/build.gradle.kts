@@ -50,6 +50,9 @@ tasks.register<Test>("integrationTest") {
   testLogging {
     events("passed", "skipped", "failed")
     exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    // The failure itself says only that no summary could be had; the reason is logged. Surface the
+    // streams so a red CI run carries it, rather than leaving it in a log nobody reads.
+    showStandardStreams = true
   }
 }
 
