@@ -25,7 +25,14 @@ interface GhInstallationApiClient : GhResourcesApiClient {
   /** The pull request's reviews, oldest first. */
   suspend fun listReviews(repo: GhRepoFullName, number: Int): List<GhPullRequestReview>
 
-  /** Every comment left on a line of the pull request's diff, across all of its reviews. */
+  /**
+   * Every comment left on a line of the pull request's diff, across all of its reviews; which
+   * review left one is on the comment itself.
+   *
+   * Across all of them rather than per review on purpose. GitHub does serve one review's comments
+   * directly, but that representation carries no `line` — only the diff-hunk `position` — so asking
+   * the narrower question gets a thinner answer, and where a comment actually points is lost.
+   */
   suspend fun listReviewComments(
       repo: GhRepoFullName,
       number: Int,

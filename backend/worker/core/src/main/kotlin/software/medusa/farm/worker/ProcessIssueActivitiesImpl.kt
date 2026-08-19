@@ -89,7 +89,9 @@ class ProcessIssueActivitiesImpl(
             .firstOrNull { it.state == GhPullRequestReviewState.CHANGES_REQUESTED } ?: return null
 
     // Only what this review said. An older review's comments were either already addressed or
-    // deliberately not, and re-raising them would undo the reviewer's own judgement.
+    // deliberately not, and re-raising them would undo the reviewer's own judgement. Filtered from
+    // the whole pull request's comments rather than asked for per review — see the client, which
+    // says why the narrower endpoint is the wrong one.
     val comments =
         client
             .listReviewComments(repo, number)
