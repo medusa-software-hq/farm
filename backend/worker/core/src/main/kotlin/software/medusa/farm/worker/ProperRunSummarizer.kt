@@ -1,6 +1,6 @@
 package software.medusa.farm.worker
 
-import java.util.logging.Logger
+import org.slf4j.LoggerFactory
 import software.medusa.commons.openai_client.OaiChatHistory
 import software.medusa.commons.openai_client.OaiConfiguredClient
 import software.medusa.commons.openai_client.OaiGeneratedContent
@@ -13,7 +13,7 @@ import software.medusa.farm.shared.AgentRunLog
 import software.medusa.farm.shared.AgentToolAction
 
 internal class ProperRunSummarizer(private val client: OaiConfiguredClient) : RunSummarizer {
-  private val logger: Logger = Logger.getLogger(loggerName)
+  private val logger = LoggerFactory.getLogger(ProperRunSummarizer::class.java)
 
   override suspend fun summarize(log: AgentRunLog): RunSummary {
     val history =
@@ -28,7 +28,7 @@ internal class ProperRunSummarizer(private val client: OaiConfiguredClient) : Ru
 
     val text =
         when (result) {
-          OaiResult.NetworkError -> unavailable("the backend could not be reached")
+          OaiResult.NetworkError -> unavailable("openai-client could not reach OpenRouter")
           is OaiResult.ResponseReceived ->
               when (val received = result.response) {
                 is OaiResponse.Complete ->
@@ -37,24 +37,30 @@ internal class ProperRunSummarizer(private val client: OaiConfiguredClient) : Ru
                       // An interrupted answer is a truncated summary, which is a wrong one — it
                       // would orient the next run with a description that stops mid-thought.
                       is OaiGeneratedContent.Partial ->
-                          unavailable("the answer was interrupted (${content.interruptionReason})")
+                          unavailable(
+                              "OpenRouter interrupted the answer (${content.interruptionReason})"
+                          )
                     }
-                OaiResponse.Corrupted -> unavailable("the answer could not be understood")
-                is OaiResponse.Error -> unavailable("the backend answered with an error")
+                OaiResponse.Corrupted ->
+                    unavailable("openai-client could not read OpenRouter's answer")
+                is OaiResponse.Error ->
+                    unavailable("OpenRouter answered ${received.status}: ${received.message}")
               }
         }
 
-    if (text.isNullOrBlank()) unavailable("the answer carried no text")
+    if (text.isNullOrBlank()) unavailable("OpenRouter's answer carried no text")
 
     return RunSummary(text = text)
   }
 
   /**
-   * Records why no summary could be had, then raises. Every path to [RunSummaryGenerationError]
-   * goes through here, so a failure is never silent even though the error itself carries no detail.
+   * Records why the run could not be summarized, then raises. Every path to
+   * [RunSummaryGenerationError] goes through here, so a failure is never silent even though the
+   * error itself carries no detail. Names the client and the provider outright: this is the
+   * implementation talking to whoever has to work out what went wrong, not the library's contract.
    */
   private fun unavailable(reason: String): Nothing {
-    logger.warning("No run summary: $reason")
+    logger.warn("Failed to summarize the run: {}", reason)
     throw RunSummaryGenerationError
   }
 
@@ -78,8 +84,6 @@ internal class ProperRunSummarizer(private val client: OaiConfiguredClient) : Ru
       }
 
   private companion object {
-    const val loggerName = "software.medusa.farm.worker.summary"
-
     val INFERENCE_PARAMS = OaiInferenceParams(maxOutputTokenCount = 700)
 
     val SYSTEM_PROMPT =

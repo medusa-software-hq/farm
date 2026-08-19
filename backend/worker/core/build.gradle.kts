@@ -14,10 +14,16 @@ dependencies {
   // Summarizing a run: a cheap model (DeepSeek over OpenRouter) via the commons openai-client.
   implementation(libs.medusa.commons.openaiClient)
   implementation(libs.kotlinx.coroutines.core)
+  // Logging, as the module's own logback.xml already assumes.
+  implementation(libs.slf4j.api)
   implementation(libs.temporal.sdk)
   // Lets Temporal's Jackson converter (de)serialize the Kotlin types crossing the activity
   // boundary.
   implementation(libs.jackson.module.kotlin)
+
+  // Tests need a provider too, or slf4j installs a no-op and everything the dependencies log —
+  // Temporal, the HTTP client under openai-client — is silently discarded.
+  testRuntimeOnly(libs.logback.classic)
 
   testImplementation(libs.kotlin.test)
   testImplementation(libs.temporal.testing)

@@ -14,6 +14,7 @@ kotlinx-serialization = "1.9.0"
 ktfmt = "0.26.0"
 medusa-commons = "0.2.2"
 logback = "1.5.32"
+slf4j = "2.0.18"
 nimbus-jose-jwt = "10.9"
 nimbus-oauth2-oidc-sdk = "11.38.2"
 postgresql = "42.7.8"
@@ -45,6 +46,7 @@ kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotl
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlin-coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 medusa-commons-openaiClient = { module = "software.medusa.commons:openai-client", version.ref = "medusa-commons" }
 medusa-commons-system = { module = "software.medusa.commons:system", version.ref = "medusa-commons" }
 nimbus-jose-jwt = { module = "com.nimbusds:nimbus-jose-jwt", version.ref = "nimbus-jose-jwt" }
