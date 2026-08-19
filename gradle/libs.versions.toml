@@ -18,6 +18,7 @@ slf4j = "2.0.18"
 nimbus-jose-jwt = "10.9"
 nimbus-oauth2-oidc-sdk = "11.38.2"
 postgresql = "42.7.8"
+testcontainers = "1.21.3"
 protobuf = "4.34.1"
 protobuf-plugin = "0.10.0"
 shadow = "9.4.2"
@@ -58,6 +59,7 @@ protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protob
 protobuf-protocGen-grpc-java = { module = "io.grpc:protoc-gen-grpc-java", version.ref = "grpc" }
 protobuf-protocGen-grpc-kotlin = "io.grpc:protoc-gen-grpc-kotlin:1.5.0"
 sqldelight-jdbc-driver = { module = "app.cash.sqldelight:jdbc-driver", version.ref = "sqldelight" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 sqldelight-postgresql-dialect = { module = "app.cash.sqldelight:postgresql-dialect", version.ref = "sqldelight" }
 temporal-sdk = { module = "io.temporal:temporal-sdk", version.ref = "temporal" }
 temporal-testing = { module = "io.temporal:temporal-testing", version.ref = "temporal" }

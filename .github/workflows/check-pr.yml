@@ -62,3 +62,10 @@ jobs:
     uses: ./.github/workflows/test-run-summary.yml
     # For the real-model integration suite's OPENROUTER_API_KEY (paid checks skip without it).
     secrets: inherit
+
+  # The migrations and the stores over them, against a real Postgres — a test job, not a full check
+  # (the shared module's formatting/lint/compile/unit tests run in check-backend-impl). Needs no
+  # secrets: Testcontainers starts its own database.
+  test-schema:
+    name: schema
+    uses: ./.github/workflows/test-schema.yml

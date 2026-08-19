@@ -41,6 +41,7 @@ locals {
   check_backend_impl_job_name           = "Backend (implementation)"
   check_claude_connector_job_name       = "claude-connector"
   check_run_summary_job_name            = "run-summary"
+  check_schema_job_name                 = "schema"
 }
 
 # Branch protection ruleset for the default branch
@@ -129,6 +130,12 @@ resource "github_repository_ruleset" "default_branch" {
 
       required_check {
         context        = "${local.check_run_summary_job_name} / Integration test"
+        integration_id = local.gh_actions_integration_id
+      }
+
+      # The migrations and the stores over them, against a real Postgres.
+      required_check {
+        context        = "${local.check_schema_job_name} / Integration test"
         integration_id = local.gh_actions_integration_id
       }
 

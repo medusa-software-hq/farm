@@ -33,6 +33,36 @@ sqldelight {
 
 base { archivesName = "backend-shared" }
 
+// The migrations and the queries run against them are only really checked by a real database: the
+// .sq files carry a hand-copied mirror of the schema that SQLDelight validates queries against, and
+// nothing but a live Postgres says whether that mirror still matches what Flyway builds. Needs
+// Docker, so it stays out of the `test`/`check` lifecycle and runs via the `integrationTest` task.
+val integrationTest by sourceSets.creating {
+  compileClasspath += sourceSets["main"].output
+  runtimeClasspath += sourceSets["main"].output
+}
+
+configurations["integrationTestImplementation"].extendsFrom(configurations["testImplementation"])
+
+configurations["integrationTestRuntimeOnly"].extendsFrom(configurations["testRuntimeOnly"])
+
+// Named rather than typed: the configuration only exists once the source set above is created.
+dependencies { "integrationTestImplementation"(libs.testcontainers.postgresql) }
+
+tasks.register<Test>("integrationTest") {
+  description = "Runs the migrations and the stores against a real Postgres."
+  group = "verification"
+  testClassesDirs = integrationTest.output.classesDirs
+  classpath = integrationTest.runtimeClasspath
+  useJUnitPlatform()
+  // Starts a container; nothing about that is a task input, so never up to date.
+  outputs.upToDateWhen { false }
+  testLogging {
+    events("passed", "skipped", "failed")
+    exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+  }
+}
+
 // Regenerate the baked config from infra/config/config.json — the shared Temporal Cloud coordinates
 // (consumed by both the API and the worker) and the per-environment GitHub App client id (baked
 // into
