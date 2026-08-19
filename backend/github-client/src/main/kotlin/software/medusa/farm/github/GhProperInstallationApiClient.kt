@@ -1,6 +1,7 @@
 package software.medusa.farm.github
 
 import java.net.http.HttpClient
+import java.time.Instant
 import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -101,6 +102,7 @@ private class PullRequestDto(
     @SerialName("html_url") val htmlUrl: String,
     val state: String,
     val merged: Boolean = false,
+    @SerialName("merged_at") val mergedAt: String? = null,
     val head: PullRequestHeadDto,
 )
 
@@ -117,6 +119,7 @@ private fun PullRequestDto.toGhPullRequest(): GhPullRequest =
               else -> GhPullRequestState.CLOSED
             },
         headSha = head.sha,
+        mergedAt = mergedAt?.let(Instant::parse),
     )
 
 @Serializable private class RepositoriesPageDto(val repositories: List<RepositoryDto>)
