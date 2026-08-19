@@ -2,14 +2,11 @@ package software.medusa.farm.worker
 
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlinx.coroutines.flow.filterIsInstance
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
-import software.medusa.farm.claude.CldAssistantStep
 import software.medusa.farm.claude.CldCost
 import software.medusa.farm.claude.CldEngine
 import software.medusa.farm.claude.CldPermissionMode
@@ -68,12 +65,11 @@ class PublishActivitiesImpl(
       gitCli.clone(cloneUrl(repo), clone, token)
       val baseBranch = gitCli.currentBranch(clone)
 
-      val (agentSteps, result) =
+      val (agentEvents, result) =
           engine.runSession(
               config = sessionConfig(workspacePath = clone, configDirPath = configDir),
               prompt = taskPrompt(title, body),
           ) {
-            // Warnings are logged where they happen; the steps are what the run is recorded from.
             eventChannel
                 .receiveAsFlow()
                 .onEach { event ->
@@ -81,8 +77,6 @@ class PublishActivitiesImpl(
                     logger.warn("The agent session warned: {}", event.text)
                   }
                 }
-                .filterIsInstance<CldSessionEvent.Step>()
-                .map { it.assistantStep }
                 .toList() to awaitResult()
           }
       check(result.status is CldRunStatus.Success) { "agent run ended in ${result.status}" }
@@ -90,7 +84,7 @@ class PublishActivitiesImpl(
       // Record what the agent did (and a cheap summary of it) before publishing — a no-change run
       // is
       // still a run worth showing. ordinal 0 is the initial attempt; fixups will be 1+.
-      recordRun(sessionId, agentSteps, result)
+      recordRun(sessionId, agentEvents, result)
 
       gitCli.stageAll(clone)
       if (!gitCli.hasStagedChanges(clone)) {
@@ -124,13 +118,13 @@ class PublishActivitiesImpl(
     }
   }
 
-  /** Maps the run's steps and result to the action log, summarizes it, and stores the run. */
+  /** Maps what happened in the run to the action log, summarizes it, and stores the run. */
   private suspend fun recordRun(
       sessionId: String,
-      steps: List<CldAssistantStep>,
+      events: List<CldSessionEvent>,
       result: CldRunResult,
   ) {
-    val mapped = AgentRunMapper.map(steps, result)
+    val mapped = AgentRunMapper.map(events, result)
     // The summary is a required part of the next run's context, so the summarizer is an
     // assumed-available dependency, like the agent itself: it raises when it cannot summarize, the
     // activity fails, and Temporal retries — failing the session if it stays down. That happens

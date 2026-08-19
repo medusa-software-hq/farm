@@ -2,16 +2,20 @@ package software.medusa.farm.worker
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.time.Duration.Companion.milliseconds
 import software.medusa.farm.claude.CldAssistantStep
 import software.medusa.farm.claude.CldCost
 import software.medusa.farm.claude.CldRunResult
 import software.medusa.farm.claude.CldRunStatus
+import software.medusa.farm.claude.CldSessionEvent
 import software.medusa.farm.claude.CldToolUse
 import software.medusa.farm.shared.AgentRunCost
+import software.medusa.farm.shared.AgentRunEntry
 import software.medusa.farm.shared.AgentRunOutcome
 import software.medusa.farm.shared.AgentStep
 import software.medusa.farm.shared.AgentToolAction
+import software.medusa.farm.shared.AgentWarning
 
 class AgentRunMapperTest {
   @Test
@@ -30,9 +34,9 @@ class AgentRunMapperTest {
                 ),
         )
 
-    val mapped = AgentRunMapper.map(listOf(step), okResult())
-    val actions = mapped.log.steps.single().toolActions
-    assertEquals("working", mapped.log.steps.single().text)
+    val mapped = AgentRunMapper.map(listOf(CldSessionEvent.Step(step)), okResult())
+    val actions = mapped.log.entries.single().asStep().toolActions
+    assertEquals("working", mapped.log.entries.single().asStep().text)
     assertEquals(
         listOf(
             AgentToolAction.EditFile("src/A.kt"),
@@ -51,7 +55,12 @@ class AgentRunMapperTest {
     val step = CldAssistantStep(text = "", toolUses = listOf(use("Edit")))
     assertEquals(
         listOf<AgentToolAction>(AgentToolAction.Other("Edit")),
-        AgentRunMapper.map(listOf(step), okResult()).log.steps.single().toolActions,
+        AgentRunMapper.map(listOf(CldSessionEvent.Step(step)), okResult())
+            .log
+            .entries
+            .single()
+            .asStep()
+            .toolActions,
     )
   }
 
@@ -78,7 +87,7 @@ class AgentRunMapperTest {
   @Test
   fun `an empty run is an empty succeeded log`() {
     val mapped = AgentRunMapper.map(emptyList(), okResult())
-    assertEquals(emptyList<AgentStep>(), mapped.log.steps)
+    assertEquals(emptyList<AgentRunEntry>(), mapped.log.entries)
     assertEquals(AgentRunOutcome.SUCCEEDED, mapped.outcome)
   }
 
@@ -90,4 +99,28 @@ class AgentRunMapperTest {
   ) = CldToolUse(name = name, filePath = filePath, command = command, pattern = pattern)
 
   private fun okResult() = CldRunResult(CldRunStatus.Success, CldCost(0.0), 0, 0.milliseconds)
+
+  @Test
+  fun `a warning is kept where it happened, among the steps`() {
+    val mapped =
+        AgentRunMapper.map(
+            listOf(
+                CldSessionEvent.Step(CldAssistantStep(text = "before", toolUses = emptyList())),
+                CldSessionEvent.Warning("something is deprecated"),
+                CldSessionEvent.Step(CldAssistantStep(text = "after", toolUses = emptyList())),
+            ),
+            okResult(),
+        )
+
+    assertEquals(
+        listOf(
+            AgentStep(text = "before", toolActions = emptyList()),
+            AgentWarning(text = "something is deprecated"),
+            AgentStep(text = "after", toolActions = emptyList()),
+        ),
+        mapped.log.entries,
+    )
+  }
+
+  private fun AgentRunEntry.asStep(): AgentStep = assertIs<AgentStep>(this)
 }

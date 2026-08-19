@@ -1,26 +1,25 @@
 package software.medusa.farm.worker
 
-import software.medusa.farm.claude.CldAssistantStep
 import software.medusa.farm.claude.CldRunResult
 import software.medusa.farm.claude.CldRunStatus
+import software.medusa.farm.claude.CldSessionEvent
 import software.medusa.farm.claude.CldToolUse
 import software.medusa.farm.shared.AgentRunCost
+import software.medusa.farm.shared.AgentRunEntry
 import software.medusa.farm.shared.AgentRunLog
 import software.medusa.farm.shared.AgentRunOutcome
 import software.medusa.farm.shared.AgentStep
 import software.medusa.farm.shared.AgentToolAction
+import software.medusa.farm.shared.AgentWarning
 
 /**
- * Maps a claude session — the steps the assistant took and how it ended — into the backend-neutral
+ * Maps a claude session — what happened while it ran and how it ended — into the backend-neutral
  * [AgentRunLog] and run metadata. This is where Claude's tool vocabulary becomes Farm's semantic
  * actions; a future backend gets its own mapper into the same model.
  */
 object AgentRunMapper {
-  fun map(steps: List<CldAssistantStep>, result: CldRunResult): MappedAgentRun {
-    val log =
-        AgentRunLog(
-            steps.map { AgentStep(text = it.text, toolActions = it.toolUses.map(::action)) }
-        )
+  fun map(events: List<CldSessionEvent>, result: CldRunResult): MappedAgentRun {
+    val log = AgentRunLog(events.map(::entry))
     val outcome =
         when (result.status) {
           CldRunStatus.Success -> AgentRunOutcome.SUCCEEDED
@@ -28,6 +27,17 @@ object AgentRunMapper {
         }
     return MappedAgentRun(log = log, outcome = outcome, cost = cost(result))
   }
+
+  private fun entry(event: CldSessionEvent): AgentRunEntry =
+      when (event) {
+        is CldSessionEvent.Step ->
+            AgentStep(
+                text = event.assistantStep.text,
+                toolActions = event.assistantStep.toolUses.map(::action),
+            )
+
+        is CldSessionEvent.Warning -> AgentWarning(text = event.text)
+      }
 
   private fun cost(result: CldRunResult): AgentRunCost =
       AgentRunCost(

@@ -10,6 +10,7 @@ import software.medusa.commons.openai_client.OaiResult
 import software.medusa.commons.openai_client.messages.OaiSystemMessage
 import software.medusa.commons.openai_client.messages.OaiUserMessage
 import software.medusa.farm.shared.AgentRunLog
+import software.medusa.farm.shared.AgentStep
 import software.medusa.farm.shared.AgentToolAction
 
 internal class ProperRunSummarizer(private val client: OaiConfiguredClient) : RunSummarizer {
@@ -64,9 +65,13 @@ internal class ProperRunSummarizer(private val client: OaiConfiguredClient) : Ru
     throw RunSummaryGenerationError
   }
 
-  /** Renders the action log to the plain text the model reads (the one place a String is apt). */
+  /**
+   * Renders the action log to the plain text the model reads (the one place a String is apt). Only
+   * the steps: the summary orients the next run on what the agent did, and what its backend warned
+   * about along the way is not that.
+   */
   private fun render(log: AgentRunLog): String =
-      log.steps.joinToString(separator = "\n\n") { step ->
+      log.entries.filterIsInstance<AgentStep>().joinToString(separator = "\n\n") { step ->
         val lines = buildList {
           if (step.text.isNotBlank()) add(step.text.trim())
           step.toolActions.forEach { add("- ${describe(it)}") }
