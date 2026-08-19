@@ -133,6 +133,21 @@ jobs:
 
       # Made for this run and dropped after it, so the tree the agent starts from is the same every
       # time. A shared repository would move forward with every merge and never be the same twice.
+      # A run whose cleanup never happened leaves a repository behind, and that repository still
+      # has a labelled issue in it — which the next run's farm would sweep up and work. Runs are
+      # serialised, so anything still here belongs to nobody.
+      - name: Drop anything a previous run left behind
+        if: steps.changes.outputs.relevant == 'true'
+        env:
+          GH_TOKEN: ${{ steps.fixture-manager.outputs.token }}
+        run: |
+          gh repo list "${{ env.FARM_EPHEMERAL_ORG }}" --limit 100 --json name --jq '.[].name' \
+            | grep '^farm-ephemeral-' \
+            | while read -r leftover; do
+                echo "Dropping $leftover, left by an earlier run."
+                gh repo delete "${{ env.FARM_EPHEMERAL_ORG }}/$leftover" --yes
+              done
+
       - name: Make this run's repository
         if: steps.changes.outputs.relevant == 'true'
         id: fixture
