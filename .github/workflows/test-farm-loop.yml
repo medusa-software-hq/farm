@@ -1,0 +1,128 @@
+name: Test the farm loop
+
+# The only test that can say the loop works rather than that its pieces do: one issue, filed,
+# worked, reviewed, worked again, merged, against a real GitHub org and the real agent.
+#
+# Dispatched by hand rather than run on every pull request. It costs a real agent run and takes
+# minutes, and until it has passed once there is nothing to be gained from making it a gate.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: 21
+  NO_COLOR: 1
+
+  # The claude CLI the agent runs as, pinned as it is for the connector's own suite.
+  CLAUDE_CLI_VERSION: 2.1.52
+
+  FARM_EPHEMERAL_ORG: medusa-software-test-hq
+  FARM_FIXTURE_TEMPLATE: farm-fixture-template
+
+  # App ids, not secrets — only the private keys are. The farm App does what Farm does; the fixture
+  # manager makes and drops the run's repository, which is the harness's job and not Farm's.
+  FARM_EPHEMERAL_APP_ID: "4654036"
+  FIXTURE_MANAGER_APP_ID: "4654133"
+
+jobs:
+  loop-test:
+    name: Loop test
+    runs-on: ubuntu-latest
+
+    services:
+      # The farm's own database for this run. A container rather than a Neon branch: the semantics
+      # are the same Postgres, and this needs no API key and leaves nothing behind when a run is
+      # cancelled. The Neon-specific parts — pooling, cold starts, the connection string's shape —
+      # are exercised by the deployment, which is a better place for them than a loop test.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: farm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install the claude CLI
+        run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CLI_VERSION }}
+
+      # Temporal runs beside the farm rather than in the cloud, so a run needs no Temporal
+      # credential and cannot collide with another run.
+      - name: Start Temporal
+        run: |
+          curl -sSf https://temporal.download/cli.sh | sh
+          echo "$HOME/.temporalio/bin" >> "$GITHUB_PATH"
+          "$HOME/.temporalio/bin/temporal" server start-dev --headless --log-level error &
+          for _ in $(seq 1 30); do
+            if "$HOME/.temporalio/bin/temporal" operator cluster health >/dev/null 2>&1; then
+              echo "Temporal is up."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Temporal did not come up." >&2
+          exit 1
+
+      # Two tokens because there are two Apps, and the split is the point: a leaked farm key cannot
+      # delete a repository.
+      - name: Mint the fixture manager's token
+        id: fixture-manager
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ env.FIXTURE_MANAGER_APP_ID }}
+          private-key: ${{ secrets.FIXTURE_MANAGER_GITHUB_APP_PEM }}
+          owner: ${{ env.FARM_EPHEMERAL_ORG }}
+
+      # Made for this run and dropped after it, so the tree the agent starts from is the same every
+      # time. A shared repository would move forward with every merge and never be the same twice.
+      - name: Make this run's repository
+        id: fixture
+        env:
+          GH_TOKEN: ${{ steps.fixture-manager.outputs.token }}
+        run: |
+          name="farm-ephemeral-${{ github.run_id }}"
+          gh repo create "${{ env.FARM_EPHEMERAL_ORG }}/$name" \
+            --template "${{ env.FARM_EPHEMERAL_ORG }}/${{ env.FARM_FIXTURE_TEMPLATE }}" \
+            --private
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Drive one issue round the loop
+        env:
+          DATABASE_URL: jdbc:postgresql://localhost:5432/postgres?user=postgres&password=farm
+          GITHUB_APP_CLIENT_ID: ${{ env.FARM_EPHEMERAL_APP_ID }}
+          GITHUB_APP_PEM: ${{ secrets.FARM_EPHEMERAL_GITHUB_APP_PEM }}
+          FARM_EPHEMERAL_ORG: ${{ env.FARM_EPHEMERAL_ORG }}
+          FARM_EPHEMERAL_REPO: ${{ steps.fixture.outputs.name }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        # --no-daemon so this invocation's environment reaches the forked test JVM: a reused daemon
+        # keeps its start-up environment and would drop it.
+        run: ./gradlew --no-daemon :backend:ephemeral:integrationTest
+
+      # Whatever happened above, including the run being cancelled. The name comes from the run id
+      # rather than from a step's output, so this works even if the repository step is what failed.
+      - name: Drop this run's repository
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.fixture-manager.outputs.token }}
+        run: |
+          name="farm-ephemeral-${{ github.run_id }}"
+          gh repo delete "${{ env.FARM_EPHEMERAL_ORG }}/$name" --yes || \
+            echo "Nothing to drop: $name was never made."
