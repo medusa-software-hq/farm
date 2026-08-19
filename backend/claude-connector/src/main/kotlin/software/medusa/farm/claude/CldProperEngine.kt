@@ -36,7 +36,7 @@ class CldProperEngine(
   private interface CldOutputScope {
     val systemInitMessage: CldSystemInitMessage
 
-    val assistantStepChannel: ReceiveChannel<CldAssistantStep>
+    val eventChannel: ReceiveChannel<CldSessionEvent>
 
     suspend fun awaitResultMessage(): CldProgressMessage.Result
   }
@@ -95,8 +95,8 @@ class CldProperEngine(
                   override val info: CldSessionInfo
                     get() = systemInitMessage.sessionInfo
 
-                  override val assistantStepChannel: ReceiveChannel<CldAssistantStep>
-                    get() = this@parseClaudeOutput.assistantStepChannel
+                  override val eventChannel: ReceiveChannel<CldSessionEvent>
+                    get() = this@parseClaudeOutput.eventChannel
 
                   override suspend fun awaitResult(): CldRunResult = runResultDeferred.await()
                 }
@@ -195,87 +195,104 @@ class CldProperEngine(
     // reader here would be joined on the way out, waiting for a process that is waiting for us.
     val readerScope = CoroutineScope(currentCoroutineContext() + Job())
     val standardOutputLineChannel = standardOutput.consumeLines().produceIn(readerScope)
-    val firstLine =
-        withTimeoutOrNull(GREETING_GRACE_PERIOD) {
-          standardOutputLineChannel.receiveCatching().getOrNull()
-        }
-
-    val systemInitMessage =
-        firstLine?.let { CldSystemInitMessage.parse(jsonString = it) }
-            ?: run {
-              anomalyReporter.reportMissingInitMessage(firstLine = firstLine)
-
-              throw CldAbnormalStartError
-            }
+    val standardErrorLineChannel = standardError.consumeLines().produceIn(readerScope)
 
     // Unbounded, so that a block which only ever waits for the result cannot leave the engine
     // talking into a channel nobody is reading and stall it mid-session.
-    val assistantStepChannel = Channel<CldAssistantStep>(Channel.UNLIMITED)
-    val resultMessageDeferred = CompletableDeferred<CldProgressMessage.Result>()
+    val eventChannel = Channel<CldSessionEvent>(Channel.UNLIMITED)
 
-    val outputPump = launch {
-      try {
-        for (progressLine in standardOutputLineChannel) {
-          val progressMessage =
-              CldProgressMessage.parse(jsonString = progressLine)
-                  ?: run {
-                    anomalyReporter.reportUnexpectedProgressLine(
-                        progressLine = progressLine,
-                    )
-
-                    throw CldAbnormalRunError
-                  }
-
-          when (progressMessage) {
-            is CldProgressMessage.AssistantStep -> {
-              assistantStepChannel.send(progressMessage.assistantStep)
-            }
-
-            is CldProgressMessage.Other -> Unit
-
-            is CldProgressMessage.Result -> {
-              resultMessageDeferred.complete(progressMessage)
-
-              break
-            }
-          }
-        }
-
-        assistantStepChannel.close()
-
-        withTimeoutOrNull(DRAIN_GRACE_PERIOD) {
-          for (outputLine in standardOutputLineChannel) {
-            anomalyReporter.reportOutputAfterResult(outputLine = outputLine)
-
-            throw CldAbnormalExitError
-          }
-        }
-            ?: run {
-              anomalyReporter.reportHangOutput()
-
-              throw CldAbnormalExitError
-            }
-      } finally {
-        assistantStepChannel.close()
+    // Started before a first word is waited for: taking the engine's warnings makes draining them
+    // ours, and one with more to warn about than it can hold would otherwise never get to speak.
+    val warningPump = launch {
+      for (warningLine in standardErrorLineChannel) {
+        eventChannel.trySend(CldSessionEvent.Warning(text = warningLine))
       }
     }
 
-    val scope =
-        object : CldOutputScope {
-          override val systemInitMessage = systemInitMessage
-
-          override val assistantStepChannel = assistantStepChannel
-
-          override suspend fun awaitResultMessage(): CldProgressMessage.Result =
-              resultMessageDeferred.await()
-        }
-
     try {
-      scope.block()
+      val firstLine =
+          withTimeoutOrNull(GREETING_GRACE_PERIOD) {
+            standardOutputLineChannel.receiveCatching().getOrNull()
+          }
+
+      val systemInitMessage =
+          firstLine?.let { CldSystemInitMessage.parse(jsonString = it) }
+              ?: run {
+                anomalyReporter.reportMissingInitMessage(firstLine = firstLine)
+
+                throw CldAbnormalStartError
+              }
+
+      val resultMessageDeferred = CompletableDeferred<CldProgressMessage.Result>()
+
+      val outputPump = launch {
+        try {
+          for (progressLine in standardOutputLineChannel) {
+            val progressMessage =
+                CldProgressMessage.parse(jsonString = progressLine)
+                    ?: run {
+                      anomalyReporter.reportUnexpectedProgressLine(
+                          progressLine = progressLine,
+                      )
+
+                      throw CldAbnormalRunError
+                    }
+
+            when (progressMessage) {
+              is CldProgressMessage.AssistantStep -> {
+                eventChannel.send(
+                    CldSessionEvent.Step(assistantStep = progressMessage.assistantStep)
+                )
+              }
+
+              is CldProgressMessage.Other -> Unit
+
+              is CldProgressMessage.Result -> {
+                resultMessageDeferred.complete(progressMessage)
+
+                break
+              }
+            }
+          }
+
+          eventChannel.close()
+
+          withTimeoutOrNull(DRAIN_GRACE_PERIOD) {
+            for (outputLine in standardOutputLineChannel) {
+              anomalyReporter.reportOutputAfterResult(outputLine = outputLine)
+
+              throw CldAbnormalExitError
+            }
+          }
+              ?: run {
+                anomalyReporter.reportHangOutput()
+
+                throw CldAbnormalExitError
+              }
+        } finally {
+          eventChannel.close()
+        }
+      }
+
+      val scope =
+          object : CldOutputScope {
+            override val systemInitMessage = systemInitMessage
+
+            override val eventChannel = eventChannel
+
+            override suspend fun awaitResultMessage(): CldProgressMessage.Result =
+                resultMessageDeferred.await()
+          }
+
+      try {
+        scope.block()
+      } finally {
+        outputPump.cancel()
+      }
     } finally {
-      // Once the block is finished there is nothing left to read the engine for. The reader is
-      // cancelled but never awaited; ending the engine is what actually releases it.
-      outputPump.cancel()
+      // Once the block is finished there is nothing left to read the engine for. The readers are
+      // cancelled but never awaited; ending the engine is what actually releases them.
+      warningPump.cancel()
       readerScope.cancel()
     }
   }

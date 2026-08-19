@@ -23,7 +23,7 @@ import software.medusa.farm.shared.AgentToolAction
 class ProperRunSummarizerTest {
   private val log =
       AgentRunLog(
-          steps =
+          entries =
               listOf(
                   AgentStep(
                       text = "fixing the base case",

@@ -15,7 +15,7 @@ class RunSummarizerIntegrationTest {
 
     val log =
         AgentRunLog(
-            steps =
+            entries =
                 listOf(
                     AgentStep(
                         text = "I'll fix the off-by-one in the fibonacci base case.",

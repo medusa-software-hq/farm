@@ -111,6 +111,34 @@ class CldProperEngineIntegrationTest {
   }
 
   @Test
+  fun `what a session warns about arrives among its steps`(): Unit = runBlocking {
+    val events = engine(WARNING_BETWEEN_STEPS).runSession(config(), PROMPT) { collectEvents() }
+
+    assertEquals(
+        "something is deprecated",
+        events.filterIsInstance<CldSessionEvent.Warning>().single().text,
+    )
+
+    // Interlaced, not appended. Where exactly a warning lands is not promised — it travels its own
+    // pipe — so what is asserted is that it arrived while there was still work to come, rather than
+    // being held back until the session had finished.
+    assertTrue(
+        events.indexOfFirst { it is CldSessionEvent.Warning } <
+            events.indexOfLast { it is CldSessionEvent.Step },
+        "the warning was held back until after the last step: $events",
+    )
+  }
+
+  @Test
+  fun `a session warning more than it can hold still runs to its result`(): Unit = runBlocking {
+    // Nothing reads the events here. Taking the warnings makes draining them ours, and a session
+    // this loud would block writing them long before it reached its result.
+    val result = engine(VERY_LOUD).runSession(config(), PROMPT) { awaitResult() }
+
+    assertEquals(CldRunStatus.Success, result.status)
+  }
+
+  @Test
   fun `sub-cent spending is kept, not rounded away`(): Unit = runBlocking {
     val result = engine(TINY_COST).runSession(config(), PROMPT) { awaitResult() }
 
@@ -264,11 +292,14 @@ class CldProperEngineIntegrationTest {
     assertTrue(argv.containsInOrder("--append-system-prompt", "be autonomous"))
   }
 
-  private suspend fun CldSessionScope.collectSteps(): List<CldAssistantStep> {
-    val steps = mutableListOf<CldAssistantStep>()
-    for (step in assistantStepChannel) steps += step
-    return steps
+  private suspend fun CldSessionScope.collectEvents(): List<CldSessionEvent> {
+    val events = mutableListOf<CldSessionEvent>()
+    for (event in eventChannel) events += event
+    return events
   }
+
+  private suspend fun CldSessionScope.collectSteps(): List<CldAssistantStep> =
+      collectEvents().filterIsInstance<CldSessionEvent.Step>().map { it.assistantStep }
 
   private fun engine(
       script: String,
@@ -412,6 +443,23 @@ class CldProperEngineIntegrationTest {
 
     // Starts, says nothing, ends.
     val SILENT = "#!/usr/bin/env bash\n"
+
+    // Warns midway through its work.
+    val WARNING_BETWEEN_STEPS =
+        "#!/usr/bin/env bash\n" +
+            "echo '$GREETING'\n" +
+            "echo '$ASSISTANT_STEP'\n" +
+            "echo 'something is deprecated' >&2\n" +
+            "sleep 0.5\n" +
+            "echo '$ASSISTANT_STEP'\n" +
+            "echo '$SUCCESS_RESULT'\n"
+
+    // Warns far past what a pipe holds before it gets anywhere near its result.
+    val VERY_LOUD =
+        "#!/usr/bin/env bash\n" +
+            "echo '$GREETING'\n" +
+            "yes 'a warning nobody is reading' | head -n 20000 >&2\n" +
+            "echo '$SUCCESS_RESULT'\n"
 
     // Reads its input to the end before it speaks, as the real thing does.
     val WAITS_FOR_INPUT_END =

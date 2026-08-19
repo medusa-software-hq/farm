@@ -2,16 +2,18 @@ package software.medusa.farm.worker
 
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
-import software.medusa.farm.claude.CldAssistantStep
+import org.slf4j.LoggerFactory
 import software.medusa.farm.claude.CldCost
 import software.medusa.farm.claude.CldEngine
 import software.medusa.farm.claude.CldPermissionMode
 import software.medusa.farm.claude.CldRunResult
 import software.medusa.farm.claude.CldRunStatus
 import software.medusa.farm.claude.CldSessionConfig
+import software.medusa.farm.claude.CldSessionEvent
 import software.medusa.farm.claude.CldSettingSource
 import software.medusa.farm.claude.CldToolRule
 import software.medusa.farm.gitcli.GitCli
@@ -40,6 +42,8 @@ class PublishActivitiesImpl(
     private val commitAuthor: GitCliAuthor,
     private val signingKey: String?,
 ) : PublishActivities {
+  private val logger = LoggerFactory.getLogger(PublishActivitiesImpl::class.java)
+
   override fun attemptIssue(
       sessionId: String,
       installationId: Long,
@@ -61,19 +65,26 @@ class PublishActivitiesImpl(
       gitCli.clone(cloneUrl(repo), clone, token)
       val baseBranch = gitCli.currentBranch(clone)
 
-      val (agentSteps, result) =
+      val (agentEvents, result) =
           engine.runSession(
               config = sessionConfig(workspacePath = clone, configDirPath = configDir),
               prompt = taskPrompt(title, body),
           ) {
-            assistantStepChannel.receiveAsFlow().toList() to awaitResult()
+            eventChannel
+                .receiveAsFlow()
+                .onEach { event ->
+                  if (event is CldSessionEvent.Warning) {
+                    logger.warn("The agent session warned: {}", event.text)
+                  }
+                }
+                .toList() to awaitResult()
           }
       check(result.status is CldRunStatus.Success) { "agent run ended in ${result.status}" }
 
       // Record what the agent did (and a cheap summary of it) before publishing — a no-change run
       // is
       // still a run worth showing. ordinal 0 is the initial attempt; fixups will be 1+.
-      recordRun(sessionId, agentSteps, result)
+      recordRun(sessionId, agentEvents, result)
 
       gitCli.stageAll(clone)
       if (!gitCli.hasStagedChanges(clone)) {
@@ -107,13 +118,13 @@ class PublishActivitiesImpl(
     }
   }
 
-  /** Maps the run's steps and result to the action log, summarizes it, and stores the run. */
+  /** Maps what happened in the run to the action log, summarizes it, and stores the run. */
   private suspend fun recordRun(
       sessionId: String,
-      steps: List<CldAssistantStep>,
+      events: List<CldSessionEvent>,
       result: CldRunResult,
   ) {
-    val mapped = AgentRunMapper.map(steps, result)
+    val mapped = AgentRunMapper.map(events, result)
     // The summary is a required part of the next run's context, so the summarizer is an
     // assumed-available dependency, like the agent itself: it raises when it cannot summarize, the
     // activity fails, and Temporal retries — failing the session if it stays down. That happens

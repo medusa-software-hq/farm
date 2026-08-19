@@ -7,8 +7,8 @@ interface CldSessionScope {
   /** Basic info about this session. */
   val info: CldSessionInfo
 
-  /** Steps taken by the assistant in this session. */
-  val assistantStepChannel: ReceiveChannel<CldAssistantStep>
+  /** What this session produces as it runs, in the order it reached us. */
+  val eventChannel: ReceiveChannel<CldSessionEvent>
 
   /**
    * Waits until the session ends.

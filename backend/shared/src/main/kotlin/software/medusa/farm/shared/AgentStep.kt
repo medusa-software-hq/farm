@@ -10,4 +10,4 @@ import kotlinx.serialization.Serializable
 data class AgentStep(
     val text: String,
     val toolActions: List<AgentToolAction>,
-)
+) : AgentRunEntry
