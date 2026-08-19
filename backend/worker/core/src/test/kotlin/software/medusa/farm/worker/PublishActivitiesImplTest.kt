@@ -13,13 +13,13 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
-import software.medusa.farm.claude.CldAssistantStep
 import software.medusa.farm.claude.CldCost
 import software.medusa.farm.claude.CldEngine
 import software.medusa.farm.claude.CldModelId
 import software.medusa.farm.claude.CldRunResult
 import software.medusa.farm.claude.CldRunStatus
 import software.medusa.farm.claude.CldSessionConfig
+import software.medusa.farm.claude.CldSessionEvent
 import software.medusa.farm.claude.CldSessionId
 import software.medusa.farm.claude.CldSessionInfo
 import software.medusa.farm.claude.CldSessionScope
@@ -67,8 +67,8 @@ class PublishActivitiesImplTest {
                     availableToolSpecifiers = emptySet(),
                 )
 
-            override val assistantStepChannel =
-                Channel<CldAssistantStep>(Channel.UNLIMITED).apply { close() }
+            override val eventChannel =
+                Channel<CldSessionEvent>(Channel.UNLIMITED).apply { close() }
 
             override suspend fun awaitResult(): CldRunResult =
                 CldRunResult(
