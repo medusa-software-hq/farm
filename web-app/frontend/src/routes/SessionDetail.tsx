@@ -110,7 +110,7 @@ function Detail({ session, runs }: { session: Session; runs: Run[] }) {
         </Text>
       </div>
 
-      <Grid gutter="xl">
+      <Grid gap="xl">
         <Grid.Col span={{ base: 12, sm: 8 }}>
           <Timeline active={running ? 0 : 1} bulletSize={26} lineWidth={2} color="fern">
             <Timeline.Item bullet={<IconSprout size={13} />} title="Session started" color="fern">

@@ -51,7 +51,10 @@ tasks:
     desc: Type check the package
     deps: [install, proto]
     cmds:
-      - npx tsc --noEmit
+      # Each project by name. The root tsconfig only holds references, and `tsc` against it checks
+      # no files at all rather than following them — it passes without having looked at anything.
+      - npx tsc -p tsconfig.app.json
+      - npx tsc -p tsconfig.node.json
 
   test:
     desc: Run unit tests
