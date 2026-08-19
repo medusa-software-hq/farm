@@ -49,12 +49,14 @@ class FarmLoopIntegrationTest {
         // carrying its label — which a repository made from a template does not have.
         api.linkOrg(LinkOrgRequest.newBuilder().setOrgLogin(config.orgLogin).build())
         fixture.ensureLabel(FARM_READY_LABEL)
+        // The fixture's check spans two files, so this asks for a coordinated edit rather than a
+        // one-line one: getting half of it right fails `verifyGreeting` instead of passing.
         val issueNumber =
             fixture.createIssue(
-                title = "Add a farewell",
+                title = "Change the greeting to Howdy",
                 body =
-                    "Add a `farewell` method beside the greeting, returning a goodbye message, " +
-                        "and a test for it.",
+                    "The greeting should be `Howdy` rather than `Hello`. Make sure the project's " +
+                        "own check still passes afterwards.",
                 label = FARM_READY_LABEL,
             )
 
@@ -87,7 +89,7 @@ class FarmLoopIntegrationTest {
         val touched = fixture.changedPaths(pullRequestNumber).first()
         fixture.requestChanges(
             pullRequestNumber = pullRequestNumber,
-            body = "Nearly. The farewell needs to take a name, like the greeting does.",
+            body = "Let's go with `Howdy there` instead — same again, keep the check passing.",
             path = touched,
             comment = "This is the file I mean.",
         )
