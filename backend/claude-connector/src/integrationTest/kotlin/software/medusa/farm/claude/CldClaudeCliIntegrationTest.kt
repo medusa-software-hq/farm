@@ -66,7 +66,14 @@ class CldClaudeCliIntegrationTest {
                       "Reply with exactly the word PONG and nothing else. Do not use any tools.",
               ) {
                 val collected = mutableListOf<CldAssistantStep>()
-                for (step in assistantStepChannel) collected += step
+                for (event in eventChannel) {
+                  // The real CLI warns about things this test has no business asserting on; what
+                  // matters is that they arrive as warnings and not as broken protocol.
+                  when (event) {
+                    is CldSessionEvent.Step -> collected += event.assistantStep
+                    is CldSessionEvent.Warning -> System.err.println("[claude] ${event.text}")
+                  }
+                }
                 collected to awaitResult()
               }
             }

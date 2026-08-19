@@ -2,9 +2,13 @@ package software.medusa.farm.worker
 
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import org.slf4j.LoggerFactory
 import software.medusa.farm.claude.CldAssistantStep
 import software.medusa.farm.claude.CldCost
 import software.medusa.farm.claude.CldEngine
@@ -12,6 +16,7 @@ import software.medusa.farm.claude.CldPermissionMode
 import software.medusa.farm.claude.CldRunResult
 import software.medusa.farm.claude.CldRunStatus
 import software.medusa.farm.claude.CldSessionConfig
+import software.medusa.farm.claude.CldSessionEvent
 import software.medusa.farm.claude.CldSettingSource
 import software.medusa.farm.claude.CldToolRule
 import software.medusa.farm.gitcli.GitCli
@@ -40,6 +45,8 @@ class PublishActivitiesImpl(
     private val commitAuthor: GitCliAuthor,
     private val signingKey: String?,
 ) : PublishActivities {
+  private val logger = LoggerFactory.getLogger(PublishActivitiesImpl::class.java)
+
   override fun attemptIssue(
       sessionId: String,
       installationId: Long,
@@ -66,7 +73,17 @@ class PublishActivitiesImpl(
               config = sessionConfig(workspacePath = clone, configDirPath = configDir),
               prompt = taskPrompt(title, body),
           ) {
-            assistantStepChannel.receiveAsFlow().toList() to awaitResult()
+            // Warnings are logged where they happen; the steps are what the run is recorded from.
+            eventChannel
+                .receiveAsFlow()
+                .onEach { event ->
+                  if (event is CldSessionEvent.Warning) {
+                    logger.warn("The agent session warned: {}", event.text)
+                  }
+                }
+                .filterIsInstance<CldSessionEvent.Step>()
+                .map { it.assistantStep }
+                .toList() to awaitResult()
           }
       check(result.status is CldRunStatus.Success) { "agent run ended in ${result.status}" }
 
