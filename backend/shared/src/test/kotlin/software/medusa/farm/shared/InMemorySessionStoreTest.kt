@@ -10,17 +10,24 @@ class InMemorySessionStoreTest {
   private val store = InMemorySessionStore(Clock.systemUTC())
 
   @Test
-  fun `a run is running until it is finished`(): Unit = runBlocking {
+  fun `a try is running until it is finished`(): Unit = runBlocking {
     openSession()
-    store.startRun("s", ordinal = 0)
-    store.appendRunEntry("s", ordinal = 0, position = 0, entry = step("first"))
+    store.startRunAttempt("s", ordinal = 0, attempt = 1)
+    store.appendRunEntry("s", ordinal = 0, attempt = 1, position = 0, entry = step("first"))
 
-    val running = assertIs<SessionRun.Running>(store.getRuns("s").single())
+    val running = assertIs<SessionRunAttempt.Running>(soleAttempt())
     assertEquals(listOf<AgentRunEntry>(step("first")), running.log.entries)
 
-    store.finishRun("s", ordinal = 0, AgentRunOutcome.SUCCEEDED, cost = null, summary = "done")
+    store.finishRunAttempt(
+        "s",
+        ordinal = 0,
+        attempt = 1,
+        outcome = AgentRunOutcome.SUCCEEDED,
+        cost = null,
+        summary = "done",
+    )
 
-    val finished = assertIs<SessionRun.Finished>(store.getRuns("s").single())
+    val finished = assertIs<SessionRunAttempt.Finished>(soleAttempt())
     assertEquals(listOf<AgentRunEntry>(step("first")), finished.log.entries)
     assertEquals("done", finished.summary)
   }
@@ -28,30 +35,57 @@ class InMemorySessionStoreTest {
   @Test
   fun `writing an entry twice leaves the log as it was`(): Unit = runBlocking {
     openSession()
-    store.startRun("s", ordinal = 0)
-    store.appendRunEntry("s", ordinal = 0, position = 0, entry = step("first"))
-    store.appendRunEntry("s", ordinal = 0, position = 0, entry = step("first"))
+    store.startRunAttempt("s", ordinal = 0, attempt = 1)
+    store.appendRunEntry("s", ordinal = 0, attempt = 1, position = 0, entry = step("first"))
+    store.appendRunEntry("s", ordinal = 0, attempt = 1, position = 0, entry = step("first"))
 
-    assertEquals(listOf<AgentRunEntry>(step("first")), store.getRuns("s").single().log.entries)
+    assertEquals(listOf<AgentRunEntry>(step("first")), soleAttempt().log.entries)
   }
 
   @Test
-  fun `reopening a run discards what the attempt before it recorded`(): Unit = runBlocking {
-    openSession()
-    store.startRun("s", ordinal = 0)
-    store.appendRunEntry("s", ordinal = 0, position = 0, entry = step("from the first attempt"))
-    store.appendRunEntry("s", ordinal = 0, position = 1, entry = step("also the first"))
+  fun `a try that crashed is kept, and reads as abandoned once another follows it`(): Unit =
+      runBlocking {
+        openSession()
+        store.startRunAttempt("s", ordinal = 0, attempt = 1)
+        store.appendRunEntry("s", ordinal = 0, attempt = 1, position = 0, entry = step("got here"))
 
-    // A retried attempt starts over. A shorter second attempt must not leave the tail of a longer
-    // first one behind, reading as though it had done work it never did.
-    store.startRun("s", ordinal = 0)
-    store.appendRunEntry("s", ordinal = 0, position = 0, entry = step("from the second attempt"))
+        // Nothing closes try 1 — it crashed. The retry is a try of its own, and what the first one
+        // got to has to still be there to read.
+        store.startRunAttempt("s", ordinal = 0, attempt = 2)
+        store.appendRunEntry("s", ordinal = 0, attempt = 2, position = 0, entry = step("restarted"))
 
-    assertEquals(
-        listOf<AgentRunEntry>(step("from the second attempt")),
-        store.getRuns("s").single().log.entries,
-    )
-  }
+        val attempts = store.getRuns("s").single().attempts
+        assertEquals(listOf(1, 2), attempts.map { it.number })
+
+        val crashed = assertIs<SessionRunAttempt.Abandoned>(attempts.first())
+        assertEquals(listOf<AgentRunEntry>(step("got here")), crashed.log.entries)
+
+        val current = assertIs<SessionRunAttempt.Running>(attempts.last())
+        assertEquals(listOf<AgentRunEntry>(step("restarted")), current.log.entries)
+      }
+
+  @Test
+  fun `running the same try again starts it over without touching the ones before it`(): Unit =
+      runBlocking {
+        openSession()
+        store.startRunAttempt("s", ordinal = 0, attempt = 1)
+        store.appendRunEntry("s", ordinal = 0, attempt = 1, position = 0, entry = step("first try"))
+        store.startRunAttempt("s", ordinal = 0, attempt = 2)
+        store.appendRunEntry("s", ordinal = 0, attempt = 2, position = 0, entry = step("a"))
+        store.appendRunEntry("s", ordinal = 0, attempt = 2, position = 1, entry = step("b"))
+
+        // Try 2 runs again. It starts clean — a shorter run of it must not inherit the tail of the
+        // longer one — while try 1 is left exactly as it was.
+        store.startRunAttempt("s", ordinal = 0, attempt = 2)
+        store.appendRunEntry("s", ordinal = 0, attempt = 2, position = 0, entry = step("only this"))
+
+        val attempts = store.getRuns("s").single().attempts
+        assertEquals(listOf<AgentRunEntry>(step("first try")), attempts.first().log.entries)
+        assertEquals(listOf<AgentRunEntry>(step("only this")), attempts.last().log.entries)
+      }
+
+  private suspend fun soleAttempt(): SessionRunAttempt =
+      store.getRuns("s").single().attempts.single()
 
   private suspend fun openSession() =
       store.create(

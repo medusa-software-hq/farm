@@ -37,8 +37,9 @@ import software.medusa.farm.shared.AgentRunLog
 import software.medusa.farm.shared.AgentRunOutcome
 import software.medusa.farm.shared.AgentStep
 import software.medusa.farm.shared.AgentWarning
+import software.medusa.farm.shared.AttemptNumbering
 import software.medusa.farm.shared.InMemorySessionStore
-import software.medusa.farm.shared.SessionRun
+import software.medusa.farm.shared.SessionRunAttempt
 import software.medusa.farm.shared.SessionStore
 
 class PublishActivitiesImplTest {
@@ -142,35 +143,41 @@ class PublishActivitiesImplTest {
     }
   }
 
+  private class FixedAttemptNumbering(private val attempt: Int) : AttemptNumbering {
+    override fun currentAttempt(): Int = attempt
+  }
+
   /** Delegates to [delegate] while noting, in order, what it was asked to write. */
   private class RecordingSessionStore(private val delegate: SessionStore) :
       SessionStore by delegate {
     val writes = mutableListOf<String>()
 
-    override suspend fun startRun(id: String, ordinal: Int) {
-      writes += "start"
-      delegate.startRun(id, ordinal)
+    override suspend fun startRunAttempt(id: String, ordinal: Int, attempt: Int) {
+      writes += "start:$attempt"
+      delegate.startRunAttempt(id, ordinal, attempt)
     }
 
     override suspend fun appendRunEntry(
         id: String,
         ordinal: Int,
+        attempt: Int,
         position: Int,
         entry: AgentRunEntry,
     ) {
       writes += "append:$position"
-      delegate.appendRunEntry(id, ordinal, position, entry)
+      delegate.appendRunEntry(id, ordinal, attempt, position, entry)
     }
 
-    override suspend fun finishRun(
+    override suspend fun finishRunAttempt(
         id: String,
         ordinal: Int,
+        attempt: Int,
         outcome: AgentRunOutcome,
         cost: AgentRunCost?,
         summary: String,
     ) {
       writes += "finish"
-      delegate.finishRun(id, ordinal, outcome, cost, summary)
+      delegate.finishRunAttempt(id, ordinal, attempt, outcome, cost, summary)
     }
   }
 
@@ -180,6 +187,7 @@ class PublishActivitiesImplTest {
       server: FakeGitHubServer,
       summarizer: RunSummarizer = available,
       sessionStore: SessionStore = sessions,
+      attempt: Int = 1,
   ) =
       PublishActivitiesImpl(
           clientProvider =
@@ -192,6 +200,7 @@ class PublishActivitiesImplTest {
           engine = engine,
           gitCli = gitCli,
           sessionStore = sessionStore,
+          attemptNumbering = FixedAttemptNumbering(attempt),
           summarizer = summarizer,
           commitAuthor = author,
           signingKey = null,
@@ -258,19 +267,64 @@ class PublishActivitiesImplTest {
     // Opened, appended to entry by entry, and only then closed. A run written once at the end would
     // show the same log and none of this.
     assertEquals(
-        listOf("start", "append:0", "append:1", "append:2", "finish"),
+        listOf("start:1", "append:0", "append:1", "append:2", "finish"),
         store.writes,
     )
 
-    val run = assertIs<SessionRun.Finished>(runBlocking { sessions.getRuns("session-1") }.single())
+    val attempt =
+        assertIs<SessionRunAttempt.Finished>(
+            runBlocking { sessions.getRuns("session-1") }.single().attempts.single()
+        )
     assertEquals(
         listOf<AgentRunEntry>(
             AgentStep(text = "first", toolActions = emptyList()),
             AgentWarning(text = "something is deprecated"),
             AgentStep(text = "second", toolActions = emptyList()),
         ),
-        run.log.entries,
+        attempt.log.entries,
     )
+  }
+
+  @Test
+  fun `a retry is a try of its own, and the one it retried is still there to read`() {
+    val engine =
+        FakeEngine(
+            events =
+                listOf(
+                    CldSessionEvent.Step(
+                        CldAssistantStep(text = "got here", toolUses = emptyList())
+                    )
+                )
+        )
+
+    FakeGitHubServer(::handle).use { server ->
+      // The first try fails after the agent has run but before the run is closed, which is what a
+      // crashed attempt looks like: entries written, nothing to say about how it went.
+      assertFailsWith<RunSummaryGenerationError> {
+        activities(
+                FakeGitCli(hasChanges = false),
+                engine,
+                server,
+                UnreachableSummarizer,
+                attempt = 1,
+            )
+            .attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
+      }
+
+      activities(FakeGitCli(hasChanges = false), engine, server, attempt = 2)
+          .attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
+    }
+
+    val attempts = runBlocking { sessions.getRuns("session-1") }.single().attempts
+    assertEquals(listOf(1, 2), attempts.map { it.number })
+
+    val crashed = assertIs<SessionRunAttempt.Abandoned>(attempts.first())
+    assertEquals(
+        listOf<AgentRunEntry>(AgentStep(text = "got here", toolActions = emptyList())),
+        crashed.log.entries,
+        "the crashed try lost what it had already done",
+    )
+    assertIs<SessionRunAttempt.Finished>(attempts.last())
   }
 
   @Test

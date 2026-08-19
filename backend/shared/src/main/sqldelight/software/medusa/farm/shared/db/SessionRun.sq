@@ -1,58 +1,61 @@
 -- Mirror of the Flyway migrations for these tables; SQLDelight verifies the queries below against
 -- them at compile time, so the two must stay identical.
 --
--- One agent run within a session, recorded as it happens: session_run_entry holds the AgentRunEntry
--- rows that make up its log, and outcome/cost/summary stay absent until the run is over.
-CREATE TABLE session_run (
-  id          TEXT        NOT NULL PRIMARY KEY,
+-- Every try at an agent run, recorded as it happens: session_run_entry holds the AgentRunEntry rows
+-- making up a try's log, and outcome/cost/summary stay absent until that try closes — a try that
+-- crashed never fills them in, and is kept that way.
+CREATE TABLE session_run_attempt (
   session_id  TEXT        NOT NULL REFERENCES sessions(id),
   ordinal     INTEGER     NOT NULL,
+  attempt     INTEGER     NOT NULL,
   outcome     TEXT,
   cost        TEXT,
   summary     TEXT,
-  created_at  TIMESTAMPTZ NOT NULL,
-  UNIQUE (session_id, ordinal)
+  started_at  TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (session_id, ordinal, attempt)
 );
 
 CREATE TABLE session_run_entry (
   session_id  TEXT    NOT NULL,
   ordinal     INTEGER NOT NULL,
+  attempt     INTEGER NOT NULL,
   position    INTEGER NOT NULL,
   entry       TEXT    NOT NULL,
-  PRIMARY KEY (session_id, ordinal, position),
-  FOREIGN KEY (session_id, ordinal) REFERENCES session_run(session_id, ordinal) ON DELETE CASCADE
+  PRIMARY KEY (session_id, ordinal, attempt, position),
+  FOREIGN KEY (session_id, ordinal, attempt)
+    REFERENCES session_run_attempt(session_id, ordinal, attempt) ON DELETE CASCADE
 );
 
--- Opens a run. Idempotent on (session_id, ordinal), and clears what a previous attempt said about
--- how the run went: a retry replaces its predecessor rather than continuing it.
-startRun:
-INSERT INTO session_run (id, session_id, ordinal, outcome, cost, summary, created_at)
-VALUES (:id, :sessionId, :ordinal, NULL, NULL, NULL, now())
-ON CONFLICT (session_id, ordinal) DO UPDATE
-SET outcome = NULL, cost = NULL, summary = NULL, created_at = now();
+-- Opens one try. Idempotent on (session_id, ordinal, attempt): the same try running again starts
+-- over, while the tries before it are left alone.
+startRunAttempt:
+INSERT INTO session_run_attempt (session_id, ordinal, attempt, outcome, cost, summary, started_at)
+VALUES (:sessionId, :ordinal, :attempt, NULL, NULL, NULL, now())
+ON CONFLICT (session_id, ordinal, attempt) DO UPDATE
+SET outcome = NULL, cost = NULL, summary = NULL, started_at = now();
 
--- Discards a previous attempt's entries, so a reopened run does not keep a tail of them.
-deleteRunEntries:
-DELETE FROM session_run_entry WHERE session_id = :sessionId AND ordinal = :ordinal;
+deleteRunAttemptEntries:
+DELETE FROM session_run_entry
+WHERE session_id = :sessionId AND ordinal = :ordinal AND attempt = :attempt;
 
 appendRunEntry:
-INSERT INTO session_run_entry (session_id, ordinal, position, entry)
-VALUES (:sessionId, :ordinal, :position, :entry)
-ON CONFLICT (session_id, ordinal, position) DO UPDATE SET entry = excluded.entry;
+INSERT INTO session_run_entry (session_id, ordinal, attempt, position, entry)
+VALUES (:sessionId, :ordinal, :attempt, :position, :entry)
+ON CONFLICT (session_id, ordinal, attempt, position) DO UPDATE SET entry = excluded.entry;
 
-finishRun:
-UPDATE session_run
+finishRunAttempt:
+UPDATE session_run_attempt
 SET outcome = :outcome, cost = :cost, summary = :summary
-WHERE session_id = :sessionId AND ordinal = :ordinal;
+WHERE session_id = :sessionId AND ordinal = :ordinal AND attempt = :attempt;
 
-selectForSession:
-SELECT ordinal, outcome, cost, summary, created_at
-FROM session_run
+selectAttemptsForSession:
+SELECT ordinal, attempt, outcome, cost, summary, started_at
+FROM session_run_attempt
 WHERE session_id = :sessionId
-ORDER BY ordinal;
+ORDER BY ordinal, attempt;
 
 selectEntriesForSession:
-SELECT ordinal, position, entry
+SELECT ordinal, attempt, position, entry
 FROM session_run_entry
 WHERE session_id = :sessionId
-ORDER BY ordinal, position;
+ORDER BY ordinal, attempt, position;

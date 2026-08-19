@@ -24,6 +24,7 @@ import software.medusa.farm.github.GhAppApiClient
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhRepoFullName
+import software.medusa.farm.shared.AttemptNumbering
 import software.medusa.farm.shared.SessionStore
 
 /**
@@ -43,6 +44,7 @@ class PublishActivitiesImpl(
     private val summarizer: RunSummarizer,
     private val commitAuthor: GitCliAuthor,
     private val signingKey: String?,
+    private val attemptNumbering: AttemptNumbering,
 ) : PublishActivities {
   private val logger = LoggerFactory.getLogger(PublishActivitiesImpl::class.java)
 
@@ -68,8 +70,10 @@ class PublishActivitiesImpl(
       val baseBranch = gitCli.currentBranch(clone)
 
       // Opened before the session starts and appended to as it goes, so what the agent is doing
-      // can be read while it is still doing it rather than only once it is over.
-      sessionStore.startRun(sessionId, INITIAL_RUN_ORDINAL)
+      // can be read while it is still doing it rather than only once it is over. A retry opens a
+      // try of its own and leaves the one it is retrying to be read back.
+      val attempt = attemptNumbering.currentAttempt()
+      sessionStore.startRunAttempt(sessionId, INITIAL_RUN_ORDINAL, attempt)
 
       val (agentEvents, result) =
           engine.runSession(
@@ -88,6 +92,7 @@ class PublishActivitiesImpl(
                   sessionStore.appendRunEntry(
                       id = sessionId,
                       ordinal = INITIAL_RUN_ORDINAL,
+                      attempt = attempt,
                       position = position,
                       entry = AgentRunMapper.entry(event),
                   )
@@ -99,7 +104,7 @@ class PublishActivitiesImpl(
 
       // Closed with how it went, and with a summary of it — a no-change run is still a run worth
       // showing. ordinal 0 is the initial attempt; fixups will be 1+.
-      finishRun(sessionId, agentEvents, result)
+      finishRun(sessionId, attempt, agentEvents, result)
 
       gitCli.stageAll(clone)
       if (!gitCli.hasStagedChanges(clone)) {
@@ -136,6 +141,7 @@ class PublishActivitiesImpl(
   /** Summarizes what the run did and closes it with its outcome. */
   private suspend fun finishRun(
       sessionId: String,
+      attempt: Int,
       events: List<CldSessionEvent>,
       result: CldRunResult,
   ) {
@@ -145,9 +151,10 @@ class PublishActivitiesImpl(
     // activity fails, and Temporal retries — failing the session if it stays down. That happens
     // before the PR is opened, so a retry re-runs the attempt cleanly.
     val summary = summarizer.summarize(mapped.log)
-    sessionStore.finishRun(
+    sessionStore.finishRunAttempt(
         id = sessionId,
         ordinal = INITIAL_RUN_ORDINAL,
+        attempt = attempt,
         outcome = mapped.outcome,
         cost = mapped.cost,
         summary = summary.text,
