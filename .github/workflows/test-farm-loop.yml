@@ -3,11 +3,20 @@ name: Test the farm loop
 # The only test that can say the loop works rather than that its pieces do: one issue, filed,
 # worked, reviewed, worked again, merged, against a real GitHub org and the real agent.
 #
-# Dispatched by hand rather than run on every pull request. It costs a real agent run and takes
-# minutes, and until it has passed once there is nothing to be gained from making it a gate.
+# Runs on pull requests that could break it, so a change to the farm or to the harness is tried
+# before it is merged rather than after. Not a required context yet: it has never passed, and a
+# check nobody has seen succeed should not be able to block a merge.
+#
+# One at a time. Each run makes its own repository, but the App sees every repository in the org, so
+# two farms sweeping at once would each find the other's issue and work it.
 
 on:
+  pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: farm-loop-test
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -49,25 +58,54 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
 
     steps:
+      # fetch-depth: 0 so the change-detection step below can diff against the PR base.
       - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      # This costs a real agent run and takes minutes, and only breaks when the farm or the harness
+      # around it changes — never from an infra or docs pull request. The job always runs, so its
+      # result is always reported; the expensive steps run only on a relevant change.
+      - name: Detect relevant changes
+        id: changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -z "$BASE_REF" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags origin "$BASE_REF"
+          pattern='^(backend/|gradle/libs.versions.toml|.github/workflows/test-farm-loop.yml)'
+          if git diff --name-only "origin/$BASE_REF...HEAD" | grep -qE "$pattern"; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing here could break the loop — skipping." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - uses: actions/setup-java@v4
+        if: steps.changes.outputs.relevant == 'true'
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
 
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.changes.outputs.relevant == 'true'
 
       - uses: actions/setup-node@v4
+        if: steps.changes.outputs.relevant == 'true'
         with:
           node-version: 22
 
       - name: Install the claude CLI
+        if: steps.changes.outputs.relevant == 'true'
         run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CLI_VERSION }}
 
       # Temporal runs beside the farm rather than in the cloud, so a run needs no Temporal
       # credential and cannot collide with another run.
       - name: Start Temporal
+        if: steps.changes.outputs.relevant == 'true'
         run: |
           curl -sSf https://temporal.download/cli.sh | sh
           echo "$HOME/.temporalio/bin" >> "$GITHUB_PATH"
@@ -85,6 +123,7 @@ jobs:
       # Two tokens because there are two Apps, and the split is the point: a leaked farm key cannot
       # delete a repository.
       - name: Mint the fixture manager's token
+        if: steps.changes.outputs.relevant == 'true'
         id: fixture-manager
         uses: actions/create-github-app-token@v2
         with:
@@ -95,6 +134,7 @@ jobs:
       # Made for this run and dropped after it, so the tree the agent starts from is the same every
       # time. A shared repository would move forward with every merge and never be the same twice.
       - name: Make this run's repository
+        if: steps.changes.outputs.relevant == 'true'
         id: fixture
         env:
           GH_TOKEN: ${{ steps.fixture-manager.outputs.token }}
@@ -108,6 +148,7 @@ jobs:
       # Its own process, not the test's: the farm's logs stay its own, and the tests are pointed
       # at it the way they would be pointed at a deployed one.
       - name: Start the ephemeral farm
+        if: steps.changes.outputs.relevant == 'true'
         env:
           DATABASE_URL: jdbc:postgresql://localhost:5432/postgres?user=postgres&password=farm
           GITHUB_APP_CLIENT_ID: ${{ env.FARM_EPHEMERAL_APP_CLIENT_ID }}
@@ -130,6 +171,7 @@ jobs:
           exit 1
 
       - name: Drive one issue round the loop
+        if: steps.changes.outputs.relevant == 'true'
         env:
           FARM_API_HOST: localhost
           FARM_API_PORT: "8081"
@@ -144,13 +186,15 @@ jobs:
       # What the farm itself said, which is where a failure in the loop rather than in the test will
       # have left its trail.
       - name: The farm's log
-        if: always()
+        if: always() && steps.changes.outputs.relevant == 'true'
         run: tail -200 farm.log || true
 
       # Whatever happened above, including the run being cancelled. The name comes from the run id
       # rather than from a step's output, so this works even if the repository step is what failed.
+      # Runs however the job ended, cancellation included — which is when a repository is most
+      # likely to be left behind.
       - name: Drop this run's repository
-        if: always()
+        if: always() && steps.changes.outputs.relevant == 'true'
         env:
           GH_TOKEN: ${{ steps.fixture-manager.outputs.token }}
         run: |
