@@ -21,4 +21,13 @@ interface GhInstallationApiClient : GhResourcesApiClient {
 
   /** The current state of pull request [number]. */
   suspend fun getPullRequest(repo: GhRepoFullName, number: Int): GhPullRequest
+
+  /** The pull request's reviews, oldest first. */
+  suspend fun listReviews(repo: GhRepoFullName, number: Int): List<GhPullRequestReview>
+
+  /** Every comment left on a line of the pull request's diff, across all of its reviews. */
+  suspend fun listReviewComments(
+      repo: GhRepoFullName,
+      number: Int,
+  ): List<GhPullRequestReviewComment>
 }
