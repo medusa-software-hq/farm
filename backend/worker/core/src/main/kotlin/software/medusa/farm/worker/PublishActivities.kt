@@ -3,7 +3,16 @@ package software.medusa.farm.worker
 import io.temporal.activity.ActivityInterface
 import io.temporal.activity.ActivityMethod
 
-/** The real coding work: attempt an issue with the agent and, if it changed anything, open a PR. */
+/**
+ * The real coding work: attempt an issue with the agent and, if it changed anything, open a PR.
+ *
+ * Ids and names cross as primitives and are wrapped on arrival, rather than crossing as the value
+ * classes they belong in. That is not a stylistic preference: an `@JvmInline value class` parameter
+ * is erased to its underlying type in the JVM signature, so nothing would be preserved by passing
+ * one — and it mangles the method name with a hash of the signature, which is what Temporal names
+ * the activity type after. The name would then change whenever a parameter did, and a running
+ * workflow would stop finding the activity it was waiting on.
+ */
 @ActivityInterface
 interface PublishActivities {
   /**
