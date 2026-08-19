@@ -15,9 +15,7 @@ interface RunSummarizer {
    * Summarizes [log].
    *
    * @return The summary of the run [log] describes.
-   * @throws RunSummaryBackendUnreachableError If the backend could not be reached, or answered with
-   *   an error.
-   * @throws RunSummaryEmptyAnswerError If the answer carried no usable text.
+   * @throws RunSummaryGenerationError If no summary could be had, for any reason.
    */
   suspend fun summarize(log: AgentRunLog): RunSummary
 

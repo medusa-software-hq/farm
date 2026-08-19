@@ -37,8 +37,7 @@ class PublishActivitiesImplTest {
 
   /** A summarizer whose backend will not answer. */
   private object UnreachableSummarizer : RunSummarizer {
-    override suspend fun summarize(log: AgentRunLog): RunSummary =
-        throw RunSummaryBackendUnreachableError
+    override suspend fun summarize(log: AgentRunLog): RunSummary = throw RunSummaryGenerationError
   }
 
   private val available = FakeSummarizer(RunSummary("a summary"))
@@ -172,7 +171,7 @@ class PublishActivitiesImplTest {
       val activities =
           activities(FakeGitCli(hasChanges = true), FakeAgent(), server, UnreachableSummarizer)
 
-      assertFailsWith<RunSummaryBackendUnreachableError> {
+      assertFailsWith<RunSummaryGenerationError> {
         activities.attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
       }
 

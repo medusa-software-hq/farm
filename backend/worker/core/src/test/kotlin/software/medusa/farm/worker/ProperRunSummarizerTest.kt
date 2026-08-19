@@ -10,6 +10,7 @@ import software.medusa.commons.openai_client.OaiChatHistory
 import software.medusa.commons.openai_client.OaiConfiguredClient
 import software.medusa.commons.openai_client.OaiGeneratedContent
 import software.medusa.commons.openai_client.OaiInferenceParams
+import software.medusa.commons.openai_client.OaiInterruptionReason
 import software.medusa.commons.openai_client.OaiResponse
 import software.medusa.commons.openai_client.OaiResult
 import software.medusa.commons.openai_client.OaiTokenUsage
@@ -43,21 +44,28 @@ class ProperRunSummarizerTest {
 
   @Test
   fun `a backend that cannot be reached raises`() {
-    assertFailsWith<RunSummaryBackendUnreachableError> {
+    assertFailsWith<RunSummaryGenerationError> {
       runBlocking { ProperRunSummarizer(FailingClient).summarize(log) }
     }
   }
 
   @Test
   fun `a blank answer raises rather than passing for a summary`() {
-    assertFailsWith<RunSummaryEmptyAnswerError> {
+    assertFailsWith<RunSummaryGenerationError> {
       runBlocking { ProperRunSummarizer(reply("   ")).summarize(log) }
     }
   }
 
   @Test
+  fun `an interrupted answer raises rather than passing for a summary`() {
+    assertFailsWith<RunSummaryGenerationError> {
+      runBlocking { ProperRunSummarizer(InterruptedClient).summarize(log) }
+    }
+  }
+
+  @Test
   fun `an answer that could not be understood raises`() {
-    assertFailsWith<RunSummaryEmptyAnswerError> {
+    assertFailsWith<RunSummaryGenerationError> {
       runBlocking { ProperRunSummarizer(CorruptedClient).summarize(log) }
     }
   }
@@ -92,6 +100,24 @@ class ProperRunSummarizerTest {
           )
       )
     }
+  }
+
+  /** Answers with text, but cut off partway. */
+  private object InterruptedClient : OaiConfiguredClient {
+    override suspend fun completeChat(
+        chatHistory: OaiChatHistory,
+        inferenceParams: OaiInferenceParams,
+    ): OaiResult<OaiResponse> =
+        OaiResult.ResponseReceived(
+            OaiResponse.Complete(
+                OaiGeneratedContent.Partial(
+                    partialGeneratedText = "- fixed the base ca",
+                    reasoningText = null,
+                    interruptionReason = OaiInterruptionReason.LengthLimit,
+                ),
+                OaiTokenUsage(0, 0, 0),
+            )
+        )
   }
 
   private object CorruptedClient : OaiConfiguredClient {
