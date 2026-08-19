@@ -16,6 +16,7 @@ fun runTemporalWorker(config: WorkerConfig) {
           config.temporalAddress,
           config.temporalNamespace,
           config.temporalAuth,
+          config.taskQueue,
           store.repo,
           store.issue,
           store.session,

@@ -38,6 +38,8 @@ class TemporalWorkerHost(
     address: String,
     namespace: String,
     authConfig: WorkflowServiceAuthConfig,
+    // The queue this worker takes from and starts its own workflows onto.
+    taskQueue: String,
     repoStore: RepoStore,
     issueStore: IssueStore,
     sessionStore: SessionStore,
@@ -65,7 +67,7 @@ class TemporalWorkerHost(
                 .build(),
         )
     factory = WorkerFactory.newInstance(client)
-    val worker = factory.newWorker(FarmWorker.TASK_QUEUE)
+    val worker = factory.newWorker(taskQueue)
     worker.registerWorkflowImplementationTypes(
         RepoSyncWorkflowImpl::class.java,
         SyncAllReposWorkflowImpl::class.java,
@@ -73,7 +75,14 @@ class TemporalWorkerHost(
     )
     val spawner = SysProcessSpawner()
     worker.registerActivitiesImplementations(
-        RepoSyncActivitiesImpl(gitHubClientProvider, repoStore, issueStore, linkedOrgStore, client),
+        RepoSyncActivitiesImpl(
+            gitHubClientProvider,
+            repoStore,
+            issueStore,
+            linkedOrgStore,
+            client,
+            taskQueue,
+        ),
         ProcessIssueActivitiesImpl(gitHubClientProvider, sessionStore),
         PublishActivitiesImpl(
             gitHubClientProvider,
@@ -87,7 +96,12 @@ class TemporalWorkerHost(
             attemptNumbering = TemporalAttemptNumbering(),
         ),
     )
-    ensureRepoSyncSchedule(service, namespace)
+    // The sweep schedule is one per namespace and names the queue it fires onto, so only a worker
+    // on the default queue owns it. A worker with a queue of its own would otherwise create it
+    // pointing at itself, and the deployment's sweep would fire into a queue nobody is polling.
+    if (taskQueue == FarmWorker.DEFAULT_TASK_QUEUE) {
+      ensureRepoSyncSchedule(service, namespace, taskQueue)
+    }
   }
 
   /** Starts polling the task queue. Returns immediately; the factory runs in the background. */
@@ -97,7 +111,11 @@ class TemporalWorkerHost(
   // Cloud, independent of this worker: while the worker is down its runs queue and fire once the
   // worker is back. Idempotent — a restart re-attempts and no-ops when the schedule already exists,
   // which is safe even though the single operator-run worker means no real concurrency.
-  private fun ensureRepoSyncSchedule(service: WorkflowServiceStubs, namespace: String) {
+  private fun ensureRepoSyncSchedule(
+      service: WorkflowServiceStubs,
+      namespace: String,
+      taskQueue: String,
+  ) {
     val scheduleClient =
         ScheduleClient.newInstance(
             service,
@@ -111,7 +129,7 @@ class TemporalWorkerHost(
                     .setOptions(
                         WorkflowOptions.newBuilder()
                             .setWorkflowId(syncAllReposWorkflowId())
-                            .setTaskQueue(FarmWorker.TASK_QUEUE)
+                            .setTaskQueue(taskQueue)
                             .build()
                     )
                     .build()

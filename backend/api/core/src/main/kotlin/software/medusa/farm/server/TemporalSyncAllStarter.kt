@@ -7,7 +7,6 @@ import io.temporal.client.WorkflowOptions
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.SyncAllReposWorkflow
 import software.medusa.farm.shared.syncAllReposWorkflowId
 
@@ -25,6 +24,8 @@ import software.medusa.farm.shared.syncAllReposWorkflowId
  */
 class TemporalSyncAllStarter(
     private val clientDeferred: Deferred<WorkflowClient>,
+    // The queue the API starts workflows onto; it has to be the one the worker is taking from.
+    private val taskQueue: String,
 ) : SyncAllStarter {
   override suspend fun start() {
     val client = clientDeferred.await()
@@ -33,7 +34,7 @@ class TemporalSyncAllStarter(
           client.newWorkflowStub(
               SyncAllReposWorkflow::class.java,
               WorkflowOptions.newBuilder()
-                  .setTaskQueue(FarmWorker.TASK_QUEUE)
+                  .setTaskQueue(taskQueue)
                   .setWorkflowId(syncAllReposWorkflowId())
                   .setWorkflowIdReusePolicy(
                       WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE

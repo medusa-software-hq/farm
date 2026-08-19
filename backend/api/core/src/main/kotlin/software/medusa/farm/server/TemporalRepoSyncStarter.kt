@@ -10,7 +10,6 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
-import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.RepoSyncWorkflow
 import software.medusa.farm.shared.repoSyncWorkflowId
 
@@ -33,6 +32,8 @@ import software.medusa.farm.shared.repoSyncWorkflowId
  */
 class TemporalRepoSyncStarter(
     private val clientDeferred: Deferred<WorkflowClient>,
+    // The queue the API starts workflows onto; it has to be the one the worker is taking from.
+    private val taskQueue: String,
 ) : RepoSyncStarter {
   private val logger = LoggerFactory.getLogger(TemporalRepoSyncStarter::class.java)
 
@@ -44,7 +45,7 @@ class TemporalRepoSyncStarter(
             client.newWorkflowStub(
                 RepoSyncWorkflow::class.java,
                 WorkflowOptions.newBuilder()
-                    .setTaskQueue(FarmWorker.TASK_QUEUE)
+                    .setTaskQueue(taskQueue)
                     .setWorkflowId(repoSyncWorkflowId(installationId))
                     .setWorkflowIdReusePolicy(
                         WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE

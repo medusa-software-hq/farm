@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory
 import software.medusa.farm.github.GhProperAppApiClient
 import software.medusa.farm.shared.BakedConfig
 import software.medusa.farm.shared.FarmStore
+import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 private const val portEnvVarName = "PORT"
@@ -91,8 +92,10 @@ suspend fun main() {
         exitProcess(1)
       }
     }
-    val repoSyncStarter = TemporalRepoSyncStarter(temporalClient)
-    val syncAllStarter = TemporalSyncAllStarter(temporalClient)
+    // Whatever queue the worker is taking from; the two have to agree or nothing picks the work up.
+    val taskQueue = FarmWorker.taskQueueFrom()
+    val repoSyncStarter = TemporalRepoSyncStarter(temporalClient, taskQueue)
+    val syncAllStarter = TemporalSyncAllStarter(temporalClient, taskQueue)
 
     buildServer(
             originRegex = corsOriginRegex,
