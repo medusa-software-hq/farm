@@ -53,24 +53,51 @@ class InMemorySessionStore(private val clock: Clock) : SessionStore {
     prs[id] = SessionPullRequest(number = number, url = url, headSha = headSha, mergedAt = null)
   }
 
-  override suspend fun recordRun(
+  override suspend fun startRun(id: String, ordinal: Int) {
+    runs.getOrPut(id) { ConcurrentHashMap() }[ordinal] =
+        SessionRun.Running(
+            ordinal = ordinal,
+            log = AgentRunLog(entries = emptyList()),
+            createdAt = clock.instant(),
+        )
+  }
+
+  override suspend fun appendRunEntry(
       id: String,
       ordinal: Int,
-      log: AgentRunLog,
+      position: Int,
+      entry: AgentRunEntry,
+  ) {
+    val run = runs[id]?.get(ordinal) ?: error("run $ordinal of session $id was never started")
+    val entries = run.log.entries.toMutableList()
+    // Addressed by position rather than appended blindly, so writing the same one twice — which a
+    // retried write is entitled to do — leaves the log as it was.
+    if (position < entries.size) entries[position] = entry else entries.add(entry)
+    runs.getValue(id)[ordinal] =
+        SessionRun.Running(
+            ordinal = ordinal,
+            log = AgentRunLog(entries = entries),
+            createdAt = run.createdAt,
+        )
+  }
+
+  override suspend fun finishRun(
+      id: String,
+      ordinal: Int,
       outcome: AgentRunOutcome,
       cost: AgentRunCost?,
       summary: String,
   ) {
-    val run =
-        SessionRun(
+    val run = runs[id]?.get(ordinal) ?: error("run $ordinal of session $id was never started")
+    runs.getValue(id)[ordinal] =
+        SessionRun.Finished(
             ordinal = ordinal,
-            log = log,
+            log = run.log,
             outcome = outcome,
             cost = cost,
             summary = summary,
-            createdAt = clock.instant(),
+            createdAt = run.createdAt,
         )
-    runs.getOrPut(id) { ConcurrentHashMap() }[ordinal] = run
   }
 
   override suspend fun getRuns(id: String): List<SessionRun> =

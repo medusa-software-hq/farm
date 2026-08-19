@@ -57,38 +57,85 @@ class PostgresSessionStore(
     }
   }
 
-  override suspend fun recordRun(
+  override suspend fun startRun(id: String, ordinal: Int) {
+    withContext(Dispatchers.IO) {
+      database.transaction {
+        database.sessionRunQueries.startRun(
+            id = UUID.randomUUID().toString(),
+            sessionId = id,
+            ordinal = ordinal,
+        )
+        database.sessionRunQueries.deleteRunEntries(sessionId = id, ordinal = ordinal)
+      }
+    }
+  }
+
+  override suspend fun appendRunEntry(
       id: String,
       ordinal: Int,
-      log: AgentRunLog,
+      position: Int,
+      entry: AgentRunEntry,
+  ) {
+    withContext(Dispatchers.IO) {
+      database.sessionRunQueries.appendRunEntry(
+          sessionId = id,
+          ordinal = ordinal,
+          position = position,
+          entry = json.encodeToString(entry),
+      )
+    }
+  }
+
+  override suspend fun finishRun(
+      id: String,
+      ordinal: Int,
       outcome: AgentRunOutcome,
       cost: AgentRunCost?,
       summary: String,
   ) {
     withContext(Dispatchers.IO) {
-      database.sessionRunQueries.recordRun(
-          id = UUID.randomUUID().toString(),
-          sessionId = id,
-          ordinal = ordinal,
-          actionLog = json.encodeToString(log),
+      database.sessionRunQueries.finishRun(
           outcome = outcome.name,
           cost = cost?.let { json.encodeToString(it) },
           summary = summary,
+          sessionId = id,
+          ordinal = ordinal,
       )
     }
   }
 
   override suspend fun getRuns(id: String): List<SessionRun> =
       withContext(Dispatchers.IO) {
+        val logsByOrdinal =
+            database.sessionRunQueries.selectEntriesForSession(id).executeAsList().groupBy({
+              it.ordinal
+            }) {
+              json.decodeFromString<AgentRunEntry>(it.entry)
+            }
+
         database.sessionRunQueries.selectForSession(id).executeAsList().map { row ->
-          SessionRun(
-              ordinal = row.ordinal,
-              log = json.decodeFromString(row.action_log),
-              outcome = AgentRunOutcome.valueOf(row.outcome),
-              cost = row.cost?.let { json.decodeFromString(it) },
-              summary = row.summary,
-              createdAt = row.created_at.toInstant(),
-          )
+          val log = AgentRunLog(logsByOrdinal[row.ordinal].orEmpty())
+
+          // Outcome and summary are written together when the run is closed, so either one being
+          // present means it is over; reading both keeps a half-written row from passing as one.
+          val outcome = row.outcome
+          val summary = row.summary
+          if (outcome == null || summary == null) {
+            SessionRun.Running(
+                ordinal = row.ordinal,
+                log = log,
+                createdAt = row.created_at.toInstant(),
+            )
+          } else {
+            SessionRun.Finished(
+                ordinal = row.ordinal,
+                log = log,
+                outcome = AgentRunOutcome.valueOf(outcome),
+                cost = row.cost?.let { json.decodeFromString(it) },
+                summary = summary,
+                createdAt = row.created_at.toInstant(),
+            )
+          }
         }
       }
 

@@ -25,13 +25,22 @@ interface SessionStore {
   suspend fun recordPullRequest(id: String, number: Int, url: String, headSha: String)
 
   /**
-   * Records an agent run's action log and outcome. Idempotent on ([id], [ordinal]) so an activity
-   * retry overwrites that run with its latest attempt.
+   * Opens run [ordinal] of session [id], ready to be appended to. Idempotent on ([id], [ordinal]),
+   * and destructive on purpose: re-opening a run discards what a previous attempt recorded, so a
+   * retried attempt replaces its predecessor rather than continuing it.
    */
-  suspend fun recordRun(
+  suspend fun startRun(id: String, ordinal: Int)
+
+  /**
+   * Appends [entry] to run [ordinal] of session [id] at [position], counting from zero. Idempotent
+   * on ([id], [ordinal], [position]).
+   */
+  suspend fun appendRunEntry(id: String, ordinal: Int, position: Int, entry: AgentRunEntry)
+
+  /** Closes run [ordinal] of session [id] with how it went. */
+  suspend fun finishRun(
       id: String,
       ordinal: Int,
-      log: AgentRunLog,
       outcome: AgentRunOutcome,
       cost: AgentRunCost?,
       summary: String,

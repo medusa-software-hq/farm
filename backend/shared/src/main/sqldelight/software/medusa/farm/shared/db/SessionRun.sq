@@ -1,31 +1,58 @@
--- Mirror of the Flyway migrations for this table; SQLDelight verifies the queries below against it at
--- compile time, so the two must stay identical.
+-- Mirror of the Flyway migrations for these tables; SQLDelight verifies the queries below against
+-- them at compile time, so the two must stay identical.
 --
--- One agent run within a session. action_log is the AgentRunLog as JSON; outcome/cost/summary are
--- the run's metadata; a run is never recorded without its summary.
+-- One agent run within a session, recorded as it happens: session_run_entry holds the AgentRunEntry
+-- rows that make up its log, and outcome/cost/summary stay absent until the run is over.
 CREATE TABLE session_run (
   id          TEXT        NOT NULL PRIMARY KEY,
   session_id  TEXT        NOT NULL REFERENCES sessions(id),
   ordinal     INTEGER     NOT NULL,
-  action_log  TEXT        NOT NULL,
-  outcome     TEXT        NOT NULL,
+  outcome     TEXT,
   cost        TEXT,
-  summary     TEXT        NOT NULL,
+  summary     TEXT,
   created_at  TIMESTAMPTZ NOT NULL,
   UNIQUE (session_id, ordinal)
 );
 
--- Records a run's action log, outcome and summary. Idempotent on (session_id, ordinal) so an
--- activity retry overwrites the run with the latest attempt rather than inserting a duplicate.
-recordRun:
-INSERT INTO session_run (id, session_id, ordinal, action_log, outcome, cost, summary, created_at)
-VALUES (:id, :sessionId, :ordinal, :actionLog, :outcome, :cost, :summary, now())
+CREATE TABLE session_run_entry (
+  session_id  TEXT    NOT NULL,
+  ordinal     INTEGER NOT NULL,
+  position    INTEGER NOT NULL,
+  entry       TEXT    NOT NULL,
+  PRIMARY KEY (session_id, ordinal, position),
+  FOREIGN KEY (session_id, ordinal) REFERENCES session_run(session_id, ordinal) ON DELETE CASCADE
+);
+
+-- Opens a run. Idempotent on (session_id, ordinal), and clears what a previous attempt said about
+-- how the run went: a retry replaces its predecessor rather than continuing it.
+startRun:
+INSERT INTO session_run (id, session_id, ordinal, outcome, cost, summary, created_at)
+VALUES (:id, :sessionId, :ordinal, NULL, NULL, NULL, now())
 ON CONFLICT (session_id, ordinal) DO UPDATE
-SET action_log = excluded.action_log, outcome = excluded.outcome, cost = excluded.cost,
-    summary = excluded.summary;
+SET outcome = NULL, cost = NULL, summary = NULL, created_at = now();
+
+-- Discards a previous attempt's entries, so a reopened run does not keep a tail of them.
+deleteRunEntries:
+DELETE FROM session_run_entry WHERE session_id = :sessionId AND ordinal = :ordinal;
+
+appendRunEntry:
+INSERT INTO session_run_entry (session_id, ordinal, position, entry)
+VALUES (:sessionId, :ordinal, :position, :entry)
+ON CONFLICT (session_id, ordinal, position) DO UPDATE SET entry = excluded.entry;
+
+finishRun:
+UPDATE session_run
+SET outcome = :outcome, cost = :cost, summary = :summary
+WHERE session_id = :sessionId AND ordinal = :ordinal;
 
 selectForSession:
-SELECT ordinal, action_log, outcome, cost, summary, created_at
+SELECT ordinal, outcome, cost, summary, created_at
 FROM session_run
 WHERE session_id = :sessionId
 ORDER BY ordinal;
+
+selectEntriesForSession:
+SELECT ordinal, position, entry
+FROM session_run_entry
+WHERE session_id = :sessionId
+ORDER BY ordinal, position;
