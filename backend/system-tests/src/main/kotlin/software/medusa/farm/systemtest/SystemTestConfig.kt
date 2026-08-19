@@ -1,13 +1,14 @@
-package software.medusa.farm.ephemeral
+package software.medusa.farm.systemtest
 
 import software.medusa.farm.worker.GitHubAppConfig
 
 /**
- * What one throwaway run of the whole farm needs. Everything here is real except where the
- * deployment is reached over the network — the database is a branch made for this run, the GitHub
- * App is one installed on a test org, and Temporal is a server started beside it.
+ * What a system test needs: the org and repository it drives, the App it drives them as, and — for
+ * a farm it has to start itself — what that farm runs on.
+ *
+ * A test against a deployed farm would want the first half and none of the second.
  */
-data class EphemeralConfig(
+data class SystemTestConfig(
     /** A Neon branch, made and dropped around this run rather than by anything here. */
     val databaseUrl: String,
     val gitHubApp: GitHubAppConfig,
@@ -23,8 +24,8 @@ data class EphemeralConfig(
     get() = "$orgLogin/$repoName"
 
   companion object {
-    fun fromEnvironment(env: Map<String, String> = System.getenv()): EphemeralConfig =
-        EphemeralConfig(
+    fun fromEnvironment(env: Map<String, String> = System.getenv()): SystemTestConfig =
+        SystemTestConfig(
             databaseUrl = env.required("DATABASE_URL"),
             gitHubApp =
                 GitHubAppConfig(

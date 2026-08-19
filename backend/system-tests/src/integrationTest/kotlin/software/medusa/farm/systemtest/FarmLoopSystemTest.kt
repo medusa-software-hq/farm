@@ -1,4 +1,4 @@
-package software.medusa.farm.ephemeral
+package software.medusa.farm.systemtest
 
 import io.grpc.ManagedChannelBuilder
 import kotlin.test.Test
@@ -11,6 +11,7 @@ import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import software.medusa.farm.github.GhOrgLogin
+import software.medusa.farm.github.GhProperAppApiClient
 import software.medusa.farm.v1.FarmServiceGrpcKt
 import software.medusa.farm.v1.GetSessionRunsRequest
 import software.medusa.farm.v1.LinkOrgRequest
@@ -26,23 +27,30 @@ import software.medusa.farm.v1.SyncRepositoriesRequest
  *
  * The repository it drives is made for this run and dropped after it, so the tree it starts from is
  * the same every time; a shared one would move forward with each merge and never be the same twice.
+ *
+ * What it knows of the farm is where its API answers. A farm started here and one deployed
+ * somewhere are the same thing from here, which is what would let this cover both.
  */
-class FarmLoopIntegrationTest {
+class FarmLoopSystemTest {
   @Test
   fun `an issue is worked, reviewed, worked again, and merged`(): Unit = runBlocking {
-    val config = EphemeralConfig.fromEnvironment()
+    val config = SystemTestConfig.fromEnvironment()
+
+    // Built here rather than handed over by the farm: acting as the reviewer is the test's own
+    // business, and would be the same against a farm it had not started.
+    val gitHub = GhProperAppApiClient.build(config.gitHubApp.clientId, config.gitHubApp.pem)
 
     EphemeralFarm.run(config) { farm ->
       runBlocking {
-        val installation = farm.appApiClient.resolveInstallationId(GhOrgLogin(config.orgLogin))
+        val installation = gitHub.resolveInstallationId(GhOrgLogin(config.orgLogin))
         val fixture =
             FixtureGitHub(
                 repoFullName = config.repoFullName,
-                token = farm.appApiClient.mintInstallationToken(installation).token,
+                token = gitHub.mintInstallationToken(installation).token,
             )
         val api =
             FarmServiceGrpcKt.FarmServiceCoroutineStub(
-                ManagedChannelBuilder.forAddress("localhost", farm.apiPort).usePlaintext().build()
+                ManagedChannelBuilder.forAddress(farm.apiHost, farm.apiPort).usePlaintext().build()
             )
 
         // Farm only looks at repositories of orgs it has been linked to, and only at issues

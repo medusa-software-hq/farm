@@ -1,4 +1,4 @@
-package software.medusa.farm.ephemeral
+package software.medusa.farm.systemtest
 
 import java.net.URI
 import java.net.http.HttpClient

@@ -22,10 +22,12 @@ env:
   FARM_EPHEMERAL_ORG: medusa-software-test-hq
   FARM_FIXTURE_TEMPLATE: farm-fixture-template
 
-  # App ids, not secrets — only the private keys are. The farm App does what Farm does; the fixture
-  # manager makes and drops the run's repository, which is the harness's job and not Farm's.
-  FARM_EPHEMERAL_APP_ID: "4654036"
-  FIXTURE_MANAGER_APP_ID: "4654133"
+  # Client ids, not secrets — only the private keys are. Client ids rather than app ids because
+  # that is what GitHub now asks for as a token request's issuer, and what the farm's own client
+  # already signs with. The farm App does what Farm does; the fixture manager makes and drops the
+  # run's repository, which is the harness's job and not Farm's.
+  FARM_EPHEMERAL_APP_CLIENT_ID: Iv23livarUcAaPSh7nTl
+  FIXTURE_MANAGER_APP_CLIENT_ID: Iv23li7hPF70qxLrlrNQ
 
 jobs:
   loop-test:
@@ -84,9 +86,9 @@ jobs:
       # delete a repository.
       - name: Mint the fixture manager's token
         id: fixture-manager
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ env.FIXTURE_MANAGER_APP_ID }}
+          app-id: ${{ env.FIXTURE_MANAGER_APP_CLIENT_ID }}
           private-key: ${{ secrets.FIXTURE_MANAGER_GITHUB_APP_PEM }}
           owner: ${{ env.FARM_EPHEMERAL_ORG }}
 
@@ -106,7 +108,7 @@ jobs:
       - name: Drive one issue round the loop
         env:
           DATABASE_URL: jdbc:postgresql://localhost:5432/postgres?user=postgres&password=farm
-          GITHUB_APP_CLIENT_ID: ${{ env.FARM_EPHEMERAL_APP_ID }}
+          GITHUB_APP_CLIENT_ID: ${{ env.FARM_EPHEMERAL_APP_CLIENT_ID }}
           GITHUB_APP_PEM: ${{ secrets.FARM_EPHEMERAL_GITHUB_APP_PEM }}
           FARM_EPHEMERAL_ORG: ${{ env.FARM_EPHEMERAL_ORG }}
           FARM_EPHEMERAL_REPO: ${{ steps.fixture.outputs.name }}
@@ -114,7 +116,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         # --no-daemon so this invocation's environment reaches the forked test JVM: a reused daemon
         # keeps its start-up environment and would drop it.
-        run: ./gradlew --no-daemon :backend:ephemeral:integrationTest
+        run: ./gradlew --no-daemon :backend:system-tests:integrationTest
 
       # Whatever happened above, including the run being cancelled. The name comes from the run id
       # rather than from a step's output, so this works even if the repository step is what failed.

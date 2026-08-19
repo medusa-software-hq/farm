@@ -16,7 +16,7 @@ include(
     ":backend:api:proper",
     ":backend:api:core",
     ":backend:migrate",
-    ":backend:ephemeral",
+    ":backend:system-tests",
     ":backend:local",
     ":cli",
 )

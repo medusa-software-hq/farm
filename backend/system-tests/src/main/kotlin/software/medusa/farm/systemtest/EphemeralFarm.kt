@@ -1,4 +1,4 @@
-package software.medusa.farm.ephemeral
+package software.medusa.farm.systemtest
 
 import kotlinx.coroutines.CompletableDeferred
 import software.medusa.farm.github.GhCachingInstallationApiClientProvider
@@ -18,8 +18,8 @@ import software.medusa.farm.worker.TemporalWorkerHost
 import software.medusa.farm.worker.WorkerConfig
 
 /**
- * The whole farm — worker and API — in this process, against a database and a GitHub org that exist
- * to be thrown away.
+ * A farm of its own, for tests that would otherwise need one deployed: worker and API in this
+ * process, against a database and a GitHub org that exist to be thrown away.
  *
  * Temporal is the one thing not reached over the network: a server started beside this one, which
  * is why a run needs no credential for it and cannot collide with another run. What it gives up is
@@ -33,7 +33,7 @@ object EphemeralFarm {
    *
    * @return whatever [block] returned.
    */
-  fun <ResultT> run(config: EphemeralConfig, block: (EphemeralFarmScope) -> ResultT): ResultT {
+  fun <ResultT> run(config: SystemTestConfig, block: (FarmUnderTest) -> ResultT): ResultT {
     FarmStore.migrate(config.databaseUrl)
     val farmStore = FarmStore.build(config.databaseUrl)
 
@@ -90,7 +90,7 @@ object EphemeralFarm {
     server.start().join()
 
     return try {
-      block(EphemeralFarmScope(apiPort = server.activeLocalPort(), appApiClient = appApiClient))
+      block(FarmUnderTest(apiHost = "localhost", apiPort = server.activeLocalPort()))
     } finally {
       server.stop().join()
     }

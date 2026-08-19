@@ -13,7 +13,7 @@ dependencies {
   testRuntimeOnly(libs.logback.classic)
 }
 
-base { archivesName = "backend-ephemeral" }
+base { archivesName = "backend-system-tests" }
 
 // The whole farm against real things — a real database, real GitHub, a real agent — kept out of the
 // `test`/`check` lifecycle because it costs money and needs credentials, and run on demand.
