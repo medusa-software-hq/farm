@@ -2,6 +2,7 @@
 
 package software.medusa.farm.claude
 
+import java.io.IOException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -12,12 +13,13 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.produceIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
 import software.medusa.commons.system.SysExecutableHandle
+import software.medusa.commons.system.SysProcessScope
 import software.medusa.commons.system.SysProcessSpawner
-import software.medusa.commons.system.SysProcessTermination
 
 /** Proper [CldEngine], backed by a real `claude` CLI. */
 class CldProperEngine(
@@ -41,7 +43,7 @@ class CldProperEngine(
     ) : ShutdownOrder
 
     data class TerminationFirst(
-        val termination: SysProcessTermination,
+        val exitCode: Int,
     ) : ShutdownOrder
   }
 
@@ -69,7 +71,7 @@ class CldProperEngine(
         parseClaudeOutput {
           coroutineScope {
             val resultMessageDeferred = async { awaitResultMessage() }
-            val processTerminationDeferred = async { awaitTermination() }
+            val processTerminationDeferred = async { awaitExit() }
 
             val runResultDeferred = async {
               val observedShutdownOrder = select {
@@ -151,14 +153,14 @@ class CldProperEngine(
 
     return try {
       processSpawner.executeProcess(
-          executableHandle = claudeExecutableHandle,
+          executable = claudeExecutableHandle,
           workingDirectory = config.workspacePath,
           arguments = arguments,
           environment = sessionEnvironment(config = config),
           block = block,
       )
-    } catch (failure: SysProcessStartException) {
-      anomalyReporter.reportSpawnFailed(cause = failure.cause)
+    } catch (failure: IOException) {
+      anomalyReporter.reportSpawnFailed(cause = failure)
 
       throw CldAbnormalStartError
     }
@@ -179,6 +181,7 @@ class CldProperEngine(
   private suspend fun <ResultT> SysProcessScope.parseClaudeOutput(
       block: suspend CldOutputScope.() -> ResultT,
   ): ResultT = coroutineScope {
+    val standardOutputLineChannel = standardOutput.consumeLines().produceIn(this)
     val firstLine =
         withTimeoutOrNull(GREETING_GRACE_PERIOD) {
           standardOutputLineChannel.receiveCatching().getOrNull()
@@ -265,11 +268,11 @@ class CldProperEngine(
   private suspend fun reconcileClaudeProcess(
       observedShutdownOrder: ShutdownOrder,
       resultMessageDeferred: Deferred<CldProgressMessage.Result>,
-      processTerminationDeferred: Deferred<SysProcessTermination>,
+      processTerminationDeferred: Deferred<Int>,
   ): CldRunResult =
       when (observedShutdownOrder) {
         is ShutdownOrder.ResultFirst -> {
-          val processTermination =
+          val exitCode =
               withTimeoutOrNull(TERMINATION_GRACE_PERIOD) { processTerminationDeferred.await() }
                   ?: run {
                     anomalyReporter.reportLingeredAfterResult()
@@ -279,18 +282,18 @@ class CldProperEngine(
 
           confrontRunResult(
               runResult = observedShutdownOrder.resultMessage.runResult,
-              processTermination = processTermination,
+              exitCode = exitCode,
           )
         }
 
         is ShutdownOrder.TerminationFirst -> {
-          val processTermination = observedShutdownOrder.termination
+          val exitCode = observedShutdownOrder.exitCode
 
           val resultMessage =
               withTimeoutOrNull(RESULT_GRACE_PERIOD) { resultMessageDeferred.await() }
                   ?: run {
                     anomalyReporter.reportExitWithoutResult(
-                        exitCode = processTermination.exitCode,
+                        exitCode = exitCode,
                     )
 
                     throw CldAbnormalExitError
@@ -298,20 +301,20 @@ class CldProperEngine(
 
           confrontRunResult(
               runResult = resultMessage.runResult,
-              processTermination = processTermination,
+              exitCode = exitCode,
           )
         }
       }
 
   private fun confrontRunResult(
       runResult: CldRunResult,
-      processTermination: SysProcessTermination,
+      exitCode: Int,
   ): CldRunResult {
     when (runResult.status) {
       CldRunStatus.Success -> {
-        if (processTermination.exitCode != 0) {
+        if (exitCode != 0) {
           anomalyReporter.reportUnexpectedNonZeroExitCode(
-              exitCode = processTermination.exitCode,
+              exitCode = exitCode,
               runResult = runResult,
           )
 
@@ -320,7 +323,7 @@ class CldProperEngine(
       }
 
       is CldRunStatus.Error -> {
-        if (processTermination.exitCode == 0) {
+        if (exitCode == 0) {
           anomalyReporter.reportUnexpectedZeroExitCode(
               runResult = runResult,
           )

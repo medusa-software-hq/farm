@@ -28,7 +28,13 @@ class CldClaudeCliIntegrationTest {
   @Test
   fun `the CLI still exposes every flag the engine builds`(): Unit = runBlocking {
     val help =
-        processSpawner.spawn(executable = claude(), arguments = listOf("--help")).standardOutput
+        processSpawner
+            .spawn(
+                executable = claude(),
+                arguments = listOf("--help"),
+                environment = System.getenv(),
+            )
+            .standardOutput
 
     listOf(
             "-p",
