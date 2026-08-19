@@ -28,7 +28,8 @@ object AgentRunMapper {
     return MappedAgentRun(log = log, outcome = outcome, cost = cost(result))
   }
 
-  private fun entry(event: CldSessionEvent): AgentRunEntry =
+  /** Maps one event on its own, for a run being recorded as it happens. */
+  fun entry(event: CldSessionEvent): AgentRunEntry =
       when (event) {
         is CldSessionEvent.Step ->
             AgentStep(

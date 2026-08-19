@@ -1,31 +1,61 @@
--- Mirror of the Flyway migrations for this table; SQLDelight verifies the queries below against it at
--- compile time, so the two must stay identical.
+-- Mirror of the Flyway migrations for these tables; SQLDelight verifies the queries below against
+-- them at compile time, so the two must stay identical.
 --
--- One agent run within a session. action_log is the AgentRunLog as JSON; outcome/cost/summary are
--- the run's metadata; a run is never recorded without its summary.
-CREATE TABLE session_run (
-  id          TEXT        NOT NULL PRIMARY KEY,
+-- Every try at an agent run, recorded as it happens: session_run_entry holds the AgentRunEntry rows
+-- making up a try's log, and outcome/cost/summary stay absent until that try closes — a try that
+-- crashed never fills them in, and is kept that way.
+CREATE TABLE session_run_attempt (
   session_id  TEXT        NOT NULL REFERENCES sessions(id),
   ordinal     INTEGER     NOT NULL,
-  action_log  TEXT        NOT NULL,
-  outcome     TEXT        NOT NULL,
+  attempt     INTEGER     NOT NULL,
+  outcome     TEXT,
   cost        TEXT,
-  summary     TEXT        NOT NULL,
-  created_at  TIMESTAMPTZ NOT NULL,
-  UNIQUE (session_id, ordinal)
+  summary     TEXT,
+  started_at  TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (session_id, ordinal, attempt)
 );
 
--- Records a run's action log, outcome and summary. Idempotent on (session_id, ordinal) so an
--- activity retry overwrites the run with the latest attempt rather than inserting a duplicate.
-recordRun:
-INSERT INTO session_run (id, session_id, ordinal, action_log, outcome, cost, summary, created_at)
-VALUES (:id, :sessionId, :ordinal, :actionLog, :outcome, :cost, :summary, now())
-ON CONFLICT (session_id, ordinal) DO UPDATE
-SET action_log = excluded.action_log, outcome = excluded.outcome, cost = excluded.cost,
-    summary = excluded.summary;
+CREATE TABLE session_run_entry (
+  session_id  TEXT    NOT NULL,
+  ordinal     INTEGER NOT NULL,
+  attempt     INTEGER NOT NULL,
+  position    INTEGER NOT NULL,
+  entry       TEXT    NOT NULL,
+  PRIMARY KEY (session_id, ordinal, attempt, position),
+  FOREIGN KEY (session_id, ordinal, attempt)
+    REFERENCES session_run_attempt(session_id, ordinal, attempt) ON DELETE CASCADE
+);
 
-selectForSession:
-SELECT ordinal, action_log, outcome, cost, summary, created_at
-FROM session_run
+-- Opens one try. Idempotent on (session_id, ordinal, attempt): the same try running again starts
+-- over, while the tries before it are left alone.
+startRunAttempt:
+INSERT INTO session_run_attempt (session_id, ordinal, attempt, outcome, cost, summary, started_at)
+VALUES (:sessionId, :ordinal, :attempt, NULL, NULL, NULL, now())
+ON CONFLICT (session_id, ordinal, attempt) DO UPDATE
+SET outcome = NULL, cost = NULL, summary = NULL, started_at = now();
+
+deleteRunAttemptEntries:
+DELETE FROM session_run_entry
+WHERE session_id = :sessionId AND ordinal = :ordinal AND attempt = :attempt;
+
+appendRunEntry:
+INSERT INTO session_run_entry (session_id, ordinal, attempt, position, entry)
+VALUES (:sessionId, :ordinal, :attempt, :position, :entry)
+ON CONFLICT (session_id, ordinal, attempt, position) DO UPDATE SET entry = excluded.entry;
+
+finishRunAttempt:
+UPDATE session_run_attempt
+SET outcome = :outcome, cost = :cost, summary = :summary
+WHERE session_id = :sessionId AND ordinal = :ordinal AND attempt = :attempt;
+
+selectAttemptsForSession:
+SELECT ordinal, attempt, outcome, cost, summary, started_at
+FROM session_run_attempt
 WHERE session_id = :sessionId
-ORDER BY ordinal;
+ORDER BY ordinal, attempt;
+
+selectEntriesForSession:
+SELECT ordinal, attempt, position, entry
+FROM session_run_entry
+WHERE session_id = :sessionId
+ORDER BY ordinal, attempt, position;

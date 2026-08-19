@@ -64,4 +64,13 @@ class AgentRunLogSerializationTest {
         Json.decodeFromString<AgentRunLog>(migrated),
     )
   }
+
+  @Test
+  fun `an entry row the migration wrote decodes on its own`() {
+    // Entries are stored one row each now, so a row has to decode by itself rather than as part of
+    // a log. Verbatim output of V14 run against a run recorded in the old blob shape.
+    val migrated = """{"text": "careful", "type": "software.medusa.farm.shared.AgentWarning"}"""
+
+    assertEquals(AgentWarning(text = "careful"), Json.decodeFromString<AgentRunEntry>(migrated))
+  }
 }

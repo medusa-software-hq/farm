@@ -84,6 +84,7 @@ class TemporalWorkerHost(
             summarizer,
             commitAuthor,
             signingKey,
+            attemptNumbering = TemporalAttemptNumbering(),
         ),
     )
     ensureRepoSyncSchedule(service, namespace)

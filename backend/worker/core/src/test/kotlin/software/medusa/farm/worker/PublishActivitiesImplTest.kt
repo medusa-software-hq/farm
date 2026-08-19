@@ -8,11 +8,13 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
+import software.medusa.farm.claude.CldAssistantStep
 import software.medusa.farm.claude.CldCost
 import software.medusa.farm.claude.CldEngine
 import software.medusa.farm.claude.CldModelId
@@ -29,8 +31,16 @@ import software.medusa.farm.github.FakeGitHubServer
 import software.medusa.farm.github.GhProperAppApiClient
 import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.github.TestAppKey
+import software.medusa.farm.shared.AgentRunCost
+import software.medusa.farm.shared.AgentRunEntry
 import software.medusa.farm.shared.AgentRunLog
+import software.medusa.farm.shared.AgentRunOutcome
+import software.medusa.farm.shared.AgentStep
+import software.medusa.farm.shared.AgentWarning
+import software.medusa.farm.shared.AttemptNumbering
 import software.medusa.farm.shared.InMemorySessionStore
+import software.medusa.farm.shared.SessionRunAttempt
+import software.medusa.farm.shared.SessionStore
 
 class PublishActivitiesImplTest {
   private val appKey = TestAppKey()
@@ -48,8 +58,8 @@ class PublishActivitiesImplTest {
 
   private val available = FakeSummarizer(RunSummary("a summary"))
 
-  /** Records the workspace it ran in, takes no steps, and reports a clean session. */
-  private class FakeEngine : CldEngine {
+  /** Records the workspace it ran in, produces [events], and reports a clean session. */
+  private class FakeEngine(private val events: List<CldSessionEvent> = emptyList()) : CldEngine {
     var ranIn: Path? = null
 
     override suspend fun <ResultT> runSession(
@@ -68,7 +78,10 @@ class PublishActivitiesImplTest {
                 )
 
             override val eventChannel =
-                Channel<CldSessionEvent>(Channel.UNLIMITED).apply { close() }
+                Channel<CldSessionEvent>(Channel.UNLIMITED).apply {
+                  events.forEach { trySend(it) }
+                  close()
+                }
 
             override suspend fun awaitResult(): CldRunResult =
                 CldRunResult(
@@ -130,11 +143,51 @@ class PublishActivitiesImplTest {
     }
   }
 
+  private class FixedAttemptNumbering(private val attempt: Int) : AttemptNumbering {
+    override fun currentAttempt(): Int = attempt
+  }
+
+  /** Delegates to [delegate] while noting, in order, what it was asked to write. */
+  private class RecordingSessionStore(private val delegate: SessionStore) :
+      SessionStore by delegate {
+    val writes = mutableListOf<String>()
+
+    override suspend fun startRunAttempt(id: String, ordinal: Int, attempt: Int) {
+      writes += "start:$attempt"
+      delegate.startRunAttempt(id, ordinal, attempt)
+    }
+
+    override suspend fun appendRunEntry(
+        id: String,
+        ordinal: Int,
+        attempt: Int,
+        position: Int,
+        entry: AgentRunEntry,
+    ) {
+      writes += "append:$position"
+      delegate.appendRunEntry(id, ordinal, attempt, position, entry)
+    }
+
+    override suspend fun finishRunAttempt(
+        id: String,
+        ordinal: Int,
+        attempt: Int,
+        outcome: AgentRunOutcome,
+        cost: AgentRunCost?,
+        summary: String,
+    ) {
+      writes += "finish"
+      delegate.finishRunAttempt(id, ordinal, attempt, outcome, cost, summary)
+    }
+  }
+
   private fun activities(
       gitCli: GitCli,
       engine: CldEngine,
       server: FakeGitHubServer,
       summarizer: RunSummarizer = available,
+      sessionStore: SessionStore = sessions,
+      attempt: Int = 1,
   ) =
       PublishActivitiesImpl(
           clientProvider =
@@ -146,7 +199,8 @@ class PublishActivitiesImplTest {
               GhProperAppApiClient.build("Iv1.test", appKey.pkcs8Pem, baseUrl = server.baseUrl),
           engine = engine,
           gitCli = gitCli,
-          sessionStore = sessions,
+          sessionStore = sessionStore,
+          attemptNumbering = FixedAttemptNumbering(attempt),
           summarizer = summarizer,
           commitAuthor = author,
           signingKey = null,
@@ -190,6 +244,87 @@ class PublishActivitiesImplTest {
       assertContains(gitCli.calls, "push:farm/issue-7")
       assertEquals(1, runBlocking { sessions.getRuns("session-1") }.size, "the run is recorded")
     }
+  }
+
+  @Test
+  fun `the run is written as it happens, not once it is over`() {
+    val store = RecordingSessionStore(sessions)
+    val engine =
+        FakeEngine(
+            events =
+                listOf(
+                    CldSessionEvent.Step(CldAssistantStep(text = "first", toolUses = emptyList())),
+                    CldSessionEvent.Warning("something is deprecated"),
+                    CldSessionEvent.Step(CldAssistantStep(text = "second", toolUses = emptyList())),
+                )
+        )
+
+    FakeGitHubServer(::handle).use { server ->
+      activities(FakeGitCli(hasChanges = false), engine, server, sessionStore = store)
+          .attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
+    }
+
+    // Opened, appended to entry by entry, and only then closed. A run written once at the end would
+    // show the same log and none of this.
+    assertEquals(
+        listOf("start:1", "append:0", "append:1", "append:2", "finish"),
+        store.writes,
+    )
+
+    val attempt =
+        assertIs<SessionRunAttempt.Finished>(
+            runBlocking { sessions.getRuns("session-1") }.single().attempts.single()
+        )
+    assertEquals(
+        listOf<AgentRunEntry>(
+            AgentStep(text = "first", toolActions = emptyList()),
+            AgentWarning(text = "something is deprecated"),
+            AgentStep(text = "second", toolActions = emptyList()),
+        ),
+        attempt.log.entries,
+    )
+  }
+
+  @Test
+  fun `a retry is a try of its own, and the one it retried is still there to read`() {
+    val engine =
+        FakeEngine(
+            events =
+                listOf(
+                    CldSessionEvent.Step(
+                        CldAssistantStep(text = "got here", toolUses = emptyList())
+                    )
+                )
+        )
+
+    FakeGitHubServer(::handle).use { server ->
+      // The first try fails after the agent has run but before the run is closed, which is what a
+      // crashed attempt looks like: entries written, nothing to say about how it went.
+      assertFailsWith<RunSummaryGenerationError> {
+        activities(
+                FakeGitCli(hasChanges = false),
+                engine,
+                server,
+                UnreachableSummarizer,
+                attempt = 1,
+            )
+            .attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
+      }
+
+      activities(FakeGitCli(hasChanges = false), engine, server, attempt = 2)
+          .attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
+    }
+
+    val attempts = runBlocking { sessions.getRuns("session-1") }.single().attempts
+    assertEquals(listOf(1, 2), attempts.map { it.number })
+
+    val crashed = assertIs<SessionRunAttempt.Abandoned>(attempts.first())
+    assertEquals(
+        listOf<AgentRunEntry>(AgentStep(text = "got here", toolActions = emptyList())),
+        crashed.log.entries,
+        "the crashed try lost what it had already done",
+    )
+    assertIs<SessionRunAttempt.Finished>(attempts.last())
   }
 
   @Test

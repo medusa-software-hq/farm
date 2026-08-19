@@ -1,7 +1,6 @@
 package software.medusa.farm.shared
 
 import java.time.OffsetDateTime
-import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -57,39 +56,114 @@ class PostgresSessionStore(
     }
   }
 
-  override suspend fun recordRun(
+  override suspend fun startRunAttempt(id: String, ordinal: Int, attempt: Int) {
+    withContext(Dispatchers.IO) {
+      database.transaction {
+        database.sessionRunQueries.startRunAttempt(
+            sessionId = id,
+            ordinal = ordinal,
+            attempt = attempt,
+        )
+        database.sessionRunQueries.deleteRunAttemptEntries(
+            sessionId = id,
+            ordinal = ordinal,
+            attempt = attempt,
+        )
+      }
+    }
+  }
+
+  override suspend fun appendRunEntry(
       id: String,
       ordinal: Int,
-      log: AgentRunLog,
+      attempt: Int,
+      position: Int,
+      entry: AgentRunEntry,
+  ) {
+    withContext(Dispatchers.IO) {
+      database.sessionRunQueries.appendRunEntry(
+          sessionId = id,
+          ordinal = ordinal,
+          attempt = attempt,
+          position = position,
+          entry = json.encodeToString(entry),
+      )
+    }
+  }
+
+  override suspend fun finishRunAttempt(
+      id: String,
+      ordinal: Int,
+      attempt: Int,
       outcome: AgentRunOutcome,
       cost: AgentRunCost?,
       summary: String,
   ) {
     withContext(Dispatchers.IO) {
-      database.sessionRunQueries.recordRun(
-          id = UUID.randomUUID().toString(),
-          sessionId = id,
-          ordinal = ordinal,
-          actionLog = json.encodeToString(log),
+      database.sessionRunQueries.finishRunAttempt(
           outcome = outcome.name,
           cost = cost?.let { json.encodeToString(it) },
           summary = summary,
+          sessionId = id,
+          ordinal = ordinal,
+          attempt = attempt,
       )
     }
   }
 
   override suspend fun getRuns(id: String): List<SessionRun> =
       withContext(Dispatchers.IO) {
-        database.sessionRunQueries.selectForSession(id).executeAsList().map { row ->
-          SessionRun(
-              ordinal = row.ordinal,
-              log = json.decodeFromString(row.action_log),
-              outcome = AgentRunOutcome.valueOf(row.outcome),
-              cost = row.cost?.let { json.decodeFromString(it) },
-              summary = row.summary,
-              createdAt = row.created_at.toInstant(),
-          )
-        }
+        val entriesByAttempt =
+            database.sessionRunQueries.selectEntriesForSession(id).executeAsList().groupBy({
+              it.ordinal to it.attempt
+            }) {
+              json.decodeFromString<AgentRunEntry>(it.entry)
+            }
+
+        database.sessionRunQueries
+            .selectAttemptsForSession(id)
+            .executeAsList()
+            .groupBy { it.ordinal }
+            .map { (ordinal, rows) ->
+              val attempts = rows.mapIndexed { index, row ->
+                val log = AgentRunLog(entriesByAttempt[ordinal to row.attempt].orEmpty())
+
+                // Outcome and summary are written together when a try closes, so a row missing
+                // either never closed. Rows arrive in attempt order, so anything before the
+                // last one has been superseded and is not still going.
+                val outcome = row.outcome
+                val summary = row.summary
+                when {
+                  outcome == null || summary == null ->
+                      if (index == rows.lastIndex) {
+                        SessionRunAttempt.Running(
+                            number = row.attempt,
+                            log = log,
+                            startedAt = row.started_at.toInstant(),
+                        )
+                      } else {
+                        SessionRunAttempt.Abandoned(
+                            number = row.attempt,
+                            log = log,
+                            startedAt = row.started_at.toInstant(),
+                        )
+                      }
+
+                  else ->
+                      SessionRunAttempt.Finished(
+                          number = row.attempt,
+                          log = log,
+                          outcome = AgentRunOutcome.valueOf(outcome),
+                          cost = row.cost?.let { json.decodeFromString(it) },
+                          summary = summary,
+                          startedAt = row.started_at.toInstant(),
+                      )
+                }
+              }
+
+              SessionRun(ordinal = ordinal, attempts = attempts)
+            }
+            .sortedBy { it.ordinal }
       }
 
   override suspend fun listForOrgs(installationIds: List<Long>): List<Session> =
