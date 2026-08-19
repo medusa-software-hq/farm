@@ -17,3 +17,7 @@ INSERT INTO session_pr (session_id, pr_number, pr_url, head_sha)
 VALUES (:sessionId, :prNumber, :prUrl, :headSha)
 ON CONFLICT (session_id) DO UPDATE
 SET pr_number = :prNumber, pr_url = :prUrl, head_sha = :headSha;
+
+-- Fills in the merge gate's answer. Idempotent: seeing the same merge twice writes the same time.
+recordPullRequestMerged:
+UPDATE session_pr SET merged_at = :mergedAt WHERE session_id = :sessionId;

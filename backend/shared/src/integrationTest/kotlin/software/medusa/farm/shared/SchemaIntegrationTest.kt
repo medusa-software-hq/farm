@@ -1,8 +1,10 @@
 package software.medusa.farm.shared
 
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import org.testcontainers.containers.PostgreSQLContainer
@@ -86,6 +88,11 @@ class SchemaIntegrationTest {
         )
 
         assertEquals("https://example.test/pr/12", sessions.get("s")?.pullRequest?.url)
+        assertNull(sessions.get("s")?.pullRequest?.mergedAt, "unmerged until the gate says so")
+
+        val mergedAt = Instant.parse("2026-08-19T10:00:00Z")
+        sessions.recordPullRequestMerged("s", mergedAt)
+        assertEquals(mergedAt, sessions.get("s")?.pullRequest?.mergedAt)
       }
     }
   }

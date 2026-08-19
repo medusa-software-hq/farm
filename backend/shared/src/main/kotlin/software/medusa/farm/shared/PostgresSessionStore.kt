@@ -1,6 +1,8 @@
 package software.medusa.farm.shared
 
+import java.time.Instant
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -52,6 +54,15 @@ class PostgresSessionStore(
           prNumber = number,
           prUrl = url,
           headSha = headSha,
+      )
+    }
+  }
+
+  override suspend fun recordPullRequestMerged(id: String, mergedAt: Instant) {
+    withContext(Dispatchers.IO) {
+      database.sessionPrQueries.recordPullRequestMerged(
+          mergedAt = OffsetDateTime.ofInstant(mergedAt, ZoneOffset.UTC),
+          sessionId = id,
       )
     }
   }

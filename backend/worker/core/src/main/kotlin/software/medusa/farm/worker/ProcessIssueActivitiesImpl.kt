@@ -3,6 +3,7 @@ package software.medusa.farm.worker
 import kotlinx.coroutines.runBlocking
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationId
+import software.medusa.farm.github.GhPullRequestState
 import software.medusa.farm.github.GhRepoFullName
 import software.medusa.farm.shared.SessionStore
 
@@ -39,6 +40,24 @@ class ProcessIssueActivitiesImpl(
       url: String,
       headSha: String,
   ) = runBlocking { sessionStore.recordPullRequest(sessionId, number, url, headSha) }
+
+  override fun syncPullRequest(
+      sessionId: String,
+      installationId: Long,
+      repoFullName: String,
+      number: Int,
+  ): GhPullRequestState = runBlocking {
+    val pullRequest =
+        clientProvider
+            .provideForInstallation(GhInstallationId(installationId))
+            .getPullRequest(GhRepoFullName(repoFullName), number)
+
+    // GitHub's own merge time, not the moment this happened to notice — they differ by however
+    // long the gate slept.
+    pullRequest.mergedAt?.let { sessionStore.recordPullRequestMerged(sessionId, it) }
+
+    pullRequest.state
+  }
 
   override fun completeSession(sessionId: String) = runBlocking { sessionStore.complete(sessionId) }
 

@@ -5,6 +5,7 @@ import io.temporal.common.RetryOptions
 import io.temporal.failure.ActivityFailure
 import io.temporal.workflow.Workflow
 import java.time.Duration
+import software.medusa.farm.github.GhPullRequestState
 import software.medusa.farm.shared.ProcessIssueWorkflow
 
 /**
@@ -63,12 +64,41 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
             outcome.pullRequestUrl,
             outcome.pullRequestHeadSha,
         )
+        activities.postIssueComment(installationId, repoFullName, number, resultComment(outcome))
+        awaitPullRequestSettled(sessionId, installationId, repoFullName, outcome.pullRequestNumber)
+      } else {
+        activities.postIssueComment(installationId, repoFullName, number, resultComment(outcome))
       }
-      activities.postIssueComment(installationId, repoFullName, number, resultComment(outcome))
       activities.completeSession(sessionId)
     } catch (e: ActivityFailure) {
       activities.failSession(sessionId)
       throw e
+    }
+  }
+
+  /**
+   * Waits for the pull request to stop being open — merged, or closed unmerged — recording the
+   * merge when it happens. Gives up after [REVIEW_WAIT_LIMIT]: the session is over either way, and
+   * whether it succeeded is read from the merge, not from the session ending.
+   */
+  private fun awaitPullRequestSettled(
+      sessionId: String,
+      installationId: Long,
+      repoFullName: String,
+      number: Int,
+  ) {
+    var waited = Duration.ZERO
+    while (waited < REVIEW_WAIT_LIMIT) {
+      // Just opened, so it cannot have settled yet — sleep first, then look.
+      Workflow.sleep(REVIEW_POLL_INTERVAL)
+      waited = waited.plus(REVIEW_POLL_INTERVAL)
+
+      if (
+          activities.syncPullRequest(sessionId, installationId, repoFullName, number) !=
+              GhPullRequestState.OPEN
+      ) {
+        return
+      }
     }
   }
 
@@ -78,6 +108,15 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
     private const val MAX_ATTEMPTS = 5
 
     private const val ATTEMPT_MAX_ATTEMPTS = 2
+
+    // Nothing pushes review events to us — there is no webhook receiver — so the gate polls, as
+    // the issue sweep does. Every poll costs a timer and an activity in the workflow's history, so
+    // the interval is what keeps a week of waiting from growing a history Temporal would complain
+    // about, rather than a guess at how fast anyone reviews.
+    private val REVIEW_POLL_INTERVAL: Duration = Duration.ofMinutes(10)
+
+    // A pull request nobody touches is not a failure, so waiting stops rather than the run does.
+    private val REVIEW_WAIT_LIMIT: Duration = Duration.ofDays(7)
 
     private fun resultComment(outcome: IssueAttemptOutcome): String =
         if (outcome.pullRequestUrl != null) {

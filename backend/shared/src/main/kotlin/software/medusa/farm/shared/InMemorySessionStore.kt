@@ -1,6 +1,7 @@
 package software.medusa.farm.shared
 
 import java.time.Clock
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -52,6 +53,10 @@ class InMemorySessionStore(private val clock: Clock) : SessionStore {
 
   override suspend fun recordPullRequest(id: String, number: Int, url: String, headSha: String) {
     prs[id] = SessionPullRequest(number = number, url = url, headSha = headSha, mergedAt = null)
+  }
+
+  override suspend fun recordPullRequestMerged(id: String, mergedAt: Instant) {
+    prs.computeIfPresent(id) { _, pr -> pr.copy(mergedAt = mergedAt) }
   }
 
   override suspend fun startRunAttempt(id: String, ordinal: Int, attempt: Int) {

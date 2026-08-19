@@ -1,5 +1,7 @@
 package software.medusa.farm.shared
 
+import java.time.Instant
+
 /** The processing sessions Farm opens against issues. */
 interface SessionStore {
   /**
@@ -23,6 +25,11 @@ interface SessionStore {
 
   /** Records the pull request the session opened. Idempotent on the session id. */
   suspend fun recordPullRequest(id: String, number: Int, url: String, headSha: String)
+
+  /**
+   * Records that the session's pull request was merged, at the time GitHub says it was. Idempotent.
+   */
+  suspend fun recordPullRequestMerged(id: String, mergedAt: Instant)
 
   /**
    * Opens try [attempt] at run [ordinal] of session [id], ready to be appended to. Idempotent on
