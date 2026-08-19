@@ -35,6 +35,15 @@ export function SessionDetail() {
       return;
     }
     let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | undefined;
+
+    function stopPolling() {
+      if (interval !== undefined) {
+        clearInterval(interval);
+        interval = undefined;
+      }
+    }
+
     async function load() {
       try {
         const res = await farm.getSession({ id: id ?? '' }, { headers });
@@ -56,6 +65,11 @@ export function SessionDetail() {
             pullRequestUrl: s.pullRequestUrl,
           },
         });
+        // A session that has finished will not change again, and its runs are the larger of the
+        // two reads and grow with the work the agent did.
+        if (s.state !== 'RUNNING') {
+          stopPolling();
+        }
       } catch {
         if (!cancelled) {
           setLoaded({ kind: 'missing' });
@@ -63,11 +77,13 @@ export function SessionDetail() {
       }
     }
     void load();
-    // Keep a running session's timeline live.
-    const interval = setInterval(() => void load(), 2000);
+    // Assigned before the first load can reach its state check — that awaits the network, while
+    // this runs synchronously — so a session that is already finished stops the loop on its own
+    // first pass rather than polling once more.
+    interval = setInterval(() => void load(), 2000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stopPolling();
     };
   }, [id, headers]);
 
