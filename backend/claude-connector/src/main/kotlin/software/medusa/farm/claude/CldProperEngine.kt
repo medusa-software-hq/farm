@@ -161,8 +161,13 @@ class CldProperEngine(
           workingDirectory = config.workspacePath,
           arguments = arguments,
           environment = sessionEnvironment(config = config),
-          block = block,
-      )
+      ) {
+        // Nothing is ever written to the session, and one that reads its input to the end would
+        // otherwise wait for input that never comes — before it says even its first word.
+        standardInput.close()
+
+        block()
+      }
     } catch (failure: IOException) {
       anomalyReporter.reportSpawnFailed(cause = failure)
 

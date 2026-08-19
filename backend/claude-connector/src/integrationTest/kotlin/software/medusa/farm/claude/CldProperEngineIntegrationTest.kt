@@ -102,6 +102,15 @@ class CldProperEngineIntegrationTest {
   }
 
   @Test
+  fun `a session that reads its input to the end still gets to speak`(): Unit = runBlocking {
+    // Nothing is ever written to a session, so one waiting to be told there is no more would
+    // otherwise never say its first word, and the whole run would be lost waiting for it.
+    val result = engine(WAITS_FOR_INPUT_END).runSession(config(), PROMPT) { awaitResult() }
+
+    assertEquals(CldRunStatus.Success, result.status)
+  }
+
+  @Test
   fun `sub-cent spending is kept, not rounded away`(): Unit = runBlocking {
     val result = engine(TINY_COST).runSession(config(), PROMPT) { awaitResult() }
 
@@ -403,6 +412,13 @@ class CldProperEngineIntegrationTest {
 
     // Starts, says nothing, ends.
     val SILENT = "#!/usr/bin/env bash\n"
+
+    // Reads its input to the end before it speaks, as the real thing does.
+    val WAITS_FOR_INPUT_END =
+        "#!/usr/bin/env bash\n" +
+            "cat > /dev/null\n" +
+            "echo '$GREETING'\n" +
+            "echo '$SUCCESS_RESULT'\n"
 
     val UNINTELLIGIBLE = script(GREETING, "this is not the protocol", SUCCESS_RESULT)
 

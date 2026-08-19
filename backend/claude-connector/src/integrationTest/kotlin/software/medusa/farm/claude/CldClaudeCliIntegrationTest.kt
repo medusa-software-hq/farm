@@ -95,7 +95,7 @@ class CldClaudeCliIntegrationTest {
                   home = System.getenv("HOME") ?: error("HOME is required"),
               ),
           authToken = CldAuthToken(oauthToken()),
-          anomalyReporter = RecordingAnomalyReporter(),
+          anomalyReporter = LoggingAnomalyReporter(),
       )
 
   private fun config(workspacePath: java.nio.file.Path, configDirPath: java.nio.file.Path) =
@@ -122,23 +122,34 @@ class CldClaudeCliIntegrationTest {
     return token
   }
 
-  private class RecordingAnomalyReporter : CldAnomalyReporter {
-    override fun reportSpawnFailed(cause: Throwable) = Unit
+  /**
+   * Puts every anomaly where a failed run can be read back from, since the only account of what the
+   * real thing did is the one taken while it was running.
+   */
+  private class LoggingAnomalyReporter : CldAnomalyReporter {
+    override fun reportSpawnFailed(cause: Throwable) = log("could not be started: $cause")
 
-    override fun reportMissingInitMessage(firstLine: String?) = Unit
+    override fun reportMissingInitMessage(firstLine: String?) =
+        log("said <$firstLine> instead of a greeting")
 
-    override fun reportUnexpectedProgressLine(progressLine: String) = Unit
+    override fun reportUnexpectedProgressLine(progressLine: String) =
+        log("said <$progressLine>, which is not the protocol")
 
-    override fun reportOutputAfterResult(outputLine: String) = Unit
+    override fun reportOutputAfterResult(outputLine: String) =
+        log("said <$outputLine> after its result")
 
-    override fun reportExitWithoutResult(exitCode: Int) = Unit
+    override fun reportExitWithoutResult(exitCode: Int) = log("ended ($exitCode) without a result")
 
-    override fun reportHangOutput() = Unit
+    override fun reportHangOutput() = log("neither said more nor fell silent after its result")
 
-    override fun reportLingeredAfterResult() = Unit
+    override fun reportLingeredAfterResult() = log("would not end after its result")
 
-    override fun reportUnexpectedNonZeroExitCode(exitCode: Int, runResult: CldRunResult) = Unit
+    override fun reportUnexpectedNonZeroExitCode(exitCode: Int, runResult: CldRunResult) =
+        log("claimed ${runResult.status} and then ended ($exitCode)")
 
-    override fun reportUnexpectedZeroExitCode(runResult: CldRunResult) = Unit
+    override fun reportUnexpectedZeroExitCode(runResult: CldRunResult) =
+        log("claimed ${runResult.status} and then ended cleanly")
+
+    private fun log(message: String) = System.err.println("[claude] the session $message")
   }
 }
