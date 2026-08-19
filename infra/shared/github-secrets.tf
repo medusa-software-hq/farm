@@ -51,3 +51,20 @@ resource "github_actions_secret" "farm_ephemeral_github_app_pem" {
     ignore_changes = [plaintext_value]
   }
 }
+
+# The private key of the GitHub App that makes and drops each ephemeral run's repository. Separate
+# from the farm App on purpose: creating and deleting repositories is the harness's job, not Farm's,
+# and Farm's rights in a throwaway environment should be the shape they are in a real one.
+resource "github_actions_secret" "fixture_manager_github_app_pem" {
+  repository  = data.github_repository.this.name
+  secret_name = "FIXTURE_MANAGER_GITHUB_APP_PEM"
+
+  # Placeholder: the real PEM is set out of band, and Terraform ignores the value from then on. As
+  # above, this has to exist before the real value does.
+  plaintext_value = "set-out-of-band"
+
+  lifecycle {
+    ignore_changes = [plaintext_value]
+  }
+}
+
