@@ -7,12 +7,16 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.produceIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
@@ -181,7 +185,11 @@ class CldProperEngine(
   private suspend fun <ResultT> SysProcessScope.parseClaudeOutput(
       block: suspend CldOutputScope.() -> ResultT,
   ): ResultT = coroutineScope {
-    val standardOutputLineChannel = standardOutput.consumeLines().produceIn(this)
+    // Not a child of this scope. Reading the engine's output parks until the engine's output ends,
+    // and what ends it is the engine dying — which happens outside this block, once it returns. A
+    // reader here would be joined on the way out, waiting for a process that is waiting for us.
+    val readerScope = CoroutineScope(currentCoroutineContext() + Job())
+    val standardOutputLineChannel = standardOutput.consumeLines().produceIn(readerScope)
     val firstLine =
         withTimeoutOrNull(GREETING_GRACE_PERIOD) {
           standardOutputLineChannel.receiveCatching().getOrNull()
@@ -260,8 +268,10 @@ class CldProperEngine(
     try {
       scope.block()
     } finally {
-      // Same as above: once the block is finished there is nothing left to read the engine for.
+      // Once the block is finished there is nothing left to read the engine for. The reader is
+      // cancelled but never awaited; ending the engine is what actually releases it.
       outputPump.cancel()
+      readerScope.cancel()
     }
   }
 
