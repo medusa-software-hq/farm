@@ -10,8 +10,13 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import software.medusa.farm.github.GhMergeMethod
+import software.medusa.farm.github.GhNewReviewComment
 import software.medusa.farm.github.GhOrgLogin
 import software.medusa.farm.github.GhProperAppApiClient
+import software.medusa.farm.github.GhProperInstallationApiClientProvider
+import software.medusa.farm.github.GhRepoFullName
+import software.medusa.farm.github.GhReviewVerdict
 import software.medusa.farm.v1.FarmServiceGrpcKt
 import software.medusa.farm.v1.GetSessionRunsRequest
 import software.medusa.farm.v1.LinkOrgRequest
@@ -21,110 +26,110 @@ import software.medusa.farm.v1.SyncRepositoriesRequest
 /**
  * Drives one issue all the way round: filed, worked, reviewed, worked again, merged.
  *
- * Everything under it is real — a database branch, a GitHub org, the agent — so this is the only
- * test that can say the loop works rather than that its pieces do. It costs money and minutes, and
- * it is the reason the ephemeral module exists.
+ * Everything under it is real — a database, a GitHub org, the agent — so this is the only test that
+ * can say the loop works rather than that its pieces do. It costs money and minutes, and it is what
+ * the ephemeral farm exists to be run against.
  *
- * The repository it drives is made for this run and dropped after it, so the tree it starts from is
- * the same every time; a shared one would move forward with each merge and never be the same twice.
+ * What it knows of the farm is where its API answers. A farm started beside it and one deployed
+ * somewhere are the same thing from here, which is what lets these cover both.
  *
- * What it knows of the farm is where its API answers. A farm started here and one deployed
- * somewhere are the same thing from here, which is what would let this cover both.
+ * The repository it drives is expected to be made for the run and dropped after it: the tree the
+ * agent starts from is then the same every time, where a shared one would move forward with every
+ * merge and never be the same twice.
  */
 class FarmLoopSystemTest {
   @Test
   fun `an issue is worked, reviewed, worked again, and merged`(): Unit = runBlocking {
     val config = SystemTestConfig.fromEnvironment()
+    val repo = GhRepoFullName(config.repoFullName)
 
-    // The harness App, not the farm's. GitHub will not let an App ask for changes on a pull
-    // request it opened, and reviewing is the test's own business rather than the farm's.
-    val harness = GhProperAppApiClient.build(config.harnessApp.clientId, config.harnessApp.pem)
+    // As the harness, not as the farm: GitHub will not let an App ask for changes on a pull
+    // request it opened, and reviewing is the test's own business either way.
+    val appApiClient = GhProperAppApiClient.build(config.harnessApp.clientId, config.harnessApp.pem)
+    val gitHub =
+        GhProperInstallationApiClientProvider(appApiClient)
+            .provideForInstallation(appApiClient.resolveInstallationId(GhOrgLogin(config.orgLogin)))
 
-    EphemeralFarm.run(config) { farm ->
-      runBlocking {
-        val installation = harness.resolveInstallationId(GhOrgLogin(config.orgLogin))
-        val fixture =
-            FixtureGitHub(
-                repoFullName = config.repoFullName,
-                token = harness.mintInstallationToken(installation).token,
-            )
-        val api =
-            FarmServiceGrpcKt.FarmServiceCoroutineStub(
-                ManagedChannelBuilder.forAddress(farm.apiHost, farm.apiPort).usePlaintext().build()
-            )
-
-        // Farm only looks at repositories of orgs it has been linked to, and only at issues
-        // carrying its label — which a repository made from a template does not have.
-        api.linkOrg(LinkOrgRequest.newBuilder().setOrgLogin(config.orgLogin).build())
-        fixture.ensureLabel(FARM_READY_LABEL)
-        // The fixture's check spans two files, so this asks for a coordinated edit rather than a
-        // one-line one: getting half of it right fails `verifyGreeting` instead of passing.
-        val issueNumber =
-            fixture.createIssue(
-                title = "Change the greeting to Howdy",
-                body =
-                    "The greeting should be `Howdy` rather than `Hello`. Make sure the project's " +
-                        "own check still passes afterwards.",
-                label = FARM_READY_LABEL,
-            )
-
-        // The sweep is what notices a labelled issue; the deployment runs it on a schedule and
-        // this asks for it directly.
-        api.syncRepositories(SyncRepositoriesRequest.getDefaultInstance())
-
-        val (pullRequestNumber, firstSha) =
-            awaitUntil("a pull request for the issue", AGENT_RUN_LIMIT) {
-              fixture.openPullRequests().firstOrNull()
-            }
-
-        val sessionId =
-            awaitUntil("a session for the issue", SETTLE_LIMIT) {
-              api.listSessions(ListSessionsRequest.getDefaultInstance())
-                  .sessionsList
-                  .firstOrNull { it.number == issueNumber }
-                  ?.id
-            }
-
-        val firstRun = runsOf(api, sessionId).single()
-        assertEquals(0, firstRun.ordinal, "the first run is the initial attempt")
-        assertTrue(
-            firstRun.attemptsList.single().entriesCount > 0,
-            "the run recorded nothing the agent did",
+    val api =
+        FarmServiceGrpcKt.FarmServiceCoroutineStub(
+            ManagedChannelBuilder.forAddress(config.apiHost, config.apiPort).usePlaintext().build()
         )
 
-        // Reviewed the way a person does: something in the box, something against a file the agent
-        // actually touched.
-        val touched = fixture.changedPaths(pullRequestNumber).first()
-        fixture.requestChanges(
-            pullRequestNumber = pullRequestNumber,
-            body = "Let's go with `Howdy there` instead — same again, keep the check passing.",
-            path = touched,
-            comment = "This is the file I mean.",
+    // The farm only looks at orgs it has been linked to, and only at issues carrying its label —
+    // which a repository made from a template has not got.
+    api.linkOrg(LinkOrgRequest.newBuilder().setOrgLogin(config.orgLogin).build())
+    gitHub.ensureLabel(repo, READY_LABEL)
+
+    // The fixture's check spans two files, so this asks for a coordinated edit rather than a
+    // one-line one: getting half of it right fails `verifyGreeting` instead of passing.
+    val issue =
+        gitHub.createIssue(
+            repo = repo,
+            title = "Change the greeting to Howdy",
+            body =
+                "The greeting should be `Howdy` rather than `Hello`. Make sure the project's own " +
+                    "check still passes afterwards.",
+            labels = listOf(READY_LABEL),
         )
 
-        // A fixup is a push to the same branch, so the pull request moving off the commit it was
-        // opened at is what says the review was worked.
-        awaitUntil("the fixup to reach the pull request", AGENT_RUN_LIMIT) {
-          fixture.openPullRequests().firstOrNull {
-            it.first == pullRequestNumber && it.second != firstSha
-          }
+    // The sweep is what notices a labelled issue; the deployment runs it on a schedule and this
+    // asks for it directly.
+    api.syncRepositories(SyncRepositoriesRequest.getDefaultInstance())
+
+    val pullRequest =
+        awaitUntil("a pull request for the issue", AGENT_RUN_LIMIT) {
+          gitHub.listOpenPullRequests(repo).firstOrNull()
         }
 
-        val runs = runsOf(api, sessionId)
-        assertEquals(listOf(0, 1), runs.map { it.ordinal }, "the fixup was not recorded as a run")
+    val sessionId =
+        awaitUntil("a session for the issue", SETTLE_LIMIT) {
+          api.listSessions(ListSessionsRequest.getDefaultInstance())
+              .sessionsList
+              .firstOrNull { it.number == issue.number }
+              ?.id
+        }
 
-        fixture.merge(pullRequestNumber)
+    val firstRun = runsOf(api, sessionId).single()
+    assertEquals(0, firstRun.ordinal, "the first run is the initial attempt")
+    assertTrue(
+        firstRun.attemptsList.single().entriesCount > 0,
+        "the run recorded nothing the agent did",
+    )
 
-        val merged =
-            awaitUntil("the session to finish", SETTLE_LIMIT) {
-              api.listSessions(ListSessionsRequest.getDefaultInstance()).sessionsList.firstOrNull {
-                it.id == sessionId && it.state != "RUNNING"
-              }
-            }
-        // Success is the merge, not the session ending — so this is the assertion that matters.
-        assertEquals("COMPLETED", merged.state)
+    // Reviewed the way a person does: something in the box, and something against a file the agent
+    // actually touched.
+    val touched = gitHub.listPullRequestPaths(repo, pullRequest.number).first()
+    gitHub.createReview(
+        repo = repo,
+        number = pullRequest.number,
+        verdict = GhReviewVerdict.REQUEST_CHANGES,
+        body = "Let's go with `Howdy there` instead — same again, keep the check passing.",
+        comments = listOf(GhNewReviewComment(path = touched, body = "This is the file I mean.")),
+    )
+
+    // A fixup is a push to the same branch, so the pull request moving off the commit it was opened
+    // at is what says the review was worked.
+    awaitUntil("the fixup to reach the pull request", AGENT_RUN_LIMIT) {
+      gitHub.listOpenPullRequests(repo).firstOrNull {
+        it.number == pullRequest.number && it.headSha != pullRequest.headSha
       }
     }
+
+    assertEquals(
+        listOf(0, 1),
+        runsOf(api, sessionId).map { it.ordinal },
+        "the fixup was not recorded as a run of its own",
+    )
+
+    gitHub.mergePullRequest(repo, pullRequest.number, GhMergeMethod.SQUASH)
+
+    val finished =
+        awaitUntil("the session to finish", SETTLE_LIMIT) {
+          api.listSessions(ListSessionsRequest.getDefaultInstance()).sessionsList.firstOrNull {
+            it.id == sessionId && it.state != "RUNNING"
+          }
+        }
+    assertEquals("COMPLETED", finished.state)
   }
 
   private suspend fun runsOf(api: FarmServiceGrpcKt.FarmServiceCoroutineStub, sessionId: String) =
@@ -133,7 +138,7 @@ class FarmLoopSystemTest {
 
   /**
    * Waits for [probe] to have an answer, saying what it was waiting for when it runs out. Real work
-   * takes real time here: nothing is skipped and nothing is mocked.
+   * takes real time here: nothing is skipped and nothing is stubbed.
    */
   private suspend fun <ResultT> awaitUntil(
       what: String,
@@ -152,7 +157,7 @@ class FarmLoopSystemTest {
   }
 
   private companion object {
-    const val FARM_READY_LABEL = "farm:ready"
+    const val READY_LABEL = "farm:ready"
 
     // An agent cloning a repository, working, and pushing. Generous: a slow run is not a failure.
     val AGENT_RUN_LIMIT = 15.minutes

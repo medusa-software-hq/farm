@@ -105,22 +105,47 @@ jobs:
             --private
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
-      - name: Drive one issue round the loop
+      # Its own process, not the test's: the farm's logs stay its own, and the tests are pointed
+      # at it the way they would be pointed at a deployed one.
+      - name: Start the ephemeral farm
         env:
           DATABASE_URL: jdbc:postgresql://localhost:5432/postgres?user=postgres&password=farm
           GITHUB_APP_CLIENT_ID: ${{ env.FARM_EPHEMERAL_APP_CLIENT_ID }}
           GITHUB_APP_PEM: ${{ secrets.FARM_EPHEMERAL_GITHUB_APP_PEM }}
-          # The test files the issue and reviews as the harness, not as the farm — GitHub will not
-          # let an App ask for changes on a pull request it opened.
-          HARNESS_APP_CLIENT_ID: ${{ env.FIXTURE_MANAGER_APP_CLIENT_ID }}
-          HARNESS_APP_PEM: ${{ secrets.FIXTURE_MANAGER_GITHUB_APP_PEM }}
-          FARM_EPHEMERAL_ORG: ${{ env.FARM_EPHEMERAL_ORG }}
-          FARM_EPHEMERAL_REPO: ${{ steps.fixture.outputs.name }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        # --no-daemon so this invocation's environment reaches the forked test JVM: a reused daemon
-        # keeps its start-up environment and would drop it.
+          FARM_API_PORT: "8081"
+        run: |
+          ./gradlew --no-daemon :backend:ephemeral:installDist
+          ./backend/ephemeral/build/install/ephemeral/bin/ephemeral > farm.log 2>&1 &
+          for _ in $(seq 1 60); do
+            if curl -fsS http://localhost:8081/health >/dev/null 2>&1; then
+              echo "The farm is up."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "The farm did not come up." >&2
+          tail -50 farm.log >&2
+          exit 1
+
+      - name: Drive one issue round the loop
+        env:
+          FARM_API_HOST: localhost
+          FARM_API_PORT: "8081"
+          FARM_TEST_ORG: ${{ env.FARM_EPHEMERAL_ORG }}
+          FARM_TEST_REPO: ${{ steps.fixture.outputs.name }}
+          # The test files and reviews as the harness, not as the farm — GitHub will not let an App
+          # ask for changes on a pull request it opened.
+          HARNESS_APP_CLIENT_ID: ${{ env.FIXTURE_MANAGER_APP_CLIENT_ID }}
+          HARNESS_APP_PEM: ${{ secrets.FIXTURE_MANAGER_GITHUB_APP_PEM }}
         run: ./gradlew --no-daemon :backend:system-tests:integrationTest
+
+      # What the farm itself said, which is where a failure in the loop rather than in the test will
+      # have left its trail.
+      - name: The farm's log
+        if: always()
+        run: tail -200 farm.log || true
 
       # Whatever happened above, including the run being cancelled. The name comes from the run id
       # rather than from a step's output, so this works even if the repository step is what failed.

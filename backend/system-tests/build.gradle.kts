@@ -1,11 +1,11 @@
 plugins { alias(libs.plugins.kotlin.jvm) }
 
 dependencies {
+  // Only what a system test needs: the API to talk to, the GitHub client to drive with, and the
+  // App config type. Nothing of the worker, and nothing that starts a farm.
   implementation(project(":backend:api:core"))
-  implementation(project(":backend:worker:core"))
-  implementation(project(":backend:shared"))
   implementation(project(":backend:github-client"))
-  implementation(libs.temporal.sdk)
+  implementation(project(":backend:worker:core"))
   implementation(libs.kotlinx.coroutines.core)
 
   // Only the integrationTest source set has tests; it inherits these via the extendsFrom below.
@@ -15,8 +15,8 @@ dependencies {
 
 base { archivesName = "backend-system-tests" }
 
-// The whole farm against real things — a real database, real GitHub, a real agent — kept out of the
-// `test`/`check` lifecycle because it costs money and needs credentials, and run on demand.
+// The assembled farm driven from outside it, against real GitHub and a real agent. Kept out of the
+// `test`/`check` lifecycle because it costs money and needs a farm to point at, and run on demand.
 val integrationTest by sourceSets.creating {
   compileClasspath += sourceSets["main"].output
   runtimeClasspath += sourceSets["main"].output
@@ -33,7 +33,7 @@ dependencies {
 }
 
 tasks.register<Test>("integrationTest") {
-  description = "Drives one issue all the way round the loop against a real GitHub and database."
+  description = "Drives one issue all the way round, against whichever farm it is pointed at."
   group = "verification"
   testClassesDirs = integrationTest.output.classesDirs
   classpath = integrationTest.runtimeClasspath

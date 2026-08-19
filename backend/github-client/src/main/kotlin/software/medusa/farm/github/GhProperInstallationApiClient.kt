@@ -9,6 +9,10 @@ import kotlinx.serialization.encodeToString
 
 private const val httpOk = 200
 private const val httpCreated = 201
+private const val httpUnprocessable = 422
+
+// Grey, so a label made by a client rather than a person does not claim a meaning by its colour.
+private const val defaultLabelColor = "ededed"
 
 /**
  * The installation surface for one org: its installation-only endpoints, with the resource surface
@@ -65,6 +69,101 @@ private constructor(
       "GitHub pull request creation failed: ${response.statusCode()} ${response.body()}"
     }
     return gitHubJson.decodeFromString<PullRequestDto>(response.body()).toGhPullRequest()
+  }
+
+  override suspend fun ensureLabel(repo: GhRepoFullName, name: String) {
+    val response =
+        http.post(
+            "/repos/${repo.value}/labels",
+            bearer = tokenProvider.provideToken(),
+            body = gitHubJson.encodeToString(NewLabelDto(name = name, color = defaultLabelColor)),
+        )
+    // Already there is the outcome asked for, and GitHub reports it as unprocessable rather than
+    // as success.
+    check(response.statusCode() == httpCreated || response.statusCode() == httpUnprocessable) {
+      "GitHub label creation failed: ${response.statusCode()} ${response.body()}"
+    }
+  }
+
+  override suspend fun createIssue(
+      repo: GhRepoFullName,
+      title: String,
+      body: String,
+      labels: List<String>,
+  ): GhIssue {
+    val response =
+        http.post(
+            "/repos/${repo.value}/issues",
+            bearer = tokenProvider.provideToken(),
+            body =
+                gitHubJson.encodeToString(NewIssueDto(title = title, body = body, labels = labels)),
+        )
+    check(response.statusCode() == httpCreated) {
+      "GitHub issue creation failed: ${response.statusCode()} ${response.body()}"
+    }
+
+    val opened = gitHubJson.decodeFromString<OpenedIssueDto>(response.body())
+
+    return GhIssue(number = opened.number, title = opened.title, labels = labels)
+  }
+
+  override suspend fun listOpenPullRequests(repo: GhRepoFullName): List<GhPullRequest> =
+      http
+          .getPaged(
+              "/repos/${repo.value}/pulls?state=open&sort=created&direction=desc",
+              tokenProvider,
+          ) { body ->
+            gitHubJson.decodeFromString<List<PullRequestDto>>(body).map { it.toGhPullRequest() }
+          }
+          .toList()
+
+  override suspend fun listPullRequestPaths(repo: GhRepoFullName, number: Int): List<String> =
+      http
+          .getPaged("/repos/${repo.value}/pulls/$number/files", tokenProvider) { body ->
+            gitHubJson.decodeFromString<List<PullRequestFileDto>>(body).map { it.filename }
+          }
+          .toList()
+
+  override suspend fun createReview(
+      repo: GhRepoFullName,
+      number: Int,
+      verdict: GhReviewVerdict,
+      body: String,
+      comments: List<GhNewReviewComment>,
+  ) {
+    val response =
+        http.post(
+            "/repos/${repo.value}/pulls/$number/reviews",
+            bearer = tokenProvider.provideToken(),
+            body =
+                gitHubJson.encodeToString(
+                    NewReviewDto(
+                        event = verdict.name,
+                        body = body,
+                        comments =
+                            comments.map { NewReviewCommentDto(path = it.path, body = it.body) },
+                    )
+                ),
+        )
+    check(response.statusCode() == httpOk || response.statusCode() == httpCreated) {
+      "GitHub review submission failed: ${response.statusCode()} ${response.body()}"
+    }
+  }
+
+  override suspend fun mergePullRequest(
+      repo: GhRepoFullName,
+      number: Int,
+      method: GhMergeMethod,
+  ) {
+    val response =
+        http.put(
+            "/repos/${repo.value}/pulls/$number/merge",
+            bearer = tokenProvider.provideToken(),
+            body = gitHubJson.encodeToString(MergeDto(mergeMethod = method.wireValue)),
+        )
+    check(response.statusCode() == httpOk) {
+      "GitHub pull request merge failed: ${response.statusCode()} ${response.body()}"
+    }
   }
 
   override suspend fun listReviews(
@@ -143,6 +242,33 @@ private fun PullRequestDto.toGhPullRequest(): GhPullRequest =
         headSha = head.sha,
         mergedAt = mergedAt?.let(Instant::parse),
     )
+
+@Serializable private class NewLabelDto(val name: String, val color: String)
+
+@Serializable
+private class NewIssueDto(val title: String, val body: String, val labels: List<String>)
+
+@Serializable private class OpenedIssueDto(val number: Int, val title: String)
+
+@Serializable
+private class NewReviewDto(
+    val event: String,
+    val body: String,
+    val comments: List<NewReviewCommentDto>,
+)
+
+// subject_type says the comment is against the file rather than a line of it, which is what lets
+// one be left without knowing the diff.
+@Serializable
+private class NewReviewCommentDto(
+    val path: String,
+    val body: String,
+    @SerialName("subject_type") val subjectType: String = "file",
+)
+
+@Serializable private class MergeDto(@SerialName("merge_method") val mergeMethod: String)
+
+@Serializable private class PullRequestFileDto(val filename: String)
 
 @Serializable
 private class ReviewDto(

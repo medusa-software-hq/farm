@@ -3,29 +3,23 @@ package software.medusa.farm.systemtest
 import software.medusa.farm.worker.GitHubAppConfig
 
 /**
- * What a system test needs: the org and repository it drives, the App it drives them as, and — for
- * a farm it has to start itself — what that farm runs on.
+ * What a system test needs: where the farm's API answers, what it drives, and the App it drives as.
  *
- * A test against a deployed farm would want the first half and none of the second.
+ * Nothing here says how the farm came to be running. One started beside the test and one deployed
+ * somewhere are the same thing from here.
  */
 data class SystemTestConfig(
-    /** A Neon branch, made and dropped around this run rather than by anything here. */
-    val databaseUrl: String,
-    /** The App the farm itself works as: it opens the pull request and pushes the fixups. */
-    val farmApp: GitHubAppConfig,
+    val apiHost: String,
+    val apiPort: Int,
+    /** The org and repository the loop is driven against. */
+    val orgLogin: String,
+    val repoName: String,
     /**
      * The App the test works as — filing the issue, asking for changes, merging. Not the farm's:
      * GitHub will not let an App review a pull request it opened, and the harness is not the
      * subject.
      */
     val harnessApp: GitHubAppConfig,
-    /** The org the App is installed on, and the repository the loop is driven against. */
-    val orgLogin: String,
-    val repoName: String,
-    val claudeOauthToken: String,
-    val openRouterApiKey: String,
-    /** Where the API listens. Zero asks the OS for a free one, which is what lets runs overlap. */
-    val apiPort: Int,
 ) {
   val repoFullName: String
     get() = "$orgLogin/$repoName"
@@ -33,27 +27,19 @@ data class SystemTestConfig(
   companion object {
     fun fromEnvironment(env: Map<String, String> = System.getenv()): SystemTestConfig =
         SystemTestConfig(
-            databaseUrl = env.required("DATABASE_URL"),
-            farmApp =
-                GitHubAppConfig(
-                    env.required("GITHUB_APP_CLIENT_ID"),
-                    env.required("GITHUB_APP_PEM"),
-                ),
+            apiHost = env.required("FARM_API_HOST"),
+            apiPort = env.required("FARM_API_PORT").toInt(),
+            orgLogin = env.required("FARM_TEST_ORG"),
+            repoName = env.required("FARM_TEST_REPO"),
             harnessApp =
                 GitHubAppConfig(
                     env.required("HARNESS_APP_CLIENT_ID"),
                     env.required("HARNESS_APP_PEM"),
                 ),
-            orgLogin = env.required("FARM_EPHEMERAL_ORG"),
-            repoName = env.required("FARM_EPHEMERAL_REPO"),
-            claudeOauthToken = env.required("CLAUDE_CODE_OAUTH_TOKEN"),
-            openRouterApiKey = env.required("OPENROUTER_API_KEY"),
-            apiPort = 0,
         )
 
-    // Nothing here has a sensible stand-in: a run missing any of it would either not start or,
-    // worse, drive the wrong org.
+    // A test missing any of this would either not run or, worse, drive the wrong org.
     private fun Map<String, String>.required(name: String): String =
-        this[name] ?: error("$name is required to run the ephemeral farm")
+        this[name] ?: error("$name is required to run the system tests")
   }
 }

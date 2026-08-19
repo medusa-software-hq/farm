@@ -37,4 +37,42 @@ interface GhInstallationApiClient : GhResourcesApiClient {
       repo: GhRepoFullName,
       number: Int,
   ): List<GhPullRequestReviewComment>
+
+  /**
+   * Creates a label if the repository has not got one by that name, and does nothing if it has.
+   * Requires the App's Issues:write permission.
+   */
+  suspend fun ensureLabel(repo: GhRepoFullName, name: String)
+
+  /** Opens an issue carrying [labels]. Requires the App's Issues:write permission. */
+  suspend fun createIssue(
+      repo: GhRepoFullName,
+      title: String,
+      body: String,
+      labels: List<String>,
+  ): GhIssue
+
+  /** The repository's open pull requests, newest first. */
+  suspend fun listOpenPullRequests(repo: GhRepoFullName): List<GhPullRequest>
+
+  /** The paths a pull request changes. */
+  suspend fun listPullRequestPaths(repo: GhRepoFullName, number: Int): List<String>
+
+  /**
+   * Submits a review saying [verdict], with [body] in the review's own box and [comments] against
+   * files. Requires the App's Pull requests:write permission.
+   *
+   * GitHub will not accept a verdict of [GhReviewVerdict.APPROVE] or
+   * [GhReviewVerdict.REQUEST_CHANGES] on a pull request the same App opened.
+   */
+  suspend fun createReview(
+      repo: GhRepoFullName,
+      number: Int,
+      verdict: GhReviewVerdict,
+      body: String,
+      comments: List<GhNewReviewComment>,
+  )
+
+  /** Merges a pull request. Requires the App's Pull requests:write permission. */
+  suspend fun mergePullRequest(repo: GhRepoFullName, number: Int, method: GhMergeMethod)
 }
