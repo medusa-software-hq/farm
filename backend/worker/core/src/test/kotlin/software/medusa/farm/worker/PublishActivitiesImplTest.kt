@@ -115,6 +115,10 @@ class PublishActivitiesImplTest {
       calls += "createBranch:$branch"
     }
 
+    override suspend fun checkout(repo: Path, branch: String) {
+      calls += "checkout:$branch"
+    }
+
     override suspend fun stageAll(repo: Path) {
       calls += "stageAll"
     }

@@ -5,32 +5,78 @@ import java.security.SecureRandom
 /**
  * Builds what the agent is asked to do.
  *
- * The material is written by whoever filed the issue, which is anyone who can file one — so it is
- * given as a labelled block rather than run together with the instructions around it, and the label
- * carries a nonce that the material cannot have known to forge. Text that tries to close the block
- * early stays inside it, and reads as what it is: something the issue said.
+ * The material is written by whoever filed the issue or reviewed the pull request, which is anyone
+ * who can do either — so it is given as labelled blocks rather than run together with the
+ * instructions around it, and the labels carry a nonce that the material cannot have known to
+ * forge. Text that tries to close a block early stays inside it, and reads as what it is: something
+ * the issue or the review said.
  */
 object AgentPrompt {
   fun forIssue(title: String, body: String): String {
-    val issue = "$title\n\n${body.ifBlank { "(no description)" }}"
+    val nonce = nonce()
 
     return """
         |Implement the issue below, in the repository you are working in.
         |
-        |${block(name = "ISSUE", content = issue)}
+        |${block(nonce, name = "ISSUE", content = issue(title, body))}
         """
         .trimMargin()
   }
 
   /**
-   * Wraps [content] in markers labelled [name]. The nonce is freshly drawn per prompt, so nothing
-   * written before it existed can spell the marker that ends the block.
+   * The prompt for a run addressing [feedback]. The session is a fresh one — it remembers nothing
+   * of the run being followed up — so what that run did comes back as [previousSummary] rather than
+   * as history the agent still holds.
    */
-  private fun block(name: String, content: String): String {
+  fun forFixup(
+      title: String,
+      body: String,
+      previousSummary: String,
+      feedback: ReviewFeedback,
+  ): String {
     val nonce = nonce()
 
-    return "===== BEGIN $name $nonce =====\n$content\n===== END $name $nonce ====="
+    return """
+        |Address the review feedback below, in the repository you are working in. The work it is
+        |about is already committed to the branch you are on; change what the review asks for and
+        |leave the rest alone.
+        |
+        |${block(nonce, name = "ISSUE", content = issue(title, body))}
+        |
+        |${block(nonce, name = "WHAT THE PREVIOUS RUN DID", content = previousSummary)}
+        |
+        |${block(nonce, name = "REVIEW FEEDBACK", content = render(feedback))}
+        """
+        .trimMargin()
   }
+
+  private fun issue(title: String, body: String): String =
+      "$title\n\n${body.ifBlank { "(no description)" }}"
+
+  /** The review as prose: what was said about the whole thing, then what was said about lines. */
+  private fun render(feedback: ReviewFeedback): String {
+    val parts = buildList {
+      if (feedback.body.isNotBlank()) add(feedback.body.trim())
+
+      feedback.comments.forEach { comment ->
+        val where = comment.line?.let { "${comment.path}:$it" } ?: comment.path
+        add("$where\n${comment.body.trim()}")
+      }
+    }
+
+    // A reviewer can ask for changes without typing anything anywhere, and the agent still has to
+    // be told something rather than an empty block.
+    return parts
+        .ifEmpty { listOf("Changes were requested without any comment.") }
+        .joinToString(separator = "\n\n")
+  }
+
+  /**
+   * Wraps [content] in markers labelled [name]. The nonce is drawn per prompt, so nothing written
+   * before it existed can spell the marker that ends a block.
+   */
+  private fun block(nonce: String, name: String, content: String): String =
+      "===== BEGIN $name $nonce =====\n$content\n===== END $name $nonce ====="
 
   private fun nonce(): String {
     val bytes = ByteArray(NONCE_BYTES)

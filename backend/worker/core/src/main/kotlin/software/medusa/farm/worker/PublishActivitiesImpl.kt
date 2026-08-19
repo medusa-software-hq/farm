@@ -12,7 +12,6 @@ import org.slf4j.LoggerFactory
 import software.medusa.farm.claude.CldCost
 import software.medusa.farm.claude.CldEngine
 import software.medusa.farm.claude.CldPermissionMode
-import software.medusa.farm.claude.CldRunResult
 import software.medusa.farm.claude.CldRunStatus
 import software.medusa.farm.claude.CldSessionConfig
 import software.medusa.farm.claude.CldSessionEvent
@@ -25,6 +24,7 @@ import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhRepoFullName
 import software.medusa.farm.shared.AttemptNumbering
+import software.medusa.farm.shared.SessionRunAttempt
 import software.medusa.farm.shared.SessionStore
 
 /**
@@ -69,42 +69,13 @@ class PublishActivitiesImpl(
       gitCli.clone(cloneUrl(repo), clone, token)
       val baseBranch = gitCli.currentBranch(clone)
 
-      // Opened before the session starts and appended to as it goes, so what the agent is doing
-      // can be read while it is still doing it rather than only once it is over. A retry opens a
-      // try of its own and leaves the one it is retrying to be read back.
-      val attempt = attemptNumbering.currentAttempt()
-      sessionStore.startRunAttempt(sessionId, INITIAL_RUN_ORDINAL, attempt)
-
-      val (agentEvents, result) =
-          engine.runSession(
-              config = sessionConfig(workspacePath = clone, configDirPath = configDir),
-              prompt = AgentPrompt.forIssue(title = title, body = body),
-          ) {
-            eventChannel
-                .receiveAsFlow()
-                .onEach { event ->
-                  if (event is CldSessionEvent.Warning) {
-                    logger.warn("The agent session warned: {}", event.text)
-                  }
-                }
-                .withIndex()
-                .onEach { (position, event) ->
-                  sessionStore.appendRunEntry(
-                      id = sessionId,
-                      ordinal = INITIAL_RUN_ORDINAL,
-                      attempt = attempt,
-                      position = position,
-                      entry = AgentRunMapper.entry(event),
-                  )
-                }
-                .map { it.value }
-                .toList() to awaitResult()
-          }
-      check(result.status is CldRunStatus.Success) { "agent run ended in ${result.status}" }
-
-      // Closed with how it went, and with a summary of it — a no-change run is still a run worth
-      // showing. ordinal 0 is the initial attempt; fixups will be 1+.
-      finishRun(sessionId, attempt, agentEvents, result)
+      runAgent(
+          sessionId = sessionId,
+          runOrdinal = INITIAL_RUN_ORDINAL,
+          workspacePath = clone,
+          configDirPath = configDir,
+          prompt = AgentPrompt.forIssue(title = title, body = body),
+      )
 
       gitCli.stageAll(clone)
       if (!gitCli.hasStagedChanges(clone)) {
@@ -115,7 +86,7 @@ class PublishActivitiesImpl(
         )
       }
 
-      val branch = "farm/issue-$number"
+      val branch = branchFor(number)
       gitCli.createBranch(clone, branch)
       gitCli.commit(clone, "$title\n\nRefs #$number", commitAuthor, signingKey)
       gitCli.push(clone, branch, token)
@@ -138,28 +109,130 @@ class PublishActivitiesImpl(
     }
   }
 
-  /** Summarizes what the run did and closes it with its outcome. */
-  private suspend fun finishRun(
+  override fun fixupIssue(
       sessionId: String,
-      attempt: Int,
-      events: List<CldSessionEvent>,
-      result: CldRunResult,
+      installationId: Long,
+      repoFullName: String,
+      number: Int,
+      title: String,
+      runOrdinal: Int,
+      feedback: ReviewFeedback,
+  ): Unit = runBlocking {
+    val installation = GhInstallationId(installationId)
+    val repo = GhRepoFullName(repoFullName)
+    val client = clientProvider.provideForInstallation(installation)
+    val body = client.getIssueBody(repo, number)
+    val token = tokenMinter.mintInstallationToken(installation).token
+    val branch = branchFor(number)
+
+    val workspace = Files.createTempDirectory("farm-fixup")
+    val clone = workspace.resolve("repo")
+    val configDir = Files.createTempDirectory("farm-fixup-claude")
+    try {
+      gitCli.clone(cloneUrl(repo), clone, token)
+      // Onto the branch the pull request is on, so the agent sees the work being reviewed rather
+      // than the trunk it was branched from.
+      gitCli.checkout(clone, branch)
+
+      runAgent(
+          sessionId = sessionId,
+          runOrdinal = runOrdinal,
+          workspacePath = clone,
+          configDirPath = configDir,
+          prompt =
+              AgentPrompt.forFixup(
+                  title = title,
+                  body = body,
+                  previousSummary = previousRunSummary(sessionId),
+                  feedback = feedback,
+              ),
+      )
+
+      gitCli.stageAll(clone)
+      // A review can be answered without changing anything — the reviewer was mistaken, or asked
+      // for something already there. The run is still recorded; there is simply nothing to push.
+      if (gitCli.hasStagedChanges(clone)) {
+        gitCli.commit(clone, fixupCommitMessage(number), commitAuthor, signingKey)
+        gitCli.push(clone, branch, token)
+      }
+    } finally {
+      workspace.toFile().deleteRecursively()
+      configDir.toFile().deleteRecursively()
+    }
+  }
+
+  /**
+   * Runs one agent session over [workspacePath] as run [runOrdinal], recording what it does as it
+   * does it and closing the run with a summary of it.
+   */
+  private suspend fun runAgent(
+      sessionId: String,
+      runOrdinal: Int,
+      workspacePath: Path,
+      configDirPath: Path,
+      prompt: String,
   ) {
-    val mapped = AgentRunMapper.map(events, result)
+    // Opened before the session starts and appended to as it goes, so what the agent is doing can
+    // be read while it is still doing it rather than only once it is over. A retry opens a try of
+    // its own and leaves the one it is retrying to be read back.
+    val attempt = attemptNumbering.currentAttempt()
+    sessionStore.startRunAttempt(sessionId, runOrdinal, attempt)
+
+    val (agentEvents, result) =
+        engine.runSession(
+            config = sessionConfig(workspacePath = workspacePath, configDirPath = configDirPath),
+            prompt = prompt,
+        ) {
+          eventChannel
+              .receiveAsFlow()
+              .onEach { event ->
+                if (event is CldSessionEvent.Warning) {
+                  logger.warn("The agent session warned: {}", event.text)
+                }
+              }
+              .withIndex()
+              .onEach { (position, event) ->
+                sessionStore.appendRunEntry(
+                    id = sessionId,
+                    ordinal = runOrdinal,
+                    attempt = attempt,
+                    position = position,
+                    entry = AgentRunMapper.entry(event),
+                )
+              }
+              .map { it.value }
+              .toList() to awaitResult()
+        }
+    check(result.status is CldRunStatus.Success) { "agent run ended in ${result.status}" }
+
+    val mapped = AgentRunMapper.map(agentEvents, result)
     // The summary is a required part of the next run's context, so the summarizer is an
     // assumed-available dependency, like the agent itself: it raises when it cannot summarize, the
     // activity fails, and Temporal retries — failing the session if it stays down. That happens
-    // before the PR is opened, so a retry re-runs the attempt cleanly.
+    // before anything is published, so a retry re-runs the attempt cleanly.
     val summary = summarizer.summarize(mapped.log)
     sessionStore.finishRunAttempt(
         id = sessionId,
-        ordinal = INITIAL_RUN_ORDINAL,
+        ordinal = runOrdinal,
         attempt = attempt,
         outcome = mapped.outcome,
         cost = mapped.cost,
         summary = summary.text,
     )
   }
+
+  /** What the run before this one did, as it was summarized when it closed. */
+  private suspend fun previousRunSummary(sessionId: String): String =
+      sessionStore
+          .getRuns(sessionId)
+          .flatMap { it.attempts }
+          .filterIsInstance<SessionRunAttempt.Finished>()
+          .lastOrNull()
+          ?.summary ?: error("session $sessionId has no finished run to follow up")
+
+  private fun branchFor(number: Int): String = "farm/issue-$number"
+
+  private fun fixupCommitMessage(number: Int): String = "Address review feedback\n\nRefs #$number"
 
   private fun cloneUrl(repo: GhRepoFullName): String = "https://github.com/${repo.value}.git"
 

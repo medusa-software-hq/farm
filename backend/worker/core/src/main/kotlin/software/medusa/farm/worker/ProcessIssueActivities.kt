@@ -2,7 +2,6 @@ package software.medusa.farm.worker
 
 import io.temporal.activity.ActivityInterface
 import io.temporal.activity.ActivityMethod
-import software.medusa.farm.github.GhPullRequestState
 
 /**
  * The store writes and GitHub calls the [software.medusa.farm.shared.ProcessIssueWorkflow] drives.
@@ -29,18 +28,17 @@ interface ProcessIssueActivities {
   fun recordPullRequest(sessionId: String, number: Int, url: String, headSha: String)
 
   /**
-   * Fetches the session's pull request and, if it has been merged, records that on the session.
-   * Idempotent: seeing the same merge twice records the same time.
-   *
-   * @return the pull request's state as GitHub reports it now.
+   * Looks at the session's pull request: where it stands, and whether a review newer than
+   * [afterReviewId] has asked for changes. Records the merge when it finds one. Idempotent.
    */
   @ActivityMethod
-  fun syncPullRequest(
+  fun readPullRequest(
       sessionId: String,
       installationId: Long,
       repoFullName: String,
       number: Int,
-  ): GhPullRequestState
+      afterReviewId: Long,
+  ): PullRequestReport
 
   @ActivityMethod fun completeSession(sessionId: String)
 
