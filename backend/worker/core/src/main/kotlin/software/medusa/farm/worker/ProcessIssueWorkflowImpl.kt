@@ -65,7 +65,14 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
             outcome.pullRequestHeadSha,
         )
         activities.postIssueComment(installationId, repoFullName, number, resultComment(outcome))
-        awaitPullRequestSettled(sessionId, installationId, repoFullName, outcome.pullRequestNumber)
+        followPullRequest(
+            sessionId,
+            installationId,
+            repoFullName,
+            number,
+            title,
+            outcome.pullRequestNumber,
+        )
       } else {
         activities.postIssueComment(installationId, repoFullName, number, resultComment(outcome))
       }
@@ -77,28 +84,57 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
   }
 
   /**
-   * Waits for the pull request to stop being open — merged, or closed unmerged — recording the
-   * merge when it happens. Gives up after [REVIEW_WAIT_LIMIT]: the session is over either way, and
-   * whether it succeeded is read from the merge, not from the session ending.
+   * Follows the pull request until it stops being open, running a fixup for each review that asks
+   * for changes. Gives up after [REVIEW_SILENCE_LIMIT] of nothing happening: the session is over
+   * either way, and whether it succeeded is read from the merge, not from the session ending.
    */
-  private fun awaitPullRequestSettled(
+  private fun followPullRequest(
       sessionId: String,
       installationId: Long,
       repoFullName: String,
       number: Int,
+      title: String,
+      pullRequestNumber: Int,
   ) {
-    var waited = Duration.ZERO
-    while (waited < REVIEW_WAIT_LIMIT) {
-      // Just opened, so it cannot have settled yet — sleep first, then look.
-      Workflow.sleep(REVIEW_POLL_INTERVAL)
-      waited = waited.plus(REVIEW_POLL_INTERVAL)
+    var silence = Duration.ZERO
+    var lastReviewId = NO_REVIEW_YET
+    var fixupsRun = 0
 
-      if (
-          activities.syncPullRequest(sessionId, installationId, repoFullName, number) !=
-              GhPullRequestState.OPEN
-      ) {
-        return
-      }
+    while (silence < REVIEW_SILENCE_LIMIT) {
+      // Just opened or just pushed to, so nothing can have happened yet — sleep, then look.
+      Workflow.sleep(REVIEW_POLL_INTERVAL)
+      silence = silence.plus(REVIEW_POLL_INTERVAL)
+
+      val report =
+          activities.readPullRequest(
+              sessionId,
+              installationId,
+              repoFullName,
+              pullRequestNumber,
+              lastReviewId,
+          )
+      if (report.state != GhPullRequestState.OPEN) return
+
+      val feedback = report.feedback ?: continue
+      // Marked as seen whether or not it is acted on, so a review that cannot be acted on does
+      // not come back every time round.
+      lastReviewId = feedback.reviewId
+      if (fixupsRun >= MAX_FIXUP_RUNS) continue
+
+      fixupsRun++
+      publishActivities.fixupIssue(
+          sessionId,
+          installationId,
+          repoFullName,
+          number,
+          title,
+          fixupsRun,
+          feedback,
+      )
+
+      // Somebody is engaged with this pull request, so the clock that gives up on silence starts
+      // again rather than running out mid-conversation.
+      silence = Duration.ZERO
     }
   }
 
@@ -116,7 +152,15 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
     private val REVIEW_POLL_INTERVAL: Duration = Duration.ofMinutes(10)
 
     // A pull request nobody touches is not a failure, so waiting stops rather than the run does.
-    private val REVIEW_WAIT_LIMIT: Duration = Duration.ofDays(7)
+    // Reset by every fixup: the limit is on silence, not on how long a review conversation runs.
+    private val REVIEW_SILENCE_LIMIT: Duration = Duration.ofDays(7)
+
+    // Reviews are numbered from 1, so nothing has been acted on yet.
+    private const val NO_REVIEW_YET = 0L
+
+    // A bound on going round in circles, not on how much review a change deserves: past this the
+    // pull request is still watched for a merge, but its reviews stop being worked.
+    private const val MAX_FIXUP_RUNS = 3
 
     private fun resultComment(outcome: IssueAttemptOutcome): String =
         if (outcome.pullRequestUrl != null) {

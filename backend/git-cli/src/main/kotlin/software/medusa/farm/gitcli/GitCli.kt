@@ -20,6 +20,9 @@ interface GitCli {
   /** Creates [branch] off the current HEAD and checks it out. */
   suspend fun createBranch(repo: Path, branch: String)
 
+  /** Checks out an existing branch — one a clone already fetched, not a new one. */
+  suspend fun checkout(repo: Path, branch: String)
+
   /** Stages every change in the working tree (`git add -A`). */
   suspend fun stageAll(repo: Path)
 

@@ -67,6 +67,28 @@ private constructor(
     return gitHubJson.decodeFromString<PullRequestDto>(response.body()).toGhPullRequest()
   }
 
+  override suspend fun listReviews(
+      repo: GhRepoFullName,
+      number: Int,
+  ): List<GhPullRequestReview> =
+      http
+          .getPaged("/repos/${repo.value}/pulls/$number/reviews", tokenProvider) { body ->
+            gitHubJson.decodeFromString<List<ReviewDto>>(body).map { it.toGhPullRequestReview() }
+          }
+          .toList()
+
+  override suspend fun listReviewComments(
+      repo: GhRepoFullName,
+      number: Int,
+  ): List<GhPullRequestReviewComment> =
+      http
+          .getPaged("/repos/${repo.value}/pulls/$number/comments", tokenProvider) { body ->
+            gitHubJson.decodeFromString<List<ReviewCommentDto>>(body).map {
+              it.toGhPullRequestReviewComment()
+            }
+          }
+          .toList()
+
   override suspend fun getPullRequest(repo: GhRepoFullName, number: Int): GhPullRequest {
     val response =
         http.get("/repos/${repo.value}/pulls/$number", bearer = tokenProvider.provideToken())
@@ -121,6 +143,41 @@ private fun PullRequestDto.toGhPullRequest(): GhPullRequest =
         headSha = head.sha,
         mergedAt = mergedAt?.let(Instant::parse),
     )
+
+@Serializable
+private class ReviewDto(
+    val id: Long,
+    val state: String,
+    val body: String? = null,
+    @SerialName("submitted_at") val submittedAt: String? = null,
+)
+
+@Serializable
+private class ReviewCommentDto(
+    @SerialName("pull_request_review_id") val reviewId: Long,
+    val path: String,
+    val line: Int? = null,
+    val body: String,
+)
+
+private fun ReviewDto.toGhPullRequestReview(): GhPullRequestReview =
+    GhPullRequestReview(
+        id = id,
+        state =
+            when (state) {
+              "APPROVED" -> GhPullRequestReviewState.APPROVED
+              "CHANGES_REQUESTED" -> GhPullRequestReviewState.CHANGES_REQUESTED
+              "COMMENTED" -> GhPullRequestReviewState.COMMENTED
+              "DISMISSED" -> GhPullRequestReviewState.DISMISSED
+              else -> GhPullRequestReviewState.UNRECOGNIZED
+            },
+        body = body.orEmpty(),
+        // A review still being drafted has not been submitted; it is not one anybody can act on.
+        submittedAt = submittedAt?.let(Instant::parse) ?: Instant.EPOCH,
+    )
+
+private fun ReviewCommentDto.toGhPullRequestReviewComment(): GhPullRequestReviewComment =
+    GhPullRequestReviewComment(reviewId = reviewId, path = path, line = line, body = body)
 
 @Serializable private class RepositoriesPageDto(val repositories: List<RepositoryDto>)
 

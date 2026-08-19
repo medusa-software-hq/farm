@@ -39,6 +39,10 @@ class GitCliProper(
     run(repo, "checkout -b $branch", listOf("checkout", "-b", branch))
   }
 
+  override suspend fun checkout(repo: Path, branch: String) {
+    run(repo, "checkout $branch", listOf("checkout", branch))
+  }
+
   override suspend fun stageAll(repo: Path) {
     run(repo, "add -A", listOf("add", "-A"))
   }

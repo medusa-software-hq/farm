@@ -1,8 +1,10 @@
 package software.medusa.farm.github
 
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
@@ -147,6 +149,63 @@ class GhProperInstallationApiClientTest {
               GhPullRequestState.OPEN,
               client.getPullRequest(GhRepoFullName("acme/one"), 3).state,
           )
+        }
+  }
+
+  @Test
+  fun `reads a review's verdict and what it said`() = runBlocking {
+    // Shaped after a real review: the state, the box the reviewer typed into, and a state this
+    // library has no name for.
+    FakeGitHubServer { _ ->
+          FakeGitHubServer.Response(
+              200,
+              """[{"id": 4976223985, "state": "COMMENTED", "body": "General review comment",
+                   "submitted_at": "2026-08-19T20:00:11Z"},
+                  {"id": 4976223986, "state": "CHANGES_REQUESTED", "body": "",
+                   "submitted_at": "2026-08-19T20:05:00Z"},
+                  {"id": 4976223987, "state": "SOMETHING_NEW", "submitted_at": null}]""",
+          )
+        }
+        .use { server ->
+          val reviews = clientAgainst(server).listReviews(GhRepoFullName("acme/one"), 57)
+
+          assertEquals(
+              listOf(
+                  GhPullRequestReviewState.COMMENTED,
+                  GhPullRequestReviewState.CHANGES_REQUESTED,
+                  GhPullRequestReviewState.UNRECOGNIZED,
+              ),
+              reviews.map { it.state },
+          )
+          assertEquals("General review comment", reviews.first().body)
+          assertEquals(Instant.parse("2026-08-19T20:00:11Z"), reviews.first().submittedAt)
+          // A review with no box filled in is not a review with no content — it has line comments.
+          assertEquals("", reviews[1].body)
+        }
+  }
+
+  @Test
+  fun `reads the comments a review left on lines, and which review left them`() = runBlocking {
+    FakeGitHubServer { _ ->
+          FakeGitHubServer.Response(
+              200,
+              """[{"id": 3816291987, "pull_request_review_id": 4976223985,
+                   "path": "src/main/java/com/example/Greeter.java", "line": 5,
+                   "body": "Very nice line"},
+                  {"id": 3816292548, "pull_request_review_id": 4976223985,
+                   "path": "src/main/java/com/example/GreetingCheck.java", "line": null,
+                   "body": "Uh, bad line"}]""",
+          )
+        }
+        .use { server ->
+          val comments = clientAgainst(server).listReviewComments(GhRepoFullName("acme/one"), 57)
+
+          assertEquals(listOf(4976223985L, 4976223985L), comments.map { it.reviewId })
+          assertEquals("src/main/java/com/example/Greeter.java", comments.first().path)
+          assertEquals(5, comments.first().line)
+          assertEquals("Very nice line", comments.first().body)
+          // A comment whose line has since moved out of the diff keeps its file but loses its line.
+          assertNull(comments[1].line)
         }
   }
 
