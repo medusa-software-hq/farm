@@ -14,10 +14,16 @@ dependencies {
   // Summarizing a run: a cheap model (DeepSeek over OpenRouter) via the commons openai-client.
   implementation(libs.medusa.commons.openaiClient)
   implementation(libs.kotlinx.coroutines.core)
+  // Logging, as the module's own logback.xml already assumes.
+  implementation(libs.slf4j.api)
   implementation(libs.temporal.sdk)
   // Lets Temporal's Jackson converter (de)serialize the Kotlin types crossing the activity
   // boundary.
   implementation(libs.jackson.module.kotlin)
+
+  // Tests need a provider too, or slf4j installs a no-op and everything the dependencies log —
+  // Temporal, the HTTP client under openai-client — is silently discarded.
+  testRuntimeOnly(libs.logback.classic)
 
   testImplementation(libs.kotlin.test)
   testImplementation(libs.temporal.testing)
@@ -50,6 +56,9 @@ tasks.register<Test>("integrationTest") {
   testLogging {
     events("passed", "skipped", "failed")
     exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    // The failure itself says only that no summary could be had; the reason is logged. Surface the
+    // streams so a red CI run carries it, rather than leaving it in a log nobody reads.
+    showStandardStreams = true
   }
 }
 
