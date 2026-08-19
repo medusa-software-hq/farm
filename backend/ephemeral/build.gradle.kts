@@ -26,6 +26,12 @@ configurations["integrationTestImplementation"].extendsFrom(configurations["test
 
 configurations["integrationTestRuntimeOnly"].extendsFrom(configurations["testRuntimeOnly"])
 
+// Named rather than typed: the configuration only exists once the source set above is created.
+dependencies {
+  "integrationTestImplementation"(libs.grpc.okhttp)
+  "integrationTestImplementation"(libs.kotlinx.serialization.json)
+}
+
 tasks.register<Test>("integrationTest") {
   description = "Drives one issue all the way round the loop against a real GitHub and database."
   group = "verification"
