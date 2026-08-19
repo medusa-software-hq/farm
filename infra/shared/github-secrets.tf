@@ -34,3 +34,20 @@ resource "github_actions_secret" "openrouter_api_key" {
     ignore_changes = [plaintext_value]
   }
 }
+
+# The private key of the GitHub App the ephemeral farm drives its test org with.
+# The App's client id is not secret and is set inline in the workflow; only this is.
+resource "github_actions_secret" "farm_ephemeral_github_app_pem" {
+  repository  = data.github_repository.this.name
+  secret_name = "FARM_EPHEMERAL_GITHUB_APP_PEM"
+
+  # Placeholder: the real PEM (generated on the App's settings page) is set out
+  # of band, and Terraform ignores the value from then on. This has to exist
+  # before the real value is set — creating it afterwards would PUT the
+  # placeholder over it, which ignore_changes does not prevent on create.
+  plaintext_value = "set-out-of-band"
+
+  lifecycle {
+    ignore_changes = [plaintext_value]
+  }
+}
