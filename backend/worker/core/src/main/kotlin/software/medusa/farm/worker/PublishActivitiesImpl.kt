@@ -1,14 +1,19 @@
 package software.medusa.farm.worker
 
 import java.nio.file.Files
-import java.util.UUID
+import java.nio.file.Path
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
-import software.medusa.farm.claude.CldAgent
-import software.medusa.farm.claude.CldCompletion
-import software.medusa.farm.claude.CldMessage
-import software.medusa.farm.claude.CldRunRequest
-import software.medusa.farm.claude.CldSessionSelector
-import software.medusa.farm.claude.CldSessionStore
+import software.medusa.farm.claude.CldAssistantStep
+import software.medusa.farm.claude.CldCost
+import software.medusa.farm.claude.CldEngine
+import software.medusa.farm.claude.CldPermissionMode
+import software.medusa.farm.claude.CldRunResult
+import software.medusa.farm.claude.CldRunStatus
+import software.medusa.farm.claude.CldSessionConfig
+import software.medusa.farm.claude.CldSettingSource
+import software.medusa.farm.claude.CldToolRule
 import software.medusa.farm.gitcli.GitCli
 import software.medusa.farm.gitcli.GitCliAuthor
 import software.medusa.farm.github.GhAppApiClient
@@ -28,9 +33,8 @@ import software.medusa.farm.shared.SessionStore
 class PublishActivitiesImpl(
     private val clientProvider: GhInstallationApiClientProvider,
     private val tokenMinter: GhAppApiClient,
-    private val agent: CldAgent,
+    private val engine: CldEngine,
     private val gitCli: GitCli,
-    private val cldSessionStore: CldSessionStore,
     private val sessionStore: SessionStore,
     private val summarizer: RunSummarizer,
     private val commitAuthor: GitCliAuthor,
@@ -49,32 +53,27 @@ class PublishActivitiesImpl(
     val body = client.getIssueBody(repo, number)
     val token = tokenMinter.mintInstallationToken(installation).token
 
-    val cldSessionId = UUID.randomUUID().toString()
-    val home = cldSessionStore.prepare(CldSessionSelector.Fresh(cldSessionId))
     val workspace = Files.createTempDirectory("farm-attempt")
     val clone = workspace.resolve("repo")
+    // The assistant's own state, kept per attempt so one attempt cannot read another's.
+    val configDir = Files.createTempDirectory("farm-attempt-claude")
     try {
       gitCli.clone(cloneUrl(repo), clone, token)
       val baseBranch = gitCli.currentBranch(clone)
 
-      val messages = mutableListOf<CldMessage>()
-      val result =
-          agent.run(
-              CldRunRequest(
-                  workspace = clone,
-                  home = home,
-                  prompt = taskPrompt(title, body),
-                  session = CldSessionSelector.Fresh(cldSessionId),
-              )
+      val (agentSteps, result) =
+          engine.runSession(
+              config = sessionConfig(workspacePath = clone, configDirPath = configDir),
+              prompt = taskPrompt(title, body),
           ) {
-            messages += it
+            assistantStepChannel.receiveAsFlow().toList() to awaitResult()
           }
-      check(result.completion is CldCompletion.Ok) { "agent run ended in ${result.completion}" }
+      check(result.status is CldRunStatus.Success) { "agent run ended in ${result.status}" }
 
       // Record what the agent did (and a cheap summary of it) before publishing — a no-change run
       // is
       // still a run worth showing. ordinal 0 is the initial attempt; fixups will be 1+.
-      recordRun(sessionId, messages)
+      recordRun(sessionId, agentSteps, result)
 
       gitCli.stageAll(clone)
       if (!gitCli.hasStagedChanges(clone)) {
@@ -104,13 +103,17 @@ class PublishActivitiesImpl(
       )
     } finally {
       workspace.toFile().deleteRecursively()
-      home.toFile().deleteRecursively()
+      configDir.toFile().deleteRecursively()
     }
   }
 
-  /** Maps the run's message stream to the action log, summarizes it, and stores the run. */
-  private suspend fun recordRun(sessionId: String, messages: List<CldMessage>) {
-    val mapped = AgentRunMapper.map(messages)
+  /** Maps the run's steps and result to the action log, summarizes it, and stores the run. */
+  private suspend fun recordRun(
+      sessionId: String,
+      steps: List<CldAssistantStep>,
+      result: CldRunResult,
+  ) {
+    val mapped = AgentRunMapper.map(steps, result)
     // The summary is a required part of the next run's context, so the summarizer is an
     // assumed-available dependency, like the agent itself: it raises when it cannot summarize, the
     // activity fails, and Temporal retries — failing the session if it stays down. That happens
@@ -128,10 +131,57 @@ class PublishActivitiesImpl(
 
   private fun cloneUrl(repo: GhRepoFullName): String = "https://github.com/${repo.value}.git"
 
+  /** Farm's standing posture for a coding session, over the workspace this attempt clones into. */
+  private fun sessionConfig(workspacePath: Path, configDirPath: Path): CldSessionConfig =
+      CldSessionConfig(
+          workspacePath = workspacePath,
+          configDirPath = configDirPath,
+          permissionMode = CldPermissionMode.AcceptEdits,
+          // The target repo's own settings, not the machine's.
+          settingSources = listOf(CldSettingSource.Project),
+          allowedToolRules = ALLOWED_TOOL_RULES,
+          disallowedToolRules = DISALLOWED_TOOL_RULES,
+          systemPromptSuffix = SYSTEM_PROMPT_SUFFIX,
+          spendBudget = SPEND_BUDGET,
+      )
+
   private fun taskPrompt(title: String, body: String): String =
       "$title\n\n${body.ifBlank { "(no description)" }}"
 
   private companion object {
     const val INITIAL_RUN_ORDINAL = 0
+
+    val ALLOWED_TOOL_RULES =
+        listOf(
+            CldToolRule.Read,
+            CldToolRule.Edit,
+            CldToolRule.Write,
+            CldToolRule.Glob,
+            CldToolRule.Grep,
+            CldToolRule.Task,
+            CldToolRule.Bash(commandMask = null),
+        )
+
+    // Publishing belongs to the caller, not the assistant, and there is no user to answer a
+    // question.
+    val DISALLOWED_TOOL_RULES =
+        listOf(
+            CldToolRule.Bash(CldToolRule.Bash.CommandMask("git push:*")),
+            CldToolRule.Bash(CldToolRule.Bash.CommandMask("gh:*")),
+            CldToolRule.WebFetch,
+            CldToolRule.WebSearch,
+            CldToolRule.AskUserQuestion,
+        )
+
+    // A runaway guard, not a target: a real multi-file task legitimately spends a few dollars of
+    // tool calls.
+    val SPEND_BUDGET = CldCost(usdAmount = 10.00)
+
+    val SYSTEM_PROMPT_SUFFIX =
+        "You are an autonomous coding agent running non-interactively. The single message you are " +
+            "given is the text of a GitHub issue, and your job is to implement and solve it " +
+            "fully. Do not wait for further instructions or scope confirmation, and never ask " +
+            "for clarification; make reasonable assumptions and implement. Do not push commits " +
+            "or open pull requests yourself."
   }
 }

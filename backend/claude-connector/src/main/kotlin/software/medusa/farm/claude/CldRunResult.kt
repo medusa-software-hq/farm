@@ -1,14 +1,18 @@
 package software.medusa.farm.claude
 
-/**
- * The outcome of a run, as far as the connector can see it.
- *
- * @property sessionId the session the run executed under — the anchor to snapshot and later resume.
- * @property completion how the CLI said the run ended.
- * @property cost the reported accounting, if the run produced a `result` message.
- */
+import kotlin.time.Duration
+
+/** What a finished Claude session amounted to. */
 data class CldRunResult(
-    val sessionId: String,
-    val completion: CldCompletion,
-    val cost: CldRunCost?,
+    /** How the session ended. */
+    val status: CldRunStatus,
+
+    /** Money spent over the whole session. */
+    val totalCost: CldCost,
+
+    /** Number of turns the assistant took. */
+    val turnCount: Int,
+
+    /** How long the session lasted. */
+    val sessionDuration: Duration,
 )

@@ -1,53 +1,41 @@
 package software.medusa.farm.claude
 
 import java.nio.file.Files
-import java.util.UUID
 import kotlin.io.path.exists
 import kotlin.io.path.listDirectoryEntries
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import software.medusa.commons.system.SysExecutableHandle
 import software.medusa.commons.system.SysProcessSpawner
 
 /**
- * Exercises the real connector classes against the real `claude` CLI to validate the assumptions
- * they bake in about its flag surface, stream-json output, and on-disk session persistence — the
- * things a `FakeCldProcess` cannot catch because it only replays those assumptions back.
+ * Exercises the engine against the real `claude` CLI — its flag surface, its protocol, and where it
+ * keeps a session's state — the assumptions the scripted fakes only replay back.
  *
- * Kept out of the pure `test` source set; run via the `integrationTest` task, so it runs only when
- * asked for — and then the CLI and a real `CLAUDE_CODE_OAUTH_TOKEN` are required, not optional.
+ * Run via the `integrationTest` task, so it runs only when asked for; the CLI and a real token are
+ * then required, never skipped.
  */
 class CldClaudeCliIntegrationTest {
-  private val spawner = SysProcessSpawner()
+  private val processSpawner = SysProcessSpawner()
 
-  private fun claude(): SysExecutableHandle =
-      runCatching { SysExecutableHandle.locate("claude") }.getOrNull()
-          ?: error("`claude` is not on PATH")
-
-  private fun oauthToken(): String {
-    val token = System.getenv("CLAUDE_CODE_OAUTH_TOKEN")
-    check(!token.isNullOrBlank()) { "CLAUDE_CODE_OAUTH_TOKEN is not set" }
-    // The provisioned placeholder is not a token. Failing on it is the point: skipping there is how
-    // an unkeyed suite reports green having called nothing.
-    check(token.startsWith("sk-ant-")) { "CLAUDE_CODE_OAUTH_TOKEN is not a real token" }
-    return token
-  }
+  // The connector bounds no wall-clock time — that is a use-site concern, and here the use site is
+  // this test. A trip cancels the coroutine, which leaves the block and kills the process tree.
+  private val sessionBudget = 3.minutes
 
   @Test
-  fun `the CLI still exposes every flag the connector builds`(): Unit = runBlocking {
-    val claude = claude()
-
-    val help = spawner.spawn(executable = claude, arguments = listOf("--help")).standardOutput
+  fun `the CLI still exposes every flag the engine builds`(): Unit = runBlocking {
+    val help =
+        processSpawner.spawn(executable = claude(), arguments = listOf("--help")).standardOutput
 
     listOf(
             "-p",
             "--output-format",
-            "--session-id",
-            "--resume",
-            "--setting-sources",
+            "--verbose",
             "--permission-mode",
+            "--setting-sources",
             "--allowedTools",
             "--disallowedTools",
             "--append-system-prompt",
@@ -59,113 +47,92 @@ class CldClaudeCliIntegrationTest {
   }
 
   @Test
-  fun `a fresh run streams a parseable session and persists it under HOME`(): Unit = runBlocking {
-    val claude = claude()
-    val token = oauthToken()
+  fun `a session streams parseable steps and keeps its state where it was told to`(): Unit =
+      runBlocking {
+        val configDirPath = Files.createTempDirectory("cld-it-config")
+        val workspacePath = Files.createTempDirectory("cld-it-work")
 
-    val store = CldProperSessionStore(Files.createTempDirectory("cld-it-store"))
-    val sessionId = UUID.randomUUID().toString()
-    val home = store.prepare(CldSessionSelector.Fresh(sessionId))
+        val (steps, result) =
+            withTimeout(sessionBudget) {
+              engine().runSession(
+                  config = config(workspacePath, configDirPath),
+                  prompt =
+                      "Reply with exactly the word PONG and nothing else. Do not use any tools.",
+              ) {
+                val collected = mutableListOf<CldAssistantStep>()
+                for (step in assistantStepChannel) collected += step
+                collected to awaitResult()
+              }
+            }
 
-    val agent = CldProperAgent(CldProperProcess(spawner, claude), behavioralConfig(token))
+        assertTrue(steps.isNotEmpty(), "no assistant steps")
+        assertTrue(
+            result.status is CldRunStatus.Success,
+            "did not finish cleanly: ${result.status}",
+        )
 
-    val messages = mutableListOf<CldMessage>()
-    val result =
-        agent.run(
-            CldRunRequest(
-                workspace = Files.createTempDirectory("cld-it-work"),
-                home = home,
-                prompt = "Reply with exactly the word PONG and nothing else. Do not use any tools.",
-                session = CldSessionSelector.Fresh(sessionId),
-            )
-        ) {
-          messages += it
-        }
+        // The transcript landed under the directory we named, not the operator's own.
+        val projects = configDirPath.resolve("projects")
+        assertTrue(projects.exists(), "no projects directory under the session's config directory")
+        val transcripts =
+            projects.listDirectoryEntries().flatMap { it.listDirectoryEntries("*.jsonl") }
+        assertTrue(transcripts.isNotEmpty(), "no session transcript persisted")
+      }
 
-    // The CLI accepted our flags and produced its typed protocol...
-    assertTrue(messages.any { it is CldMessage.SystemInit }, "no system init banner")
-    assertTrue(messages.any { it is CldMessage.Assistant }, "no assistant turn")
-    assertTrue(
-        result.completion is CldCompletion.Ok,
-        "did not complete cleanly: ${result.completion}",
-    )
-    assertTrue(result.sessionId.isNotBlank(), "no session id")
+  private fun engine(): CldProperEngine =
+      CldProperEngine(
+          processSpawner = processSpawner,
+          claudeExecutableHandle = claude(),
+          systemEnvMap =
+              CldSystemEnvMap(
+                  path = System.getenv("PATH") ?: error("PATH is required"),
+                  home = System.getenv("HOME") ?: error("HOME is required"),
+              ),
+          authToken = CldAuthToken(oauthToken()),
+          anomalyReporter = RecordingAnomalyReporter(),
+      )
 
-    // ...and it persisted the transcript under the HOME we handed it, in the layout the store
-    // expects.
-    val projects = home.resolve(".claude/projects")
-    assertTrue(projects.exists(), "no .claude/projects under HOME")
-    val transcripts = projects.listDirectoryEntries().flatMap { it.listDirectoryEntries("*.jsonl") }
-    assertTrue(transcripts.isNotEmpty(), "no session transcript persisted")
+  private fun config(workspacePath: java.nio.file.Path, configDirPath: java.nio.file.Path) =
+      CldSessionConfig(
+          workspacePath = workspacePath,
+          configDirPath = configDirPath,
+          permissionMode = CldPermissionMode.AcceptEdits,
+          settingSources = listOf(CldSettingSource.Project),
+          allowedToolRules = emptyList(),
+          disallowedToolRules = emptyList(),
+          systemPromptSuffix = "",
+          // A tight cap: this is a trivial prompt, and a runaway must not burn money.
+          spendBudget = CldCost(usdAmount = 0.50),
+      )
 
-    val ref = store.snapshot(result.sessionId, home)
-    assertTrue(Files.size(ref.snapshot) > 0, "empty snapshot")
+  private fun claude(): SysExecutableHandle =
+      runCatching { SysExecutableHandle.locate("claude") }.getOrNull()
+          ?: error("`claude` is not on PATH")
+
+  private fun oauthToken(): String {
+    val token = System.getenv("CLAUDE_CODE_OAUTH_TOKEN")
+    check(!token.isNullOrBlank()) { "CLAUDE_CODE_OAUTH_TOKEN is not set" }
+    check(token.startsWith("sk-ant-")) { "CLAUDE_CODE_OAUTH_TOKEN is not a real token" }
+    return token
   }
 
-  @Test
-  fun `a snapshotted session resumes with its context on another HOME`(): Unit = runBlocking {
-    val claude = claude()
-    val token = oauthToken()
-    val agent = CldProperAgent(CldProperProcess(spawner, claude), behavioralConfig(token))
+  private class RecordingAnomalyReporter : CldAnomalyReporter {
+    override fun reportSpawnFailed(cause: Throwable) = Unit
 
-    // The workspace path is fixed across both runs: claude files a session's transcript under a
-    // slug
-    // derived from the working directory, so --resume only finds it when run 2 shares run 1's path
-    // (the worker pins this path for the same reason). Only the HOME/store differs — a second
-    // worker.
-    val workspace = Files.createTempDirectory("cld-it-resume-ws")
+    override fun reportMissingInitMessage(firstLine: String?) = Unit
 
-    // Run 1 on "worker A": plant a codeword, then snapshot.
-    val workerA = CldProperSessionStore(Files.createTempDirectory("cld-it-a"))
-    val sessionId = UUID.randomUUID().toString()
-    val homeA = workerA.prepare(CldSessionSelector.Fresh(sessionId))
-    val first =
-        agent.run(
-            CldRunRequest(
-                workspace = workspace,
-                home = homeA,
-                prompt = "Remember this codeword for later: MEDUSA. Reply with just: OK.",
-                session = CldSessionSelector.Fresh(sessionId),
-            )
-        ) {}
-    val ref = workerA.snapshot(first.sessionId, homeA)
+    override fun reportUnexpectedProgressLine(progressLine: String) = Unit
 
-    // Run 2 on "worker B": a different store/HOME, resuming only from the snapshot.
-    val workerB = CldProperSessionStore(Files.createTempDirectory("cld-it-b"))
-    val homeB = workerB.prepare(CldSessionSelector.Resume(ref))
-    val messages = mutableListOf<CldMessage>()
-    val second =
-        agent.run(
-            CldRunRequest(
-                workspace = workspace,
-                home = homeB,
-                prompt = "What was the codeword I gave you? Reply with just that word.",
-                session = CldSessionSelector.Resume(ref),
-            )
-        ) {
-          messages += it
-        }
+    override fun reportOutputAfterResult(outputLine: String) = Unit
 
-    assertTrue(
-        second.completion is CldCompletion.Ok,
-        "resume did not complete: ${second.completion}",
-    )
-    val said = messages.filterIsInstance<CldMessage.Assistant>().joinToString(" ") { it.text }
-    assertTrue(
-        said.contains("MEDUSA", ignoreCase = true),
-        "resumed session lost prior context: '$said'",
-    )
+    override fun reportExitWithoutResult(exitCode: Int) = Unit
+
+    override fun reportHangOutput() = Unit
+
+    override fun reportLingeredAfterResult() = Unit
+
+    override fun reportUnexpectedNonZeroExitCode(exitCode: Int, runResult: CldRunResult) = Unit
+
+    override fun reportUnexpectedZeroExitCode(runResult: CldRunResult) = Unit
   }
-
-  private fun behavioralConfig(token: String): CldEngineConfig =
-      CldEngineConfig.default(
-              environment =
-                  mapOf(
-                      "PATH" to (System.getenv("PATH") ?: ""),
-                      "CLAUDE_CODE_OAUTH_TOKEN" to token,
-                  )
-          )
-          // A tight budget and timeout: these are trivial prompts, and a runaway must not burn
-          // money.
-          .copy(maxBudgetUsd = 0.50, wallClockTimeout = 3.minutes)
 }

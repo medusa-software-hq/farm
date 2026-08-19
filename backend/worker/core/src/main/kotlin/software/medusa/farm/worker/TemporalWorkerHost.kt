@@ -14,14 +14,12 @@ import io.temporal.client.schedules.ScheduleSpec
 import io.temporal.serviceclient.WorkflowServiceStubs
 import io.temporal.serviceclient.WorkflowServiceStubsOptions
 import io.temporal.worker.WorkerFactory
-import java.nio.file.Files
 import java.time.Duration
 import software.medusa.commons.system.SysExecutableHandle
 import software.medusa.commons.system.SysProcessSpawner
-import software.medusa.farm.claude.CldEngineConfig
-import software.medusa.farm.claude.CldProperAgent
-import software.medusa.farm.claude.CldProperProcess
-import software.medusa.farm.claude.CldProperSessionStore
+import software.medusa.farm.claude.CldAuthToken
+import software.medusa.farm.claude.CldProperEngine
+import software.medusa.farm.claude.CldSystemEnvMap
 import software.medusa.farm.gitcli.GitCliAuthor
 import software.medusa.farm.gitcli.GitCliProper
 import software.medusa.farm.github.GhAppApiClient
@@ -80,9 +78,8 @@ class TemporalWorkerHost(
         PublishActivitiesImpl(
             gitHubClientProvider,
             appApiClient,
-            buildAgent(claudeOauthToken, spawner),
+            buildEngine(claudeOauthToken, spawner),
             GitCliProper(spawner, SysExecutableHandle.locate("git")),
-            buildCldSessionStore(),
             sessionStore,
             summarizer,
             commitAuthor,
@@ -142,25 +139,21 @@ class TemporalWorkerHost(
     // it here to change the cadence.
     private val REPO_SYNC_SWEEP_INTERVAL: Duration = Duration.ofHours(1)
 
-    // The connector driving the real `claude` binary, with the default coding config (real tools +
-    // the issue-as-task framing). Locating claude here means a worker launched without it on PATH
-    // fails loudly at startup rather than mid-run.
-    private fun buildAgent(claudeOauthToken: String, spawner: SysProcessSpawner): CldProperAgent {
-      val config =
-          CldEngineConfig.default(
-              environment =
-                  mapOf(
-                      "PATH" to (System.getenv("PATH") ?: ""),
-                      "CLAUDE_CODE_OAUTH_TOKEN" to claudeOauthToken,
-                  )
-          )
-      return CldProperAgent(
-          CldProperProcess(spawner, SysExecutableHandle.locate("claude")),
-          config,
-      )
-    }
-
-    private fun buildCldSessionStore(): CldProperSessionStore =
-        CldProperSessionStore(Files.createTempDirectory("farm-cld-sessions"))
+    // The engine driving the real `claude` binary. Locating claude here means a worker launched
+    // without it on PATH fails loudly at startup rather than mid-run.
+    private fun buildEngine(claudeOauthToken: String, spawner: SysProcessSpawner): CldProperEngine =
+        CldProperEngine(
+            processSpawner = spawner,
+            claudeExecutableHandle = SysExecutableHandle.locate("claude"),
+            // Everything a session is allowed to see of this machine; the rest of the worker's
+            // environment — its database URL, its keys — stays out of the assistant's reach.
+            systemEnvMap =
+                CldSystemEnvMap(
+                    path = System.getenv("PATH") ?: error("PATH is required"),
+                    home = System.getenv("HOME") ?: error("HOME is required"),
+                ),
+            authToken = CldAuthToken(claudeOauthToken),
+            anomalyReporter = LoggingCldAnomalyReporter(),
+        )
   }
 }
