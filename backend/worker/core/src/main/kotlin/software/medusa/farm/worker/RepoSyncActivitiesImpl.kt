@@ -11,7 +11,6 @@ import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhRepoFullName
 import software.medusa.farm.shared.FarmLabels
-import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.FetchedIssue
 import software.medusa.farm.shared.FetchedRepo
 import software.medusa.farm.shared.IssueStore
@@ -29,6 +28,9 @@ class RepoSyncActivitiesImpl(
     private val issueStore: IssueStore,
     private val linkedOrgStore: LinkedOrgStore,
     private val workflowClient: WorkflowClient,
+    // The queue the workflows started here land on: this worker's own, so an ephemeral run does
+    // not hand its work to the deployment.
+    private val taskQueue: String,
 ) : RepoSyncActivities {
   override fun fetchInstallationRepos(installationId: Long): List<FetchedRepo> = runBlocking {
     clientProvider
@@ -92,7 +94,7 @@ class RepoSyncActivitiesImpl(
         workflowClient.newWorkflowStub(
             RepoSyncWorkflow::class.java,
             WorkflowOptions.newBuilder()
-                .setTaskQueue(FarmWorker.TASK_QUEUE)
+                .setTaskQueue(taskQueue)
                 .setWorkflowId(repoSyncWorkflowId(installationId))
                 .setWorkflowIdConflictPolicy(
                     WorkflowIdConflictPolicy.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING
@@ -118,7 +120,7 @@ class RepoSyncActivitiesImpl(
         workflowClient.newWorkflowStub(
             ProcessIssueWorkflow::class.java,
             WorkflowOptions.newBuilder()
-                .setTaskQueue(FarmWorker.TASK_QUEUE)
+                .setTaskQueue(taskQueue)
                 .setWorkflowId(processIssueWorkflowId(githubRepoId, number))
                 .setWorkflowIdReusePolicy(
                     WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE

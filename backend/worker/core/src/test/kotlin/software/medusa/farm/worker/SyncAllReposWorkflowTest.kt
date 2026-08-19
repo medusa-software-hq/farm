@@ -74,7 +74,7 @@ class SyncAllReposWorkflowTest {
       )
 
   init {
-    val worker = env.newWorker(FarmWorker.TASK_QUEUE)
+    val worker = env.newWorker(FarmWorker.DEFAULT_TASK_QUEUE)
     worker.registerWorkflowImplementationTypes(SyncAllReposWorkflowImpl::class.java)
     worker.registerActivitiesImplementations(ScriptedActivities())
     env.start()
@@ -86,7 +86,7 @@ class SyncAllReposWorkflowTest {
     env.workflowClient
         .newWorkflowStub(
             SyncAllReposWorkflow::class.java,
-            WorkflowOptions.newBuilder().setTaskQueue(FarmWorker.TASK_QUEUE).build(),
+            WorkflowOptions.newBuilder().setTaskQueue(FarmWorker.DEFAULT_TASK_QUEUE).build(),
         )
         .syncAll()
   }

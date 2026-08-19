@@ -53,7 +53,7 @@ class RepoSyncWorkflowTest {
         GhProperAppApiClient.build("Iv1.test", appKey.pkcs8Pem, baseUrl = server.baseUrl)
     val clientProvider =
         GhProperInstallationApiClientProvider(appApiClient, baseUrl = server.baseUrl)
-    val worker = env.newWorker(FarmWorker.TASK_QUEUE)
+    val worker = env.newWorker(FarmWorker.DEFAULT_TASK_QUEUE)
     worker.registerWorkflowImplementationTypes(RepoSyncWorkflowImpl::class.java)
     worker.registerActivitiesImplementations(
         RepoSyncActivitiesImpl(
@@ -62,6 +62,7 @@ class RepoSyncWorkflowTest {
             InMemoryIssueStore(EnvClock(env)),
             InMemoryLinkedOrgStore(),
             env.workflowClient,
+            FarmWorker.DEFAULT_TASK_QUEUE,
         )
     )
     env.start()
@@ -77,7 +78,7 @@ class RepoSyncWorkflowTest {
     env.workflowClient
         .newWorkflowStub(
             RepoSyncWorkflow::class.java,
-            WorkflowOptions.newBuilder().setTaskQueue(FarmWorker.TASK_QUEUE).build(),
+            WorkflowOptions.newBuilder().setTaskQueue(FarmWorker.DEFAULT_TASK_QUEUE).build(),
         )
         .sync(installationId)
   }

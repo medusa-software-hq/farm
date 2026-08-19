@@ -16,6 +16,7 @@ import software.medusa.farm.server.TemporalSyncAllStarter
 import software.medusa.farm.server.buildServer
 import software.medusa.farm.server.buildWorkflowClient
 import software.medusa.farm.shared.FarmStore
+import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.InMemoryIssueStore
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
@@ -49,6 +50,8 @@ private class DevGitHubApp(
  * `medusa-software-test-hq` performs a real sync into the in-memory repos table.
  */
 fun main() {
+  // Overridable here too, so a local stack pointed at a shared Temporal can keep to itself.
+  val localTaskQueue = FarmWorker.taskQueueFrom()
   val farmStore =
       FarmStore(
           InMemoryLinkedOrgStore(),
@@ -81,6 +84,7 @@ fun main() {
               ),
           commitAuthor = WorkerConfig.commitAuthorFrom(System.getenv()),
           signingKey = WorkerConfig.signingKeyFrom(System.getenv()),
+          taskQueue = localTaskQueue,
       )
       .start()
 
@@ -105,9 +109,9 @@ fun main() {
               GitHubOrgService(
                   devGitHubApp.appApiClient,
                   farmStore.linkedOrg,
-                  TemporalRepoSyncStarter(temporalClient),
+                  TemporalRepoSyncStarter(temporalClient, localTaskQueue),
               ),
-          syncAllStarter = TemporalSyncAllStarter(temporalClient),
+          syncAllStarter = TemporalSyncAllStarter(temporalClient, localTaskQueue),
       )
       .start()
       .join()

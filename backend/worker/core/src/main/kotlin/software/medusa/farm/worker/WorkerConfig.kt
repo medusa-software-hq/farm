@@ -1,6 +1,7 @@
 package software.medusa.farm.worker
 
 import software.medusa.farm.gitcli.GitCliAuthor
+import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 /** Everything the worker needs to reach its database, Temporal, and GitHub. */
@@ -17,6 +18,8 @@ data class WorkerConfig(
     // The identity Farm's commits carry, and the optional GPG key to sign them with.
     val commitAuthor: GitCliAuthor,
     val signingKey: String?,
+    // Which Temporal queue this worker takes its work from, and starts its own workflows onto.
+    val taskQueue: String,
 ) {
   companion object {
     private const val defaultCommitAuthorName = "Farm"
@@ -53,6 +56,7 @@ data class WorkerConfig(
             openRouterApiKey = env["OPENROUTER_API_KEY"] ?: error("OPENROUTER_API_KEY is required"),
             commitAuthor = commitAuthorFrom(env),
             signingKey = signingKeyFrom(env),
+            taskQueue = FarmWorker.taskQueueFrom(env),
         )
   }
 }

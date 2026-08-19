@@ -90,7 +90,7 @@ class ProcessIssueWorkflowTest {
         GhProperAppApiClient.build("Iv1.test", appKey.pkcs8Pem, baseUrl = server.baseUrl)
     val clientProvider =
         GhProperInstallationApiClientProvider(appApiClient, baseUrl = server.baseUrl)
-    val worker = env.newWorker(FarmWorker.TASK_QUEUE)
+    val worker = env.newWorker(FarmWorker.DEFAULT_TASK_QUEUE)
     worker.registerWorkflowImplementationTypes(ProcessIssueWorkflowImpl::class.java)
     worker.registerActivitiesImplementations(
         ProcessIssueActivitiesImpl(clientProvider, sessions),
@@ -112,7 +112,7 @@ class ProcessIssueWorkflowTest {
         .newWorkflowStub(
             ProcessIssueWorkflow::class.java,
             WorkflowOptions.newBuilder()
-                .setTaskQueue(FarmWorker.TASK_QUEUE)
+                .setTaskQueue(FarmWorker.DEFAULT_TASK_QUEUE)
                 .setWorkflowId(workflowId)
                 .build(),
         )

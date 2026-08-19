@@ -3,6 +3,7 @@ package software.medusa.farm.worker
 import com.google.cloud.secretmanager.v1.SecretManagerServiceClient
 import com.google.cloud.secretmanager.v1.SecretVersionName
 import software.medusa.farm.shared.BakedConfig
+import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 private const val runnerEnvironmentEnvVarName = "FARM_RUNNER_ENVIRONMENT"
@@ -49,6 +50,7 @@ fun main() {
             openRouterApiKey = client.read(environment.gcpProjectId, openRouterApiKeySecretId),
             commitAuthor = WorkerConfig.commitAuthorFrom(System.getenv()),
             signingKey = WorkerConfig.signingKeyFrom(System.getenv()),
+            taskQueue = FarmWorker.taskQueueFrom(),
         )
       }
   runTemporalWorker(config)
