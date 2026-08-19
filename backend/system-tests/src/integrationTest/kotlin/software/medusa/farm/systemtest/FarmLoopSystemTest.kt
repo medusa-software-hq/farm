@@ -36,17 +36,17 @@ class FarmLoopSystemTest {
   fun `an issue is worked, reviewed, worked again, and merged`(): Unit = runBlocking {
     val config = SystemTestConfig.fromEnvironment()
 
-    // Built here rather than handed over by the farm: acting as the reviewer is the test's own
-    // business, and would be the same against a farm it had not started.
-    val gitHub = GhProperAppApiClient.build(config.gitHubApp.clientId, config.gitHubApp.pem)
+    // The harness App, not the farm's. GitHub will not let an App ask for changes on a pull
+    // request it opened, and reviewing is the test's own business rather than the farm's.
+    val harness = GhProperAppApiClient.build(config.harnessApp.clientId, config.harnessApp.pem)
 
     EphemeralFarm.run(config) { farm ->
       runBlocking {
-        val installation = gitHub.resolveInstallationId(GhOrgLogin(config.orgLogin))
+        val installation = harness.resolveInstallationId(GhOrgLogin(config.orgLogin))
         val fixture =
             FixtureGitHub(
                 repoFullName = config.repoFullName,
-                token = gitHub.mintInstallationToken(installation).token,
+                token = harness.mintInstallationToken(installation).token,
             )
         val api =
             FarmServiceGrpcKt.FarmServiceCoroutineStub(

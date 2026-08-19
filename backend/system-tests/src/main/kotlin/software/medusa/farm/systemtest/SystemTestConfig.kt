@@ -11,7 +11,14 @@ import software.medusa.farm.worker.GitHubAppConfig
 data class SystemTestConfig(
     /** A Neon branch, made and dropped around this run rather than by anything here. */
     val databaseUrl: String,
-    val gitHubApp: GitHubAppConfig,
+    /** The App the farm itself works as: it opens the pull request and pushes the fixups. */
+    val farmApp: GitHubAppConfig,
+    /**
+     * The App the test works as — filing the issue, asking for changes, merging. Not the farm's:
+     * GitHub will not let an App review a pull request it opened, and the harness is not the
+     * subject.
+     */
+    val harnessApp: GitHubAppConfig,
     /** The org the App is installed on, and the repository the loop is driven against. */
     val orgLogin: String,
     val repoName: String,
@@ -27,10 +34,15 @@ data class SystemTestConfig(
     fun fromEnvironment(env: Map<String, String> = System.getenv()): SystemTestConfig =
         SystemTestConfig(
             databaseUrl = env.required("DATABASE_URL"),
-            gitHubApp =
+            farmApp =
                 GitHubAppConfig(
                     env.required("GITHUB_APP_CLIENT_ID"),
                     env.required("GITHUB_APP_PEM"),
+                ),
+            harnessApp =
+                GitHubAppConfig(
+                    env.required("HARNESS_APP_CLIENT_ID"),
+                    env.required("HARNESS_APP_PEM"),
                 ),
             orgLogin = env.required("FARM_EPHEMERAL_ORG"),
             repoName = env.required("FARM_EPHEMERAL_REPO"),

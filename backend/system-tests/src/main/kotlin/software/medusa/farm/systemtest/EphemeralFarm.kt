@@ -37,7 +37,7 @@ object EphemeralFarm {
     FarmStore.migrate(config.databaseUrl)
     val farmStore = FarmStore.build(config.databaseUrl)
 
-    val appApiClient = GhProperAppApiClient.build(config.gitHubApp.clientId, config.gitHubApp.pem)
+    val appApiClient = GhProperAppApiClient.build(config.farmApp.clientId, config.farmApp.pem)
     val clientProvider =
         GhCachingInstallationApiClientProvider(GhProperInstallationApiClientProvider(appApiClient))
 
