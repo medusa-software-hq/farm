@@ -78,7 +78,7 @@ class PublishActivitiesImpl(
       val (agentEvents, result) =
           engine.runSession(
               config = sessionConfig(workspacePath = clone, configDirPath = configDir),
-              prompt = taskPrompt(title, body),
+              prompt = AgentPrompt.forIssue(title = title, body = body),
           ) {
             eventChannel
                 .receiveAsFlow()
@@ -176,9 +176,6 @@ class PublishActivitiesImpl(
           systemPromptSuffix = SYSTEM_PROMPT_SUFFIX,
           spendBudget = SPEND_BUDGET,
       )
-
-  private fun taskPrompt(title: String, body: String): String =
-      "$title\n\n${body.ifBlank { "(no description)" }}"
 
   private companion object {
     const val INITIAL_RUN_ORDINAL = 0
