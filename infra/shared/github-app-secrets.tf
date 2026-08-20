@@ -20,10 +20,13 @@ data "terraform_remote_state" "meta_foundation" {
 }
 
 locals {
+  # `main` is the Farm App — the App Farm itself acts as, as against the apps that act on its
+  # behalf. Every environment registers its own; the shared project holds more than one, so those
+  # say which.
   gcp_cicd_wi_pool_name = data.terraform_remote_state.meta_foundation.outputs.gcp_cicd_wi_pool_name
 
   system_test_app_secret_ids = {
-    farm    = "ephemeral-github-app-pem"
+    farm    = "main-ephemeral-github-app-pem"
     fixture = "fixture-manager-github-app-pem"
   }
 }

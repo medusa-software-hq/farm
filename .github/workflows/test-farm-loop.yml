@@ -104,7 +104,7 @@ jobs:
         uses: google-github-actions/get-secretmanager-secrets@v2
         with:
           secrets: |-
-            farm:${{ vars.GCP_SHARED_PROJECT_ID }}/ephemeral-github-app-pem
+            farm:${{ vars.GCP_SHARED_PROJECT_ID }}/main-ephemeral-github-app-pem
             fixture:${{ vars.GCP_SHARED_PROJECT_ID }}/fixture-manager-github-app-pem
 
       - name: Install the claude CLI
