@@ -45,7 +45,8 @@ class FarmLoopSystemTest {
 
     // As the harness, not as the farm: GitHub will not let an App ask for changes on a pull
     // request it opened, and reviewing is the test's own business either way.
-    val appApiClient = GhProperAppApiClient.build(config.harnessApp.clientId, config.harnessApp.pem)
+    val appApiClient =
+        GhProperAppApiClient.build(config.harnessApp.clientId, config.harnessApp.privateKey)
     val gitHub =
         GhProperInstallationApiClientProvider(appApiClient)
             .provideForInstallation(appApiClient.resolveInstallationId(GhOrgLogin(config.orgLogin)))

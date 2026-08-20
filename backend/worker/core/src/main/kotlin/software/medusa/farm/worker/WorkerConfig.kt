@@ -1,6 +1,7 @@
 package software.medusa.farm.worker
 
 import software.medusa.farm.gitcli.GitCliAuthor
+import software.medusa.farm.github.GhAppPrivateKey
 import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
@@ -49,7 +50,7 @@ data class WorkerConfig(
             gitHubApp =
                 GitHubAppConfig(
                     env["GITHUB_APP_CLIENT_ID"] ?: error("GITHUB_APP_CLIENT_ID is required"),
-                    env["GITHUB_APP_PEM"] ?: error("GITHUB_APP_PEM is required"),
+                    GhAppPrivateKey(env["GITHUB_APP_PEM"] ?: error("GITHUB_APP_PEM is required")),
                 ),
             claudeOauthToken =
                 env["CLAUDE_CODE_OAUTH_TOKEN"] ?: error("CLAUDE_CODE_OAUTH_TOKEN is required"),

@@ -76,26 +76,26 @@ private constructor(
 
   companion object {
     /**
-     * [privateKeyPem] must be an unencrypted PKCS#8 PEM (a `BEGIN PRIVATE KEY` block); GitHub
-     * issues App keys in PKCS#1, converted once out of band (see the module README). Parsing here,
-     * at build time, keeps a wrong format a startup failure rather than a first-call one.
+     * Parsing here, at build time, keeps a key that cannot be used a startup failure rather than a
+     * first-call one. [GhAppPrivateKey] has already refused anything that is not a PKCS#8 PEM.
      */
     fun build(
         clientId: String,
-        privateKeyPem: String,
+        privateKey: GhAppPrivateKey,
         baseUrl: String = gitHubApiBaseUrl,
         httpClient: HttpClient = HttpClient.newHttpClient(),
     ): GhProperAppApiClient =
         GhProperAppApiClient(
             clientId,
-            parsePkcs8PrivateKey(privateKeyPem),
+            parsePkcs8PrivateKey(privateKey),
             GhHttp(baseUrl, httpClient),
         )
 
-    private fun parsePkcs8PrivateKey(pem: String): RSAPrivateKey {
+    private fun parsePkcs8PrivateKey(privateKey: GhAppPrivateKey): RSAPrivateKey {
       val base64 =
-          pem.replace("-----BEGIN PRIVATE KEY-----", "")
-              .replace("-----END PRIVATE KEY-----", "")
+          privateKey.pem
+              .replace(GhAppPrivateKey.PKCS8_BEGIN, "")
+              .replace(GhAppPrivateKey.PKCS8_END, "")
               .replace(Regex("\\s"), "")
       val keyBytes = Base64.getDecoder().decode(base64)
       return KeyFactory.getInstance("RSA").generatePrivate(PKCS8EncodedKeySpec(keyBytes))

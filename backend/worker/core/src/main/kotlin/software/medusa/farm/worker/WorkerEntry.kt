@@ -60,7 +60,8 @@ private fun GhAppApiClient.checkPermissionsCover(requiredPermissionSet: GhAppPer
 fun buildTemporalWorker(config: WorkerConfig): TemporalWorkerHost {
   val store = FarmStore.build(config.databaseUrl)
   // One App client, used both to mint the per-installation API clients and to mint raw git tokens.
-  val appApiClient = GhProperAppApiClient.build(config.gitHubApp.clientId, config.gitHubApp.pem)
+  val appApiClient =
+      GhProperAppApiClient.build(config.gitHubApp.clientId, config.gitHubApp.privateKey)
   appApiClient.checkPermissionsCover(requiredPermissionSet)
 
   val clientProvider =

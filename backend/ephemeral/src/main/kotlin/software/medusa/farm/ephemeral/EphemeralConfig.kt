@@ -1,5 +1,6 @@
 package software.medusa.farm.ephemeral
 
+import software.medusa.farm.github.GhAppPrivateKey
 import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 import software.medusa.farm.worker.GitHubAppConfig
@@ -52,7 +53,7 @@ data class EphemeralConfig(
             gitHubApp =
                 GitHubAppConfig(
                     env.required("GITHUB_APP_CLIENT_ID"),
-                    env.required("GITHUB_APP_PEM"),
+                    GhAppPrivateKey(env.required("GITHUB_APP_PEM")),
                 ),
             claudeOauthToken = env.required("CLAUDE_CODE_OAUTH_TOKEN"),
             openRouterApiKey = env.required("OPENROUTER_API_KEY"),

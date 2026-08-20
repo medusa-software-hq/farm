@@ -28,7 +28,7 @@ class WorkerConfigTest {
     assertEquals("farm.kr9zt", config.temporalNamespace)
     assertEquals(WorkflowServiceAuthConfig.Cloud("secret-key"), config.temporalAuth)
     assertEquals("Iv1.test", config.gitHubApp.clientId)
-    assertEquals("-----BEGIN PRIVATE KEY-----", config.gitHubApp.pem)
+    assertEquals("-----BEGIN PRIVATE KEY-----", config.gitHubApp.privateKey.pem)
     assertEquals("sk-ant-oat01-test", config.claudeOauthToken)
     // Commit identity defaults to Farm's, and signing is off unless a key is provided.
     assertEquals(GitCliAuthor("Farm", "farm@medusa.software"), config.commitAuthor)

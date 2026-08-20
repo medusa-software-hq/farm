@@ -44,7 +44,8 @@ fun main() {
   buildTemporalWorker(workerConfig).start()
 
   val apiStore = FarmStore.build(config.databaseUrl)
-  val appApiClient = GhProperAppApiClient.build(config.gitHubApp.clientId, config.gitHubApp.pem)
+  val appApiClient =
+      GhProperAppApiClient.build(config.gitHubApp.clientId, config.gitHubApp.privateKey)
   val temporalClient =
       CompletableDeferred(
           buildWorkflowClient(

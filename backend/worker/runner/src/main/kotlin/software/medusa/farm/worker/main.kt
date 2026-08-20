@@ -2,6 +2,7 @@ package software.medusa.farm.worker
 
 import com.google.cloud.secretmanager.v1.SecretManagerServiceClient
 import com.google.cloud.secretmanager.v1.SecretVersionName
+import software.medusa.farm.github.GhAppPrivateKey
 import software.medusa.farm.shared.BakedConfig
 import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
@@ -37,7 +38,9 @@ fun main() {
             gitHubApp =
                 GitHubAppConfig(
                     environment.gitHubAppClientId,
-                    client.read(environment.gcpProjectId, BakedConfig.GITHUB_APP_PEM_SECRET_ID),
+                    GhAppPrivateKey(
+                        client.read(environment.gcpProjectId, BakedConfig.GITHUB_APP_PEM_SECRET_ID)
+                    ),
                 ),
             // The operator's own claude token, from the launch environment — the worker runs the
             // `claude` binary on the operator's machine, so its auth comes from there too.

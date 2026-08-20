@@ -28,15 +28,15 @@ env:
   # The claude CLI the agent runs as, pinned as it is for the connector's own suite.
   CLAUDE_CLI_VERSION: 2.1.52
 
-  FARM_EPHEMERAL_ORG: medusa-software-test-hq
+  FARM_EPHEMERAL_ORG: medusa-farm-ephemeral-hq
   FARM_FIXTURE_TEMPLATE: farm-fixture-template
 
   # Client ids, not secrets — only the private keys are. Client ids rather than app ids because
   # that is what GitHub now asks for as a token request's issuer, and what the client already signs
   # with. The farm App does what Farm does; the harness App makes the run's repository, files the
   # issue and reviews what comes back, none of which is Farm's to do.
-  FARM_EPHEMERAL_APP_CLIENT_ID: Iv23livarUcAaPSh7nTl
-  FIXTURE_MANAGER_APP_CLIENT_ID: Iv23li7hPF70qxLrlrNQ
+  FARM_EPHEMERAL_APP_CLIENT_ID: Iv23liCmt6NC7HIB4LXr
+  FIXTURE_MANAGER_APP_CLIENT_ID: Iv23liBgbbe2iLdqWmSl
 
 jobs:
   loop-test:
@@ -134,10 +134,17 @@ jobs:
         run: |
           ./gradlew --no-daemon :backend:ephemeral:installDist
           ./backend/ephemeral/build/install/ephemeral/bin/ephemeral > farm.log 2>&1 &
+          farm=$!
           for _ in $(seq 1 60); do
             if curl -fsS http://localhost:8081/health >/dev/null 2>&1; then
               echo "The farm is up."
               exit 0
+            fi
+            # A farm that died is not a farm that is slow: say so now rather than in two minutes.
+            if ! kill -0 "$farm" 2>/dev/null; then
+              echo "The farm stopped before it was up." >&2
+              tail -50 farm.log >&2
+              exit 1
             fi
             sleep 2
           done

@@ -1,5 +1,6 @@
 package software.medusa.farm.systemtest
 
+import software.medusa.farm.github.GhAppPrivateKey
 import software.medusa.farm.worker.GitHubAppConfig
 
 /**
@@ -48,7 +49,7 @@ data class SystemTestConfig(
             harnessApp =
                 GitHubAppConfig(
                     env.required("HARNESS_APP_CLIENT_ID"),
-                    env.required("HARNESS_APP_PEM"),
+                    GhAppPrivateKey(env.required("HARNESS_APP_PEM")),
                 ),
         )
 

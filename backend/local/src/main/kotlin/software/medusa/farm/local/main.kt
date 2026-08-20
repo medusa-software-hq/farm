@@ -5,6 +5,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.time.Clock
 import kotlinx.coroutines.CompletableDeferred
+import software.medusa.farm.github.GhAppPrivateKey
 import software.medusa.farm.github.GhCachingInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhProperAppApiClient
@@ -128,7 +129,8 @@ private fun buildDevGitHubApp(): DevGitHubApp {
   require(Files.isRegularFile(pemPath)) {
     "No Test GitHub App key at $pemPath. Run `task dev` (or `task fetch-dev-github-key`) to fetch it."
   }
-  val appApiClient = GhProperAppApiClient.build(testGitHubAppClientId, Files.readString(pemPath))
+  val appApiClient =
+      GhProperAppApiClient.build(testGitHubAppClientId, GhAppPrivateKey(Files.readString(pemPath)))
   return DevGitHubApp(
       appApiClient,
       GhCachingInstallationApiClientProvider(GhProperInstallationApiClientProvider(appApiClient)),
