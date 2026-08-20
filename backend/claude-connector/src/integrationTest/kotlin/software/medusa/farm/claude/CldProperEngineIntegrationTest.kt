@@ -319,6 +319,7 @@ class CldProperEngineIntegrationTest {
       CldSessionConfig(
           workspacePath = workspacePath,
           configDirPath = Files.createTempDirectory("engine-config"),
+          model = CldModelId("claude-opus-5"),
           permissionMode = CldPermissionMode.AcceptEdits,
           settingSources = listOf(CldSettingSource.Project),
           allowedToolRules = listOf(CldToolRule.Read, CldToolRule.Edit),
@@ -343,6 +344,7 @@ class CldProperEngineIntegrationTest {
     var spawnFailure: Throwable? = null
     var reportedMissingInit: Boolean = false
     var missingInitLine: String? = null
+    var modelMismatch: Pair<CldModelId, CldModelId>? = null
     var unexpectedProgressLine: String? = null
     var outputAfterResult: String? = null
     var exitWithoutResult: Int? = null
@@ -358,6 +360,10 @@ class CldProperEngineIntegrationTest {
     override fun reportMissingInitMessage(firstLine: String?) {
       reportedMissingInit = true
       missingInitLine = firstLine
+    }
+
+    override fun reportModelMismatch(requested: CldModelId, reported: CldModelId) {
+      modelMismatch = requested to reported
     }
 
     override fun reportUnexpectedProgressLine(progressLine: String) {

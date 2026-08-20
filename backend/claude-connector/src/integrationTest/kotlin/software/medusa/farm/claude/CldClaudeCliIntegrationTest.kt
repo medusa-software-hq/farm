@@ -109,6 +109,7 @@ class CldClaudeCliIntegrationTest {
       CldSessionConfig(
           workspacePath = workspacePath,
           configDirPath = configDirPath,
+          model = claudeModel(),
           permissionMode = CldPermissionMode.AcceptEdits,
           settingSources = listOf(CldSettingSource.Project),
           allowedToolRules = emptyList(),
@@ -129,6 +130,12 @@ class CldClaudeCliIntegrationTest {
     return token
   }
 
+  private fun claudeModel(): CldModelId {
+    val model = System.getenv("FARM_MODEL")
+    check(!model.isNullOrBlank()) { "FARM_MODEL is not set" }
+    return CldModelId(model)
+  }
+
   /**
    * Puts every anomaly where a failed run can be read back from, since the only account of what the
    * real thing did is the one taken while it was running.
@@ -138,6 +145,9 @@ class CldClaudeCliIntegrationTest {
 
     override fun reportMissingInitMessage(firstLine: String?) =
         log("said <$firstLine> instead of a greeting")
+
+    override fun reportModelMismatch(requested: CldModelId, reported: CldModelId) =
+        log("started on ${reported.id} instead of the requested ${requested.id}")
 
     override fun reportUnexpectedProgressLine(progressLine: String) =
         log("said <$progressLine>, which is not the protocol")
