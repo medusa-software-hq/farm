@@ -8,6 +8,14 @@ pull request — reliably enough to build *itself*, night after night. Farm keep
 thesis and changes what sits underneath it, trading conventions Flow grew into over
 time for a handful of decisions made deliberately, up front.
 
+## The loop
+
+Label an issue `farm:ready` and Farm takes it: it clones the repository, works the
+issue with the agent, pushes a branch, and opens a pull request. Review it as you
+would anyone's. Asking for changes starts another run — a fresh one, given what the
+last run did and what the review said, rather than a conversation resumed — and
+merging ends the session. Nothing merges itself.
+
 ## Founding decisions
 
 **Temporal from day one.** Flow modelled its issue → PR → merge → deploy lifecycle
@@ -26,5 +34,11 @@ read the error, open the fix* — becomes the agent's own.
 
 ## Status
 
-Early. Farm today is a scaffold, not yet a working agent — this README is the
-direction, not a description of what already runs.
+The loop above runs, end to end, and a system test proves it does: it files an issue
+against a throwaway repository, waits for the agent to work it, reviews the pull
+request, waits for the fixup, and merges — against real GitHub and the real agent,
+with nothing stubbed.
+
+What is not built yet: the self-healing trunk described above. Farm also learns that
+something changed by looking on a timer rather than by being told, so the delay
+between labelling an issue and Farm noticing is minutes rather than seconds.
