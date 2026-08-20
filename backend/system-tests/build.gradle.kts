@@ -41,6 +41,9 @@ tasks.register<Test>("integrationTest") {
   // Talks to services that are not task inputs — never up to date.
   outputs.upToDateWhen { false }
   testLogging {
+    // The test narrates itself as it goes; without this Gradle would hold that back until the end,
+    // which for this one is a quarter of an hour later.
+    showStandardStreams = true
     events("passed", "skipped", "failed")
     exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
   }

@@ -8,7 +8,10 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import software.medusa.farm.github.GhInstallationApiClient
 import software.medusa.farm.github.GhMergeMethod
@@ -18,10 +21,14 @@ import software.medusa.farm.github.GhProperAppApiClient
 import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.github.GhRepoFullName
 import software.medusa.farm.github.GhReviewVerdict
+import software.medusa.farm.v1.AgentRunEntry
+import software.medusa.farm.v1.AgentStep
+import software.medusa.farm.v1.AgentToolAction
 import software.medusa.farm.v1.FarmServiceGrpcKt
 import software.medusa.farm.v1.GetSessionRunsRequest
 import software.medusa.farm.v1.LinkOrgRequest
 import software.medusa.farm.v1.ListSessionsRequest
+import software.medusa.farm.v1.SessionRunAttempt
 import software.medusa.farm.v1.SyncRepositoriesRequest
 
 /**
@@ -39,6 +46,8 @@ import software.medusa.farm.v1.SyncRepositoriesRequest
  * same twice.
  */
 class FarmLoopSystemTest {
+  private val startedAt = TimeSource.Monotonic.markNow()
+
   @Test
   fun `an issue is worked, reviewed, worked again, and merged`(): Unit = runBlocking {
     val config = SystemTestConfig.fromEnvironment()
@@ -121,17 +130,21 @@ class FarmLoopSystemTest {
     // asks for it directly.
     api.syncRepositories(SyncRepositoriesRequest.getDefaultInstance())
 
-    val pullRequest =
-        awaitUntil("a pull request for the issue", AGENT_RUN_LIMIT) {
-          gitHub.listOpenPullRequests(repo).firstOrNull()
-        }
-
+    // Before the pull request rather than after it: the farm opens the session as it picks the
+    // issue up, which is what lets the wait below say what the agent is doing while it works.
     val sessionId =
         awaitUntil("a session for the issue", SETTLE_LIMIT) {
           api.listSessions(ListSessionsRequest.getDefaultInstance())
               .sessionsList
               .firstOrNull { it.number == issue.number }
               ?.id
+        }
+
+    val pullRequest =
+        reportingAgentSteps(api, sessionId) {
+          awaitUntil("a pull request for the issue", AGENT_RUN_LIMIT) {
+            gitHub.listOpenPullRequests(repo).firstOrNull()
+          }
         }
 
     val firstRun = runsOf(api, sessionId).single()
@@ -164,9 +177,11 @@ class FarmLoopSystemTest {
 
     // A fixup is a push to the same branch, so the pull request moving off the commit it was opened
     // at is what says the review was worked.
-    awaitUntil("the fixup to reach the pull request", AGENT_RUN_LIMIT) {
-      gitHub.listOpenPullRequests(repo).firstOrNull {
-        it.number == pullRequest.number && it.headSha != pullRequest.headSha
+    reportingAgentSteps(api, sessionId) {
+      awaitUntil("the fixup to reach the pull request", AGENT_RUN_LIMIT) {
+        gitHub.listOpenPullRequests(repo).firstOrNull {
+          it.number == pullRequest.number && it.headSha != pullRequest.headSha
+        }
       }
     }
 
@@ -200,15 +215,95 @@ class FarmLoopSystemTest {
       limit: Duration,
       probe: suspend () -> ResultT?,
   ): ResultT {
-    val startedAt = TimeSource.Monotonic.markNow()
-    while (startedAt.elapsedNow() < limit) {
+    say("waiting for $what")
+    val startedWaiting = TimeSource.Monotonic.markNow()
+    while (startedWaiting.elapsedNow() < limit) {
       probe()?.let {
+        say("got $what")
         return it
       }
       delay(POLL_INTERVAL)
     }
 
     error("gave up after $limit waiting for $what")
+  }
+
+  /**
+   * Prints what the agent records for as long as [block] runs.
+   *
+   * Two agent runs are most of what this test spends, and neither says anything from outside while
+   * it happens: the farm's own log is a step of its own that runs once this one is over, and what
+   * the agent did reaches the log the farm keeps long before it reaches GitHub. Whoever is watching
+   * gets to see the work rather than a quarter of an hour of nothing.
+   */
+  private suspend fun <ResultT> reportingAgentSteps(
+      api: FarmServiceGrpcKt.FarmServiceCoroutineStub,
+      sessionId: String,
+      block: suspend () -> ResultT,
+  ): ResultT = coroutineScope {
+    val reportedCountByAttempt = mutableMapOf<Pair<Int, Int>, Int>()
+    val reportedStateByAttempt = mutableMapOf<Pair<Int, Int>, String>()
+    val reporter = launch {
+      while (isActive) {
+        runsOf(api, sessionId).forEach { run ->
+          run.attemptsList.forEach { attempt ->
+            val attemptKey = run.ordinal to attempt.number
+            val what = "run ${run.ordinal}, try ${attempt.number}"
+
+            attempt.entriesList.drop(reportedCountByAttempt[attemptKey] ?: 0).forEach {
+              say("$what: ${describe(it)}")
+            }
+            reportedCountByAttempt[attemptKey] = attempt.entriesCount
+
+            // An attempt that ends says why in its outcome, which is the one place a run that
+            // failed for a reason of its own rather than the agent's says so.
+            if (reportedStateByAttempt.put(attemptKey, attempt.state) != attempt.state) {
+              say("$what: ${attempt.state}${describeOutcome(attempt)}")
+            }
+          }
+        }
+        delay(POLL_INTERVAL)
+      }
+    }
+
+    try {
+      block()
+    } finally {
+      reporter.cancel()
+    }
+  }
+
+  private fun describeOutcome(attempt: SessionRunAttempt): String =
+      if (!attempt.hasOutcome()) ""
+      else " — ${attempt.outcome.outcome}, ${attempt.outcome.summary.take(SAID_LIMIT)}"
+
+  private fun describe(entry: AgentRunEntry): String =
+      when (entry.entryCase) {
+        AgentRunEntry.EntryCase.STEP -> describe(entry.step)
+        AgentRunEntry.EntryCase.WARNING -> "warning: ${entry.warning}"
+        else -> "an entry of no kind at all"
+      }
+
+  private fun describe(step: AgentStep): String {
+    val said = step.text.lineSequence().firstOrNull { it.isNotBlank() }.orEmpty().take(SAID_LIMIT)
+    val did = step.toolActionsList.joinToString(", ") { describe(it) }
+    return listOf(said, did).filter { it.isNotEmpty() }.joinToString(" ")
+  }
+
+  private fun describe(action: AgentToolAction): String =
+      when (action.actionCase) {
+        AgentToolAction.ActionCase.EDITED_PATH -> "[edits ${action.editedPath}]"
+        AgentToolAction.ActionCase.READ_PATH -> "[reads ${action.readPath}]"
+        AgentToolAction.ActionCase.COMMAND -> "[runs ${action.command.take(SAID_LIMIT)}]"
+        AgentToolAction.ActionCase.QUERY -> "[searches ${action.query.take(SAID_LIMIT)}]"
+        AgentToolAction.ActionCase.OTHER_TOOL -> "[${action.otherTool}]"
+        else -> "[a tool action of no kind at all]"
+      }
+
+  /** Stamped with how far into the test it is, which is what says where the time went. */
+  private fun say(message: String) {
+    val elapsed = startedAt.elapsedNow()
+    println("[%2dm%02ds] %s".format(elapsed.inWholeMinutes, elapsed.inWholeSeconds % 60, message))
   }
 
   private companion object {
@@ -222,5 +317,9 @@ class FarmLoopSystemTest {
     val SETTLE_LIMIT = 5.minutes
 
     val POLL_INTERVAL = 5.seconds
+
+    // Enough of a step to follow what the agent is doing, without wrapping the log it is printed
+    // to.
+    const val SAID_LIMIT = 120
   }
 }
