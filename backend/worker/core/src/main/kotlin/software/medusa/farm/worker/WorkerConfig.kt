@@ -1,5 +1,6 @@
 package software.medusa.farm.worker
 
+import software.medusa.farm.claude.CldModelId
 import software.medusa.farm.gitcli.GitCliAuthor
 import software.medusa.farm.github.GhAppPrivateKey
 import software.medusa.farm.shared.FarmWorker
@@ -14,6 +15,8 @@ data class WorkerConfig(
     val gitHubApp: GitHubAppConfig,
     // The claude CLI auth token the agent runs under (from `claude setup-token`).
     val claudeOauthToken: String,
+    // The model the agent runs on; sessions that come up on a different model are refused.
+    val claudeModel: CldModelId,
     // Keys the model that summarizes each run; a run is not recorded without its summary.
     val openRouterApiKey: String,
     // The identity Farm's commits carry, and the optional GPG key to sign them with.
@@ -35,6 +38,9 @@ data class WorkerConfig(
 
     fun signingKeyFrom(env: Map<String, String>): String? = env["FARM_COMMIT_SIGNING_KEY"]
 
+    fun claudeModelFrom(env: Map<String, String>): CldModelId =
+        CldModelId(env["FARM_MODEL"] ?: error("FARM_MODEL is required"))
+
     fun fromEnvironment(env: Map<String, String> = System.getenv()): WorkerConfig =
         WorkerConfig(
             databaseUrl = env["DATABASE_URL"] ?: error("DATABASE_URL is required"),
@@ -54,6 +60,7 @@ data class WorkerConfig(
                 ),
             claudeOauthToken =
                 env["CLAUDE_CODE_OAUTH_TOKEN"] ?: error("CLAUDE_CODE_OAUTH_TOKEN is required"),
+            claudeModel = claudeModelFrom(env),
             openRouterApiKey = env["OPENROUTER_API_KEY"] ?: error("OPENROUTER_API_KEY is required"),
             commitAuthor = commitAuthorFrom(env),
             signingKey = signingKeyFrom(env),

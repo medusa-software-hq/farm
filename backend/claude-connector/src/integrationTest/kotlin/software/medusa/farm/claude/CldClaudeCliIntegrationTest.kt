@@ -109,6 +109,7 @@ class CldClaudeCliIntegrationTest {
       CldSessionConfig(
           workspacePath = workspacePath,
           configDirPath = configDirPath,
+          model = CldModelId("claude-opus-4-5"),
           permissionMode = CldPermissionMode.AcceptEdits,
           settingSources = listOf(CldSettingSource.Project),
           allowedToolRules = emptyList(),
@@ -138,6 +139,9 @@ class CldClaudeCliIntegrationTest {
 
     override fun reportMissingInitMessage(firstLine: String?) =
         log("said <$firstLine> instead of a greeting")
+
+    override fun reportModelMismatch(requested: CldModelId, reported: CldModelId) =
+        log("started on ${reported.id} instead of the requested ${requested.id}")
 
     override fun reportUnexpectedProgressLine(progressLine: String) =
         log("said <$progressLine>, which is not the protocol")

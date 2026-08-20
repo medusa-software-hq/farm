@@ -14,6 +14,12 @@ data class CldSessionConfig(
      */
     val configDirPath: Path,
 
+    /**
+     * The model the session is asked to run on. Passed as `--model` to the CLI; the session is
+     * refused if the CLI reports a different model at startup.
+     */
+    val model: CldModelId,
+
     /** How much the assistant may do without being granted permission first. */
     val permissionMode: CldPermissionMode,
 

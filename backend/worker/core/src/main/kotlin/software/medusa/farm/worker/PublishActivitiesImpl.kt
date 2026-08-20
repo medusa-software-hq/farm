@@ -11,6 +11,7 @@ import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import software.medusa.farm.claude.CldCost
 import software.medusa.farm.claude.CldEngine
+import software.medusa.farm.claude.CldModelId
 import software.medusa.farm.claude.CldPermissionMode
 import software.medusa.farm.claude.CldRunStatus
 import software.medusa.farm.claude.CldSessionConfig
@@ -45,6 +46,7 @@ class PublishActivitiesImpl(
     private val commitAuthor: GitCliAuthor,
     private val signingKey: String?,
     private val attemptNumbering: AttemptNumbering,
+    private val claudeModel: CldModelId,
 ) : PublishActivities {
   private val logger = LoggerFactory.getLogger(PublishActivitiesImpl::class.java)
 
@@ -241,6 +243,7 @@ class PublishActivitiesImpl(
       CldSessionConfig(
           workspacePath = workspacePath,
           configDirPath = configDirPath,
+          model = claudeModel,
           permissionMode = CldPermissionMode.AcceptEdits,
           // The target repo's own settings, not the machine's.
           settingSources = listOf(CldSettingSource.Project),
