@@ -48,6 +48,11 @@ import software.medusa.farm.v1.SyncRepositoriesRequest
 class FarmLoopSystemTest {
   private val startedAt = TimeSource.Monotonic.markNow()
 
+  // Kept across the waits rather than within one: the run worked before a review is still there to
+  // be read afterwards, and what has been reported once does not want reporting again.
+  private val reportedCountByAttempt = mutableMapOf<Pair<Int, Int>, Int>()
+  private val reportedStateByAttempt = mutableMapOf<Pair<Int, Int>, String>()
+
   @Test
   fun `an issue is worked, reviewed, worked again, and merged`(): Unit = runBlocking {
     val config = SystemTestConfig.fromEnvironment()
@@ -245,8 +250,6 @@ class FarmLoopSystemTest {
       sessionId: String,
       block: suspend () -> ResultT,
   ): ResultT = coroutineScope {
-    val reportedCountByAttempt = mutableMapOf<Pair<Int, Int>, Int>()
-    val reportedStateByAttempt = mutableMapOf<Pair<Int, Int>, String>()
     val reporter = launch {
       while (isActive) {
         runsOf(api, sessionId).forEach { run ->
