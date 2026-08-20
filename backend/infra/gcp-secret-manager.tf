@@ -1,7 +1,7 @@
 # Secret holding the Neon JDBC connection string, injected into Cloud Run.
 resource "google_secret_manager_secret" "database_url" {
   project   = var.gcp_project_id
-  secret_id = "${module.common.gcp_api_run_service_name}-database-url"
+  secret_id = module.common.secret_ids.database_url
 
   replication {
     auto {}
@@ -33,7 +33,7 @@ resource "google_secret_manager_secret_iam_member" "cicd_sa_database_url_accesso
 # Secret holding the GitHub App private key (PKCS#8 PEM), injected into Cloud Run.
 resource "google_secret_manager_secret" "github_app_pem" {
   project   = var.gcp_project_id
-  secret_id = "${module.common.gcp_api_run_service_name}-github-app-pem"
+  secret_id = module.common.secret_ids.github_app_pem
 
   replication {
     auto {}
@@ -66,7 +66,7 @@ resource "google_secret_manager_secret_iam_member" "primary_service_sa_github_ap
 # pins the name the worker reads; a worker whose environment has no version fails at startup.
 resource "google_secret_manager_secret" "worker_openrouter_api_key" {
   project   = var.gcp_project_id
-  secret_id = "worker-openrouter-api-key"
+  secret_id = module.common.secret_ids.openrouter_api_key
 
   replication {
     auto {}

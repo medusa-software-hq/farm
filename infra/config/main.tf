@@ -17,6 +17,17 @@ locals {
     key_project = "ms-farm-shared-c83577a8"
   }
 
+  # Secret ids, shared across every environment because each environment's are in a project of its
+  # own — except the Temporal key, which is one secret in the shared project. Named here because
+  # Terraform creates them and the worker runner reads them, and a name those two disagree on is a
+  # worker that cannot start.
+  secrets = {
+    database_url       = "api-database-url"
+    github_app_pem     = "api-github-app-pem"
+    openrouter_api_key = "worker-openrouter-api-key"
+    temporal_api_key   = "worker-temporal-api-key"
+  }
+
   # Hand-edited per-environment static constants (OAuth + GitHub App client ids,
   # resource-name suffix, GitHub Environment name). The single source of truth
   # for values that must stay identical between Terraform and the built artifacts
@@ -47,6 +58,7 @@ locals {
     variant  = local.variant
     domain   = local.domain
     temporal = local.temporal
+    secrets  = local.secrets
     environments = {
       for env, config in local.environments : env => merge(config, {
         api_host = "api.${local.project}-${local.variant}${config.resource_name_suffix}.${local.domain}"

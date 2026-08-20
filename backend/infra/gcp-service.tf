@@ -93,7 +93,7 @@ resource "google_cloud_run_v2_service" "primary" {
         name = "TEMPORAL_API_KEY"
         value_source {
           secret_key_ref {
-            secret  = "projects/${data.terraform_remote_state.shared.outputs.shared_project_id}/secrets/worker-temporal-api-key"
+            secret  = "projects/${data.terraform_remote_state.shared.outputs.shared_project_id}/secrets/${module.common.secret_ids.temporal_api_key}"
             version = "latest"
           }
         }

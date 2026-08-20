@@ -19,6 +19,12 @@
     }
   },
   "project": "farm",
+  "secrets": {
+    "database_url": "api-database-url",
+    "github_app_pem": "api-github-app-pem",
+    "openrouter_api_key": "worker-openrouter-api-key",
+    "temporal_api_key": "worker-temporal-api-key"
+  },
   "temporal": {
     "address": "us-east-1.aws.api.temporal.io:7233",
     "key_project": "ms-farm-shared-c83577a8",

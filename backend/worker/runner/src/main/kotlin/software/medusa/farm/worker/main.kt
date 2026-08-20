@@ -8,10 +8,6 @@ import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 private const val runnerEnvironmentEnvVarName = "FARM_RUNNER_ENVIRONMENT"
 private const val claudeOauthTokenEnvVarName = "CLAUDE_CODE_OAUTH_TOKEN"
-private const val databaseUrlSecretId = "api-database-url"
-private const val temporalApiKeySecretId = "worker-temporal-api-key"
-private const val gitHubAppPemSecretId = "api-github-app-pem"
-private const val openRouterApiKeySecretId = "worker-openrouter-api-key"
 
 /**
  * Runs the worker locally against a remote database. The database URL comes from the target
@@ -26,19 +22,22 @@ fun main() {
   val config =
       SecretManagerServiceClient.create().use { client ->
         WorkerConfig(
-            databaseUrl = client.read(environment.gcpProjectId, databaseUrlSecretId),
+            databaseUrl = client.read(environment.gcpProjectId, BakedConfig.DATABASE_URL_SECRET_ID),
             temporalAddress = BakedConfig.TEMPORAL_ADDRESS,
             temporalNamespace = BakedConfig.TEMPORAL_NAMESPACE,
             temporalAuth =
                 WorkflowServiceAuthConfig.Cloud(
-                    client.read(BakedConfig.TEMPORAL_KEY_PROJECT, temporalApiKeySecretId)
+                    client.read(
+                        BakedConfig.TEMPORAL_KEY_PROJECT,
+                        BakedConfig.TEMPORAL_API_KEY_SECRET_ID,
+                    )
                 ),
             // The PEM comes from this env's `api-github-app-pem` secret (same path as the DB URL),
             // paired with the baked per-environment client id.
             gitHubApp =
                 GitHubAppConfig(
                     environment.gitHubAppClientId,
-                    client.read(environment.gcpProjectId, gitHubAppPemSecretId),
+                    client.read(environment.gcpProjectId, BakedConfig.GITHUB_APP_PEM_SECRET_ID),
                 ),
             // The operator's own claude token, from the launch environment — the worker runs the
             // `claude` binary on the operator's machine, so its auth comes from there too.
@@ -47,7 +46,8 @@ fun main() {
                     ?: error("$claudeOauthTokenEnvVarName is required (from `claude setup-token`)"),
             // Keys the summary model. A service credential reached over HTTP, so it comes from
             // the environment's secrets rather than the launch environment.
-            openRouterApiKey = client.read(environment.gcpProjectId, openRouterApiKeySecretId),
+            openRouterApiKey =
+                client.read(environment.gcpProjectId, BakedConfig.OPENROUTER_API_KEY_SECRET_ID),
             commitAuthor = WorkerConfig.commitAuthorFrom(System.getenv()),
             signingKey = WorkerConfig.signingKeyFrom(System.getenv()),
             taskQueue = FarmWorker.taskQueueFrom(),
