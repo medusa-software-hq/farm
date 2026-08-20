@@ -30,8 +30,7 @@ env:
   # The App Farm identifies as; the deployed Farm has its own.
   FARM_EPHEMERAL_APP_CLIENT_ID: Iv23liCmt6NC7HIB4LXr
 
-  # The App the tests identify as. Separate from Farm's because GitHub refuses a review from the
-  # App that opened the pull request.
+  # The App the tests identify as.
   FIXTURE_MANAGER_APP_CLIENT_ID: Iv23liBgbbe2iLdqWmSl
 
 jobs:
@@ -171,8 +170,6 @@ jobs:
           # Names the repository the test makes for itself, and tells a leftover from an earlier
           # run apart from this one's.
           FARM_TEST_RUN_ID: ${{ github.run_id }}
-          # The test files and reviews as the harness, not as the farm — GitHub will not let an App
-          # ask for changes on a pull request it opened.
           HARNESS_APP_CLIENT_ID: ${{ env.FIXTURE_MANAGER_APP_CLIENT_ID }}
           HARNESS_APP_PEM: ${{ steps.app-keys.outputs.fixture }}
         run: ./gradlew --no-daemon :backend:system-tests:integrationTest

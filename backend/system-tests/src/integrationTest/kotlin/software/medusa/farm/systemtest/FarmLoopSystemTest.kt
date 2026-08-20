@@ -43,8 +43,6 @@ class FarmLoopSystemTest {
   fun `an issue is worked, reviewed, worked again, and merged`(): Unit = runBlocking {
     val config = SystemTestConfig.fromEnvironment()
 
-    // As the harness, not as the farm: GitHub will not let an App ask for changes on a pull
-    // request it opened, and reviewing is the test's own business either way.
     val appApiClient =
         GhProperAppApiClient.build(config.harnessApp.clientId, config.harnessApp.privateKey)
     val gitHub =

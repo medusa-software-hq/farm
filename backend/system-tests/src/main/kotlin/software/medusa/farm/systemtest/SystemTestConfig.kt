@@ -21,11 +21,7 @@ data class SystemTestConfig(
      * behind.
      */
     val runId: String,
-    /**
-     * The App the test works as — filing the issue, asking for changes, merging. Not the farm's:
-     * GitHub will not let an App review a pull request it opened, and the harness is not the
-     * subject.
-     */
+    /** The App the test works as: filing the issue, asking for changes, merging. */
     val harnessApp: GitHubAppConfig,
 ) {
   /** The repository this run makes for itself, dropped when it is done with it. */
