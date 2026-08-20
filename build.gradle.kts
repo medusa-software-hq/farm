@@ -52,5 +52,18 @@ subprojects {
     }
   }
 
-  tasks.withType<Test>().configureEach { useJUnitPlatform() }
+  tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
+
+    // What a failing test said, in the log of whoever is reading it. Gradle's default prints the
+    // exception's class and the line it came from and drops its message, which for a failure that
+    // only happens in CI leaves nothing to work from: the message is in an HTML report on a machine
+    // that no longer exists.
+    testLogging {
+      events("failed")
+      exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+      showStackTraces = true
+      showCauses = true
+    }
+  }
 }
