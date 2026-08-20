@@ -179,3 +179,15 @@ jobs:
       - name: The farm's log
         if: always() && steps.changes.outputs.relevant == 'true'
         run: tail -200 farm.log || true
+
+      # A farm that takes the work and then fails at it fails inside an activity, which Temporal
+      # retries rather than reports. The history is the only place that says so.
+      - name: What Temporal was asked to run
+        if: always() && steps.changes.outputs.relevant == 'true'
+        run: |
+          temporal workflow list --limit 20 || true
+          temporal workflow list --limit 20 -o json | jq -r '.. | .workflowId? // empty' | sort -u |
+            while read -r id; do
+              echo "== $id"
+              temporal workflow show --workflow-id "$id" --limit 60 || true
+            done
