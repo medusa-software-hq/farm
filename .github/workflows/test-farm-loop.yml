@@ -28,7 +28,7 @@ env:
   FARM_FIXTURE_TEMPLATE: farm-fixture-template
 
   # Identifies the ephemeral realization of the Farm GitHub App.
-  FARM_EPHEMERAL_APP_CLIENT_ID: Iv23liCmt6NC7HIB4LXr
+  MAIN_EPHEMERAL_APP_CLIENT_ID: Iv23liCmt6NC7HIB4LXr
 
   # Identifies the App the tests act as.
   FIXTURE_MANAGER_APP_CLIENT_ID: Iv23liBgbbe2iLdqWmSl
@@ -134,7 +134,7 @@ jobs:
         if: steps.changes.outputs.relevant == 'true'
         env:
           DATABASE_URL: jdbc:postgresql://localhost:5432/postgres?user=postgres&password=farm
-          GITHUB_APP_CLIENT_ID: ${{ env.FARM_EPHEMERAL_APP_CLIENT_ID }}
+          GITHUB_APP_CLIENT_ID: ${{ env.MAIN_EPHEMERAL_APP_CLIENT_ID }}
           GITHUB_APP_PEM: ${{ steps.app-keys.outputs.farm }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
