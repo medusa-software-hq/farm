@@ -19,6 +19,28 @@ class GhProperAppApiClientTest {
       GhProperAppApiClient.build(clientId, appKey.pkcs8Pem, baseUrl = server.baseUrl)
 
   @Test
+  fun `reads the app's permissions, keeping the ones it has a name for`() = runBlocking {
+    FakeGitHubServer { request ->
+          assertEquals("/app", request.pathAndQuery)
+          FakeGitHubServer.Response(
+              200,
+              """{"permissions": {"contents": "write", "metadata": "read", "pages": "write"}}""",
+          )
+        }
+        .use { server ->
+          assertEquals(
+              GhAppPermissionSet(
+                  mapOf(
+                      GhPermissionId.Contents to GhPermissionMode.Write,
+                      GhPermissionId.Metadata to GhPermissionMode.Read,
+                  )
+              ),
+              clientAgainst(server).fetchDeclaredPermissions(),
+          )
+        }
+  }
+
+  @Test
   fun `resolves the installation id and presents a valid app JWT`() = runBlocking {
     FakeGitHubServer { request ->
           assertEquals("/orgs/acme/installation", request.pathAndQuery)

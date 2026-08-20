@@ -9,6 +9,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import software.medusa.farm.github.GhAppApiClient
+import software.medusa.farm.github.GhAppPermissionSet
 import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhOrgLogin
 import software.medusa.farm.github.MintedGhInstallationToken
@@ -33,6 +34,9 @@ class FarmServiceRunsTest {
     override suspend fun mintInstallationToken(
         installationId: GhInstallationId
     ): MintedGhInstallationToken = error("the read path must not call GitHub")
+
+    override suspend fun fetchDeclaredPermissions(): GhAppPermissionSet =
+        error("the read path must not call GitHub")
   }
 
   private object UnusedRepoSyncStarter : RepoSyncStarter {
