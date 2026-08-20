@@ -83,6 +83,11 @@ tasks.register("generateBakedConfig") {
     fun temporal(key: String): String =
         temporal[key]?.toString() ?: error("config.json is missing temporal.$key")
 
+    @Suppress("UNCHECKED_CAST") val secrets = config["secrets"] as Map<String, Any?>
+
+    fun secret(key: String): String =
+        secrets[key]?.toString() ?: error("config.json is missing secrets.$key")
+
     val bakedConfig = file("src/main/kotlin/software/medusa/farm/shared/BakedConfig.kt")
     bakedConfig.writeText(
         """
@@ -94,6 +99,11 @@ tasks.register("generateBakedConfig") {
         |  const val TEMPORAL_ADDRESS = "${temporal("address")}"
         |  const val TEMPORAL_NAMESPACE = "${temporal("namespace")}"
         |  const val TEMPORAL_KEY_PROJECT = "${temporal("key_project")}"
+        |
+        |  const val DATABASE_URL_SECRET_ID = "${secret("database_url")}"
+        |  const val GITHUB_APP_PEM_SECRET_ID = "${secret("github_app_pem")}"
+        |  const val OPENROUTER_API_KEY_SECRET_ID = "${secret("openrouter_api_key")}"
+        |  const val TEMPORAL_API_KEY_SECRET_ID = "${secret("temporal_api_key")}"
         |}
         |
         """

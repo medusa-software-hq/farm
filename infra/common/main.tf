@@ -105,6 +105,10 @@ locals {
   # half of the App this environment's API and worker authenticate as; injected
   # into the API's Cloud Run env.
   github_app_client_id = local.selected_env_config.github_app_client_id
+
+  # Secret ids, from the shared config rather than derived here: Terraform creates these and the
+  # worker runner reads them, so the name has one source both compile against.
+  secret_ids = local.config.secrets
 }
 
 output "organization_domain" {
@@ -181,6 +185,10 @@ output "google_cli_client_id" {
 
 output "github_app_client_id" {
   value = local.github_app_client_id
+}
+
+output "secret_ids" {
+  value = local.secret_ids
 }
 
 output "gh_releases_repo_name" {
