@@ -16,4 +16,18 @@ value class CldModelId(
    */
   fun matches(reported: CldModelId): Boolean =
       reported.id == id || reported.id.matches(Regex("${Regex.escape(id)}-\\d{8}"))
+
+  /**
+   * The models this library has been run against, by the full id the CLI reports for each.
+   *
+   * Full ids rather than the aliases the CLI also takes: an alias is resolved to an id before the
+   * session reports one, so a session asked for an alias reports something [matches] refuses, and
+   * would refuse every time. An id belongs here once something has run on it and seen it reported
+   * back, rather than because it is expected to exist.
+   */
+  companion object {
+    val Opus5 = CldModelId("claude-opus-5")
+
+    val Opus45 = CldModelId("claude-opus-4-5")
+  }
 }

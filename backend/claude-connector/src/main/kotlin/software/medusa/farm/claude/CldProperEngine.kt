@@ -129,6 +129,8 @@ class CldProperEngine(
               "--verbose",
               "--model",
               config.model.id,
+              "--effort",
+              config.effort.wireValue,
               "--permission-mode",
               config.permissionMode.value,
               "--max-budget-usd",

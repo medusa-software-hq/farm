@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.withIndex
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import software.medusa.farm.claude.CldCost
+import software.medusa.farm.claude.CldEffort
 import software.medusa.farm.claude.CldEngine
 import software.medusa.farm.claude.CldModelId
 import software.medusa.farm.claude.CldPermissionMode
@@ -47,6 +48,7 @@ class PublishActivitiesImpl(
     private val signingKey: String?,
     private val attemptNumbering: AttemptNumbering,
     private val claudeModel: CldModelId,
+    private val claudeEffort: CldEffort,
 ) : PublishActivities {
   private val logger = LoggerFactory.getLogger(PublishActivitiesImpl::class.java)
 
@@ -244,6 +246,7 @@ class PublishActivitiesImpl(
           workspacePath = workspacePath,
           configDirPath = configDirPath,
           model = claudeModel,
+          effort = claudeEffort,
           permissionMode = CldPermissionMode.AcceptEdits,
           // The target repo's own settings, not the machine's.
           settingSources = listOf(CldSettingSource.Project),

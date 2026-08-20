@@ -80,6 +80,7 @@ fun buildTemporalWorker(config: WorkerConfig): TemporalWorkerHost {
       appApiClient,
       config.claudeOauthToken,
       config.claudeModel,
+      config.claudeEffort,
       RunSummarizer.from(config.openRouterApiKey),
       config.commitAuthor,
       config.signingKey,

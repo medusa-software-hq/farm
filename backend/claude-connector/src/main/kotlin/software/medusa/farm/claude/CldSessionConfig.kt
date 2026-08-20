@@ -20,6 +20,9 @@ data class CldSessionConfig(
      */
     val model: CldModelId,
 
+    /** How hard the assistant is asked to think. */
+    val effort: CldEffort,
+
     /** How much the assistant may do without being granted permission first. */
     val permissionMode: CldPermissionMode,
 

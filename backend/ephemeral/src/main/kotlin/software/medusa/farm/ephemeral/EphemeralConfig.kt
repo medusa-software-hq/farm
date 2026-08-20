@@ -1,5 +1,6 @@
 package software.medusa.farm.ephemeral
 
+import software.medusa.farm.claude.CldEffort
 import software.medusa.farm.claude.CldModelId
 import software.medusa.farm.github.GhAppPrivateKey
 import software.medusa.farm.shared.FarmWorker
@@ -19,6 +20,7 @@ data class EphemeralConfig(
     val gitHubApp: GitHubAppConfig,
     val claudeOauthToken: String,
     val claudeModel: CldModelId,
+    val claudeEffort: CldEffort,
     val openRouterApiKey: String,
     /** Fixed rather than asked for, so whatever drives this farm knows where to find it. */
     val apiPort: Int,
@@ -37,6 +39,7 @@ data class EphemeralConfig(
           gitHubApp = gitHubApp,
           claudeOauthToken = claudeOauthToken,
           claudeModel = claudeModel,
+          claudeEffort = claudeEffort,
           openRouterApiKey = openRouterApiKey,
           commitAuthor = WorkerConfig.commitAuthorFrom(System.getenv()),
           signingKey = WorkerConfig.signingKeyFrom(System.getenv()),
@@ -60,6 +63,7 @@ data class EphemeralConfig(
                 ),
             claudeOauthToken = env.required("CLAUDE_CODE_OAUTH_TOKEN"),
             claudeModel = WorkerConfig.claudeModelFrom(env),
+            claudeEffort = WorkerConfig.claudeEffortFrom(env),
             openRouterApiKey = env.required("OPENROUTER_API_KEY"),
             apiPort = env["FARM_API_PORT"]?.toInt() ?: DEFAULT_API_PORT,
         )

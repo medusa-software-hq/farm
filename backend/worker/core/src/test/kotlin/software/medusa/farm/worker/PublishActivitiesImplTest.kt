@@ -16,6 +16,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import software.medusa.farm.claude.CldAssistantStep
 import software.medusa.farm.claude.CldCost
+import software.medusa.farm.claude.CldEffort
 import software.medusa.farm.claude.CldEngine
 import software.medusa.farm.claude.CldModelId
 import software.medusa.farm.claude.CldRunResult
@@ -209,6 +210,7 @@ class PublishActivitiesImplTest {
           commitAuthor = author,
           signingKey = null,
           claudeModel = CldModelId("claude-opus-4-5"),
+          claudeEffort = CldEffort.High,
       )
 
   private fun handle(request: FakeGitHubServer.Request): FakeGitHubServer.Response {

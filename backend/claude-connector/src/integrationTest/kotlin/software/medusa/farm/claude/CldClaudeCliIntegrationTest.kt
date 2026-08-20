@@ -109,7 +109,8 @@ class CldClaudeCliIntegrationTest {
       CldSessionConfig(
           workspacePath = workspacePath,
           configDirPath = configDirPath,
-          model = CldModelId("claude-opus-4-5"),
+          model = CldModelId.Opus5,
+          effort = CldEffort.High,
           permissionMode = CldPermissionMode.AcceptEdits,
           settingSources = listOf(CldSettingSource.Project),
           allowedToolRules = emptyList(),
