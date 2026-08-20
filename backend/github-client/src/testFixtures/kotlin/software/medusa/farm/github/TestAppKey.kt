@@ -13,9 +13,15 @@ class TestAppKey {
 
   val publicKey: RSAPublicKey = keyPair.public as RSAPublicKey
 
-  val pkcs8Pem: String = buildString {
-    append("-----BEGIN PRIVATE KEY-----\n")
-    append(Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(keyPair.private.encoded))
-    append("\n-----END PRIVATE KEY-----\n")
-  }
+  val pkcs8Pem: GhAppPrivateKey =
+      GhAppPrivateKey(
+          buildString {
+            append("-----BEGIN PRIVATE KEY-----\n")
+            append(
+                Base64.getMimeEncoder(64, "\n".toByteArray())
+                    .encodeToString(keyPair.private.encoded)
+            )
+            append("\n-----END PRIVATE KEY-----\n")
+          }
+      )
 }

@@ -1,0 +1,193 @@
+name: Test the farm loop
+
+# One issue driven all the way round — filed, worked, reviewed, worked again, merged — against a
+# real GitHub organization and the real agent.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+# One run at a time: a run's farm can see every repository in the organization, so two at once
+# would each find the other's issue and work it.
+concurrency:
+  group: farm-loop-test
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Federating into GCP for the App keys.
+  id-token: write
+
+env:
+  JAVA_VERSION: 21
+  NO_COLOR: 1
+
+  CLAUDE_CLI_VERSION: 2.1.52
+
+  FARM_EPHEMERAL_ORG: medusa-farm-ephemeral-hq
+  FARM_FIXTURE_TEMPLATE: farm-fixture-template
+
+  # Identifies the ephemeral realization of the Farm GitHub App.
+  MAIN_EPHEMERAL_APP_CLIENT_ID: Iv23liCmt6NC7HIB4LXr
+
+  # Identifies the App the tests act as.
+  FIXTURE_MANAGER_APP_CLIENT_ID: Iv23liBgbbe2iLdqWmSl
+
+jobs:
+  loop-test:
+    name: Loop test
+    runs-on: ubuntu-latest
+
+    services:
+      # A container rather than a Neon branch: the same Postgres, needing no API key and leaving
+      # nothing behind when a run is cancelled.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: farm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+
+    steps:
+      # fetch-depth: 0 so the change-detection step below can diff against the PR base.
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      # A run costs a real agent, so the steps below are skipped where nothing could have broken
+      # the loop.
+      - name: Detect relevant changes
+        id: changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -z "$BASE_REF" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags origin "$BASE_REF"
+          pattern='^(backend/|gradle/libs.versions.toml|.github/workflows/test-farm-loop.yml)'
+          if git diff --name-only "origin/$BASE_REF...HEAD" | grep -qE "$pattern"; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing here could break the loop — skipping." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.changes.outputs.relevant == 'true'
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.changes.outputs.relevant == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.relevant == 'true'
+        with:
+          node-version: 22
+
+      # This identity can read these two secrets and nothing else.
+      - name: Authenticate to Google Cloud
+        if: steps.changes.outputs.relevant == 'true'
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_CICD_WI_PROVIDER_NAME }}
+          service_account: ${{ vars.GCP_SYSTEM_TESTS_SA_EMAIL }}
+
+      - name: Read the App keys
+        id: app-keys
+        if: steps.changes.outputs.relevant == 'true'
+        uses: google-github-actions/get-secretmanager-secrets@v2
+        with:
+          secrets: |-
+            farm:${{ vars.GCP_SHARED_PROJECT_ID }}/main-ephemeral-github-app-pem
+            fixture:${{ vars.GCP_SHARED_PROJECT_ID }}/fixture-manager-github-app-pem
+
+      - name: Install the claude CLI
+        if: steps.changes.outputs.relevant == 'true'
+        run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CLI_VERSION }}
+
+      # Beside the farm rather than in the cloud: a run then needs no Temporal credential.
+      - name: Start Temporal
+        if: steps.changes.outputs.relevant == 'true'
+        run: |
+          curl -sSf https://temporal.download/cli.sh | sh
+          echo "$HOME/.temporalio/bin" >> "$GITHUB_PATH"
+          "$HOME/.temporalio/bin/temporal" server start-dev --headless --log-level error &
+          for _ in $(seq 1 30); do
+            if "$HOME/.temporalio/bin/temporal" operator cluster health >/dev/null 2>&1; then
+              echo "Temporal is up."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Temporal did not come up." >&2
+          exit 1
+
+      # Its own process, so its log is its own and the tests reach it the way they would reach a
+      # deployed one.
+      - name: Start the ephemeral farm
+        if: steps.changes.outputs.relevant == 'true'
+        env:
+          DATABASE_URL: jdbc:postgresql://localhost:5432/postgres?user=postgres&password=farm
+          GITHUB_APP_CLIENT_ID: ${{ env.MAIN_EPHEMERAL_APP_CLIENT_ID }}
+          GITHUB_APP_PEM: ${{ steps.app-keys.outputs.farm }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          FARM_API_PORT: "8081"
+        run: |
+          ./gradlew --no-daemon :backend:ephemeral:installDist
+          ./backend/ephemeral/build/install/ephemeral/bin/ephemeral > farm.log 2>&1 &
+          farm=$!
+          for _ in $(seq 1 60); do
+            if curl -fsS http://localhost:8081/health >/dev/null 2>&1; then
+              echo "The farm is up."
+              exit 0
+            fi
+            # A farm that died is not a farm that is slow: say so now rather than in two minutes.
+            if ! kill -0 "$farm" 2>/dev/null; then
+              echo "The farm stopped before it was up." >&2
+              tail -50 farm.log >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "The farm did not come up." >&2
+          tail -50 farm.log >&2
+          exit 1
+
+      - name: Drive one issue round the loop
+        if: steps.changes.outputs.relevant == 'true'
+        env:
+          FARM_API_HOST: localhost
+          FARM_API_PORT: "8081"
+          FARM_TEST_ORG: ${{ env.FARM_EPHEMERAL_ORG }}
+          FARM_TEST_TEMPLATE: ${{ env.FARM_FIXTURE_TEMPLATE }}
+          # Names the repository the test makes for itself, and tells a leftover from an earlier
+          # run apart from this one's.
+          FARM_TEST_RUN_ID: ${{ github.run_id }}
+          FIXTURE_MANAGER_APP_CLIENT_ID: ${{ env.FIXTURE_MANAGER_APP_CLIENT_ID }}
+          FIXTURE_MANAGER_APP_PEM: ${{ steps.app-keys.outputs.fixture }}
+        run: ./gradlew --no-daemon :backend:system-tests:integrationTest
+
+      # What the farm itself said, which is where a failure in the loop rather than in the test
+      # will have left its trail.
+      - name: The farm's log
+        if: always() && steps.changes.outputs.relevant == 'true'
+        run: tail -200 farm.log || true
+
+      # A farm that takes the work and then fails at it fails inside an activity, which Temporal
+      # retries rather than reports. The history is the only place that says so.
+      - name: What Temporal was asked to run
+        if: always() && steps.changes.outputs.relevant == 'true'
+        run: |
+          temporal workflow list --limit 20 || true
+          temporal workflow list --limit 20 -o json | jq -r '.. | .workflowId? // empty' | sort -u |
+            while read -r id; do
+              echo "== $id"
+              temporal workflow show --workflow-id "$id" || true
+            done

@@ -30,6 +30,12 @@ internal class GhHttp(
   suspend fun post(url: String, bearer: String): HttpResponse<String> =
       send(request(url, bearer).POST(HttpRequest.BodyPublishers.noBody()).build())
 
+  suspend fun delete(url: String, bearer: String): HttpResponse<String> =
+      send(request(url, bearer).DELETE().build())
+
+  suspend fun put(url: String, bearer: String, body: String): HttpResponse<String> =
+      send(request(url, bearer).PUT(HttpRequest.BodyPublishers.ofString(body)).build())
+
   suspend fun post(url: String, bearer: String, body: String): HttpResponse<String> =
       send(
           request(url, bearer)
@@ -52,7 +58,9 @@ internal class GhHttp(
       perPage: Int = 100,
       decodePage: (body: String) -> List<T>,
   ): Flow<T> = flow {
-    var url: String? = "$path?per_page=$perPage"
+    // A path may already carry a query of its own, so the page size joins it rather than starting
+    // a second one.
+    var url: String? = if ("?" in path) "$path&per_page=$perPage" else "$path?per_page=$perPage"
     while (url != null) {
       val response = get(url, bearer = tokenProvider.provideToken())
       check(response.statusCode() == httpOk) {

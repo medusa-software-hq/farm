@@ -1,7 +1,7 @@
 # `backend:github-client`
 
-A GitHub REST API client that acts **as the Farm app**. It is organised around GitHub's own auth
-model, in three surfaces:
+A GitHub REST API client, covering the parts of the API its callers reach for rather than the whole
+of it. It is organised around GitHub's own auth model, in three surfaces:
 
 - an **App** surface, driven by the app's private-key JWT, for the endpoints only the app itself can
   reach — resolving an org's installation and minting installation access tokens;

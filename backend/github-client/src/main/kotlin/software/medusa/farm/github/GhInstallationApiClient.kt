@@ -37,4 +37,56 @@ interface GhInstallationApiClient : GhResourcesApiClient {
       repo: GhRepoFullName,
       number: Int,
   ): List<GhPullRequestReviewComment>
+
+  /**
+   * Creates a label if the repository has not got one by that name, and does nothing if it has.
+   * Requires the App's Issues:write permission.
+   */
+  suspend fun ensureLabel(repo: GhRepoFullName, name: String)
+
+  /** Opens an issue carrying [labels]. Requires the App's Issues:write permission. */
+  suspend fun createIssue(
+      repo: GhRepoFullName,
+      title: String,
+      body: String,
+      labels: List<String>,
+  ): GhIssue
+
+  /** The repository's open pull requests, newest first. */
+  suspend fun listOpenPullRequests(repo: GhRepoFullName): List<GhPullRequest>
+
+  /** The files a pull request changes, each with the diff GitHub renders for it. */
+  suspend fun listPullRequestFiles(repo: GhRepoFullName, number: Int): List<GhPullRequestFile>
+
+  /**
+   * Submits a review saying [verdict], with [body] in the review's own box and [comments] against
+   * lines of the diff. Requires the App's Pull requests:write permission.
+   *
+   * GitHub will not accept a verdict of [GhReviewVerdict.APPROVE] or
+   * [GhReviewVerdict.REQUEST_CHANGES] on a pull request the same App opened.
+   */
+  suspend fun createReview(
+      repo: GhRepoFullName,
+      number: Int,
+      verdict: GhReviewVerdict,
+      body: String,
+      comments: List<GhNewReviewComment>,
+  )
+
+  /** Merges a pull request. Requires the App's Pull requests:write permission. */
+  suspend fun mergePullRequest(repo: GhRepoFullName, number: Int, method: GhMergeMethod)
+
+  /**
+   * Creates [name] in [owner] from [template], with the template's files and none of its issues,
+   * labels or history. Requires the App's Administration:write permission on the owner.
+   */
+  suspend fun createRepositoryFromTemplate(
+      template: GhRepoFullName,
+      owner: String,
+      name: String,
+      isPrivate: Boolean,
+  ): GhRepo
+
+  /** Deletes a repository. Requires the App's Administration:write permission. */
+  suspend fun deleteRepository(repo: GhRepoFullName)
 }

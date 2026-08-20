@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.slf4j.LoggerFactory
+import software.medusa.farm.github.GhAppPrivateKey
 import software.medusa.farm.github.GhProperAppApiClient
 import software.medusa.farm.shared.BakedConfig
 import software.medusa.farm.shared.FarmStore
@@ -64,8 +65,10 @@ suspend fun main() {
         System.getenv(gitHubAppClientIdEnvVarName)
             ?: error("$gitHubAppClientIdEnvVarName environment variable must be set")
     val gitHubAppPem =
-        System.getenv(gitHubAppPemEnvVarName)
-            ?: error("$gitHubAppPemEnvVarName environment variable must be set")
+        GhAppPrivateKey(
+            System.getenv(gitHubAppPemEnvVarName)
+                ?: error("$gitHubAppPemEnvVarName environment variable must be set")
+        )
 
     // Migrations are applied by the deploy pipeline's migrate step, not on startup.
     val farmStore = FarmStore.build(databaseUrl)

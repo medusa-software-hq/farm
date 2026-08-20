@@ -129,7 +129,7 @@ tasks:
       - test -f {{.KEY_PATH}}
     cmds:
       - mkdir -p {{.HOME}}/.config/ms-farm
-      - gcloud secrets versions access latest --secret dev-github-app-pem --project ms-farm-shared-c83577a8 > {{.KEY_PATH}}
+      - gcloud secrets versions access latest --secret main-dev-github-app-pem --project ms-farm-shared-c83577a8 > {{.KEY_PATH}}
       - chmod 600 {{.KEY_PATH}}
 
   temporal:dev:

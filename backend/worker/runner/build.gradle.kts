@@ -7,6 +7,8 @@ plugins {
 dependencies {
   implementation(project(":backend:shared"))
   implementation(project(":backend:worker:core"))
+  // For the App private key type the config carries.
+  implementation(project(":backend:github-client"))
   implementation(libs.temporal.sdk)
   implementation(platform(libs.google.cloud.bom))
   implementation(libs.google.cloud.secretmanager)

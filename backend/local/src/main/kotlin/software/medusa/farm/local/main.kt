@@ -5,6 +5,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.time.Clock
 import kotlinx.coroutines.CompletableDeferred
+import software.medusa.farm.github.GhAppPrivateKey
 import software.medusa.farm.github.GhCachingInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhProperAppApiClient
@@ -15,6 +16,7 @@ import software.medusa.farm.server.TemporalRepoSyncStarter
 import software.medusa.farm.server.TemporalSyncAllStarter
 import software.medusa.farm.server.buildServer
 import software.medusa.farm.server.buildWorkflowClient
+import software.medusa.farm.shared.BakedGitHubAppClientIds
 import software.medusa.farm.shared.FarmStore
 import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.InMemoryIssueStore
@@ -32,12 +34,9 @@ private const val localCorsOriginRegex = """http://localhost(:\d+)?"""
 private const val localTemporalAddress = "localhost:7233"
 private const val localTemporalNamespace = "default"
 
-// The Medusa Farm (Test) app (org `medusa-software-test-hq`); public app identifier, not a secret.
-private const val testGitHubAppClientId = "Iv23liUa4I1Mh1CZwWaH"
-
 private const val devGitHubAppPemPathEnvVarName = "FARM_DEV_GITHUB_APP_PEM_PATH"
 
-/** The App client for the Test app plus a per-installation client provider derived from it. */
+/** The App client plus a per-installation client provider derived from it. */
 private class DevGitHubApp(
     val appApiClient: GhProperAppApiClient,
     val clientProvider: GhInstallationApiClientProvider,
@@ -46,7 +45,7 @@ private class DevGitHubApp(
 /**
  * The one-process local stack: the API and an in-process worker over one shared in-memory
  * [FarmStore], so a link-triggered repo sync writes to the same table the API reads. Requires the
- * local Temporal dev server (`task dev` starts it). With the Test app's dev key present, linking
+ * local Temporal dev server (`task dev` starts it). With the dev key present, linking
  * `medusa-software-test-hq` performs a real sync into the in-memory repos table.
  */
 fun main() {
@@ -118,17 +117,21 @@ fun main() {
 }
 
 /**
- * The Test app, from its private key on disk (fetched by the dev task). Required: `task dev`
- * fetches the key, so a missing one is a setup slip — fail fast rather than run a half-working
- * stack.
+ * The App a local stack works as — staging's realization of it — from its private key on disk.
+ * Required: `task dev` fetches the key, so a missing one is a setup slip rather than a reason to
+ * run half a stack.
  */
 private fun buildDevGitHubApp(): DevGitHubApp {
   val pemPath =
       System.getenv(devGitHubAppPemPathEnvVarName)?.let { Paths.get(it) } ?: defaultDevPemPath()
   require(Files.isRegularFile(pemPath)) {
-    "No Test GitHub App key at $pemPath. Run `task dev` (or `task fetch-dev-github-key`) to fetch it."
+    "No GitHub App key at $pemPath. Run `task dev` (or `task fetch-dev-github-key`) to fetch it."
   }
-  val appApiClient = GhProperAppApiClient.build(testGitHubAppClientId, Files.readString(pemPath))
+  val appApiClient =
+      GhProperAppApiClient.build(
+          BakedGitHubAppClientIds.STAGING,
+          GhAppPrivateKey(Files.readString(pemPath)),
+      )
   return DevGitHubApp(
       appApiClient,
       GhCachingInstallationApiClientProvider(GhProperInstallationApiClientProvider(appApiClient)),

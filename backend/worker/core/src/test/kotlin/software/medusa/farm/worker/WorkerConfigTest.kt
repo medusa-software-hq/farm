@@ -15,7 +15,7 @@ class WorkerConfigTest {
           "TEMPORAL_NAMESPACE" to "farm.kr9zt",
           "TEMPORAL_API_KEY" to "secret-key",
           "GITHUB_APP_CLIENT_ID" to "Iv1.test",
-          "GITHUB_APP_PEM" to "-----BEGIN PRIVATE KEY-----",
+          "GITHUB_APP_PEM" to pemStandIn,
           "CLAUDE_CODE_OAUTH_TOKEN" to "sk-ant-oat01-test",
           "OPENROUTER_API_KEY" to "sk-or-test",
       )
@@ -28,7 +28,7 @@ class WorkerConfigTest {
     assertEquals("farm.kr9zt", config.temporalNamespace)
     assertEquals(WorkflowServiceAuthConfig.Cloud("secret-key"), config.temporalAuth)
     assertEquals("Iv1.test", config.gitHubApp.clientId)
-    assertEquals("-----BEGIN PRIVATE KEY-----", config.gitHubApp.pem)
+    assertEquals(pemStandIn, config.gitHubApp.privateKey.pem)
     assertEquals("sk-ant-oat01-test", config.claudeOauthToken)
     // Commit identity defaults to Farm's, and signing is off unless a key is provided.
     assertEquals(GitCliAuthor("Farm", "farm@medusa.software"), config.commitAuthor)
@@ -55,5 +55,11 @@ class WorkerConfigTest {
     for (missing in full.keys) {
       assertFailsWith<IllegalStateException> { WorkerConfig.fromEnvironment(full - missing) }
     }
+  }
+
+  private companion object {
+    // Shaped like a key rather than being one: the config only carries it, and GhAppPrivateKey
+    // refuses anything that is not at least shaped like one.
+    const val pemStandIn = "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
   }
 }
