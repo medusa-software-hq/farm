@@ -45,7 +45,7 @@ class CldProperEngineIntegrationTest {
     val info = engine(HAPPY).runSession(config(), PROMPT) { info }
 
     assertEquals(CldSessionId("sess-fake"), info.sessionId)
-    assertEquals(CldModelId("claude-opus-5"), info.modelId)
+    assertEquals(CldModelId.Opus5, info.modelId)
     assertEquals(
         setOf(CldToolRule.Read, CldToolRule.Edit, CldToolRule.Unrecognized("TodoWrite")),
         info.availableToolSpecifiers,
@@ -319,7 +319,8 @@ class CldProperEngineIntegrationTest {
       CldSessionConfig(
           workspacePath = workspacePath,
           configDirPath = Files.createTempDirectory("engine-config"),
-          model = CldModelId("claude-opus-5"),
+          model = CldModelId.Opus5,
+          effort = CldEffort.High,
           permissionMode = CldPermissionMode.AcceptEdits,
           settingSources = listOf(CldSettingSource.Project),
           allowedToolRules = listOf(CldToolRule.Read, CldToolRule.Edit),

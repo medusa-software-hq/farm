@@ -48,6 +48,7 @@ fun main() {
                 System.getenv(claudeOauthTokenEnvVarName)
                     ?: error("$claudeOauthTokenEnvVarName is required (from `claude setup-token`)"),
             claudeModel = WorkerConfig.claudeModelFrom(System.getenv()),
+            claudeEffort = WorkerConfig.claudeEffortFrom(System.getenv()),
             // Keys the summary model. A service credential reached over HTTP, so it comes from
             // the environment's secrets rather than the launch environment.
             openRouterApiKey =
