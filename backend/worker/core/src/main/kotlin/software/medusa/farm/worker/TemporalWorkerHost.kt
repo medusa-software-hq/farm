@@ -148,12 +148,24 @@ class TemporalWorkerHost(
           schedule,
           ScheduleOptions.newBuilder().build(),
       )
-    } catch (ignored: ScheduleAlreadyRunningException) {
-      // A prior startup already created it; update it so that any changes to the action
-      // (e.g. a newly-added WorkflowExecutionTimeout) are applied without manual intervention.
+    } catch (e: ScheduleAlreadyRunningException) {
+      // A prior startup already created it. The schedule outlives the process that created it, so
+      // any change to the action or spec has to be pushed here or it never takes effect. Carry the
+      // existing state through so an operator-applied pause survives a worker restart.
       scheduleClient
           .getHandle(REPO_SYNC_ALL_SCHEDULE_ID)
-          .update { ScheduleUpdate.newBuilder().setSchedule(schedule).build() }
+          .update { input ->
+            val state = input.description.schedule.state
+            ScheduleUpdate.newBuilder()
+                .setSchedule(
+                    Schedule.newBuilder()
+                        .setAction(schedule.action)
+                        .setSpec(schedule.spec)
+                        .setState(state)
+                        .build()
+                )
+                .build()
+          }
     }
   }
 
