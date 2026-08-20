@@ -189,5 +189,5 @@ jobs:
           temporal workflow list --limit 20 -o json | jq -r '.. | .workflowId? // empty' | sort -u |
             while read -r id; do
               echo "== $id"
-              temporal workflow show --workflow-id "$id" --limit 60 || true
+              temporal workflow show --workflow-id "$id" || true
             done

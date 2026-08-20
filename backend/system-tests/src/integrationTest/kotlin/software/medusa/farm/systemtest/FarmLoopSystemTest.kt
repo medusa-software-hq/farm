@@ -126,14 +126,18 @@ class FarmLoopSystemTest {
             labels = listOf(READY_LABEL),
         )
 
-    // The sweep is what notices a labelled issue; the deployment runs it on a schedule and this
-    // asks for it directly.
-    api.syncRepositories(SyncRepositoriesRequest.getDefaultInstance())
-
-    // Before the pull request rather than after it: the farm opens the session as it picks the
-    // issue up, which is what lets the wait below say what the agent is doing while it works.
+    // What notices a labelled issue is the sweep, which the deployment runs on a schedule and this
+    // asks for directly — on every look rather than once. Linking the org above started a sweep of
+    // its own, and a "sync now" that lands while one is running attaches to it rather than starting
+    // another; that one began before this issue was filed and can finish without ever seeing it.
+    // The first ask after it finishes is the sweep that finds the issue.
+    //
+    // Waited for before the pull request rather than after it: the farm opens the session as it
+    // picks the issue up, which is what lets the wait below say what the agent is doing as it
+    // works.
     val sessionId =
         awaitUntil("a session for the issue", SETTLE_LIMIT) {
+          api.syncRepositories(SyncRepositoriesRequest.getDefaultInstance())
           api.listSessions(ListSessionsRequest.getDefaultInstance())
               .sessionsList
               .firstOrNull { it.number == issue.number }
