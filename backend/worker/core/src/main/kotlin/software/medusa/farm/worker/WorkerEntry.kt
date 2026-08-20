@@ -51,8 +51,13 @@ private fun GhAppApiClient.checkPermissionsCover(requiredPermissionSet: GhAppPer
   }
 }
 
-/** Runs the farm's Temporal worker over [config] and blocks, staying up to process tasks. */
-fun runTemporalWorker(config: WorkerConfig) {
+/**
+ * Wires the farm's Temporal worker over [config], with a database connection and GitHub clients of
+ * its own — as it has wherever it runs, whether or not something else is running beside it.
+ *
+ * Started by the caller, so that a process with more to start can start the rest.
+ */
+fun buildTemporalWorker(config: WorkerConfig): TemporalWorkerHost {
   val store = FarmStore.build(config.databaseUrl)
   // One App client, used both to mint the per-installation API clients and to mint raw git tokens.
   val appApiClient = GhProperAppApiClient.build(config.gitHubApp.clientId, config.gitHubApp.pem)
@@ -60,23 +65,29 @@ fun runTemporalWorker(config: WorkerConfig) {
 
   val clientProvider =
       GhCachingInstallationApiClientProvider(GhProperInstallationApiClientProvider(appApiClient))
-  TemporalWorkerHost(
-          config.temporalAddress,
-          config.temporalNamespace,
-          config.temporalAuth,
-          config.taskQueue,
-          store.repo,
-          store.issue,
-          store.session,
-          store.linkedOrg,
-          clientProvider,
-          appApiClient,
-          config.claudeOauthToken,
-          RunSummarizer.from(config.openRouterApiKey),
-          config.commitAuthor,
-          config.signingKey,
-      )
-      .start()
+
+  return TemporalWorkerHost(
+      config.temporalAddress,
+      config.temporalNamespace,
+      config.temporalAuth,
+      config.taskQueue,
+      store.repo,
+      store.issue,
+      store.session,
+      store.linkedOrg,
+      clientProvider,
+      appApiClient,
+      config.claudeOauthToken,
+      RunSummarizer.from(config.openRouterApiKey),
+      config.commitAuthor,
+      config.signingKey,
+  )
+}
+
+/** Runs the farm's Temporal worker over [config] and blocks, staying up to process tasks. */
+fun runTemporalWorker(config: WorkerConfig) {
+  buildTemporalWorker(config).start()
+
   // Stay up; the worker factory polls on background threads.
   Thread.currentThread().join()
 }

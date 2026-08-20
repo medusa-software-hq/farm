@@ -1,6 +1,9 @@
 package software.medusa.farm.ephemeral
 
+import software.medusa.farm.shared.FarmWorker
+import software.medusa.farm.shared.WorkflowServiceAuthConfig
 import software.medusa.farm.worker.GitHubAppConfig
+import software.medusa.farm.worker.WorkerConfig
 
 /**
  * What one throwaway farm runs on. Everything here is real except Temporal, which runs beside this
@@ -17,7 +20,32 @@ data class EphemeralConfig(
     /** Fixed rather than asked for, so whatever drives this farm knows where to find it. */
     val apiPort: Int,
 ) {
+  /**
+   * The same configuration the deployed worker takes, so this farm's worker is wired exactly as
+   * that one is. Temporal is the only thing that differs: a server beside this process, which needs
+   * no credential.
+   */
+  fun toWorkerConfig(): WorkerConfig =
+      WorkerConfig(
+          databaseUrl = databaseUrl,
+          temporalAddress = TEMPORAL_ADDRESS,
+          temporalNamespace = TEMPORAL_NAMESPACE,
+          temporalAuth = WorkflowServiceAuthConfig.Local,
+          gitHubApp = gitHubApp,
+          claudeOauthToken = claudeOauthToken,
+          openRouterApiKey = openRouterApiKey,
+          commitAuthor = WorkerConfig.commitAuthorFrom(System.getenv()),
+          signingKey = WorkerConfig.signingKeyFrom(System.getenv()),
+          // This process is the only worker against its own Temporal, so there is nothing here to
+          // take work from.
+          taskQueue = FarmWorker.DEFAULT_TASK_QUEUE,
+      )
+
   companion object {
+    const val TEMPORAL_ADDRESS = "localhost:7233"
+
+    const val TEMPORAL_NAMESPACE = "default"
+
     fun fromEnvironment(env: Map<String, String> = System.getenv()): EphemeralConfig =
         EphemeralConfig(
             databaseUrl = env.required("DATABASE_URL"),

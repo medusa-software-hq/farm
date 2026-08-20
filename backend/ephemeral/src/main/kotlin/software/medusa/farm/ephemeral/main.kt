@@ -1,9 +1,7 @@
 package software.medusa.farm.ephemeral
 
 import kotlinx.coroutines.CompletableDeferred
-import software.medusa.farm.github.GhCachingInstallationApiClientProvider
 import software.medusa.farm.github.GhProperAppApiClient
-import software.medusa.farm.github.GhProperInstallationApiClientProvider
 import software.medusa.farm.server.GitHubOrgService
 import software.medusa.farm.server.NoOpAuthDecorator
 import software.medusa.farm.server.TemporalRepoSyncStarter
@@ -11,15 +9,8 @@ import software.medusa.farm.server.TemporalSyncAllStarter
 import software.medusa.farm.server.buildServer
 import software.medusa.farm.server.buildWorkflowClient
 import software.medusa.farm.shared.FarmStore
-import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
-import software.medusa.farm.worker.RunSummarizer
-import software.medusa.farm.worker.TemporalWorkerHost
-import software.medusa.farm.worker.WorkerConfig
-
-private const val temporalAddress = "localhost:7233"
-
-private const val temporalNamespace = "default"
+import software.medusa.farm.worker.buildTemporalWorker
 
 // Nothing browses this farm; the regex only has to be one the server accepts.
 private const val originRegex = "^http://localhost:\\d+$"
@@ -27,7 +18,13 @@ private const val originRegex = "^http://localhost:\\d+$"
 /**
  * A whole farm — worker and API — in one process, against a database and a GitHub org that exist to
  * be thrown away. Built like the deployed one rather than like the local one: real stores, real
- * migrations, the real agent.
+ * migrations, the real agent, and a worker wired from the same configuration the deployed one
+ * takes.
+ *
+ * The worker and the API keep their own database connections and their own GitHub client, as they
+ * do when they are two deployments rather than one process. Sharing them here would be less work
+ * and less true: they would then contend for one pool where they have one each, and this exists to
+ * behave the way the real thing behaves.
  *
  * Temporal is the one thing not reached over the network: a server started beside this one, which
  * is why running this needs no Temporal credential and two of these cannot collide. What that gives
@@ -39,39 +36,22 @@ private const val originRegex = "^http://localhost:\\d+$"
  */
 fun main() {
   val config = EphemeralConfig.fromEnvironment()
+  val workerConfig = config.toWorkerConfig()
 
+  // A deploy step where this is deployed, and there is no deploy here.
   FarmStore.migrate(config.databaseUrl)
-  val farmStore = FarmStore.build(config.databaseUrl)
 
+  buildTemporalWorker(workerConfig).start()
+
+  val apiStore = FarmStore.build(config.databaseUrl)
   val appApiClient = GhProperAppApiClient.build(config.gitHubApp.clientId, config.gitHubApp.pem)
-  val clientProvider =
-      GhCachingInstallationApiClientProvider(GhProperInstallationApiClientProvider(appApiClient))
-
-  // The default queue: this process is the only worker against its own Temporal, so there is
-  // nothing here to take work from.
-  val taskQueue = FarmWorker.DEFAULT_TASK_QUEUE
-
-  TemporalWorkerHost(
-          address = temporalAddress,
-          namespace = temporalNamespace,
-          authConfig = WorkflowServiceAuthConfig.Local,
-          taskQueue = taskQueue,
-          repoStore = farmStore.repo,
-          issueStore = farmStore.issue,
-          sessionStore = farmStore.session,
-          linkedOrgStore = farmStore.linkedOrg,
-          gitHubClientProvider = clientProvider,
-          appApiClient = appApiClient,
-          claudeOauthToken = config.claudeOauthToken,
-          summarizer = RunSummarizer.from(config.openRouterApiKey),
-          commitAuthor = WorkerConfig.commitAuthorFrom(System.getenv()),
-          signingKey = WorkerConfig.signingKeyFrom(System.getenv()),
-      )
-      .start()
-
   val temporalClient =
       CompletableDeferred(
-          buildWorkflowClient(temporalAddress, temporalNamespace, WorkflowServiceAuthConfig.Local)
+          buildWorkflowClient(
+              EphemeralConfig.TEMPORAL_ADDRESS,
+              EphemeralConfig.TEMPORAL_NAMESPACE,
+              WorkflowServiceAuthConfig.Local,
+          )
       )
 
   buildServer(
@@ -79,14 +59,14 @@ fun main() {
           port = config.apiPort,
           // What is under test is the loop, not who may watch it.
           auth = NoOpAuthDecorator,
-          farmStore = farmStore,
+          farmStore = apiStore,
           gitHubOrgs =
               GitHubOrgService(
                   appApiClient,
-                  farmStore.linkedOrg,
-                  TemporalRepoSyncStarter(temporalClient, taskQueue),
+                  apiStore.linkedOrg,
+                  TemporalRepoSyncStarter(temporalClient, workerConfig.taskQueue),
               ),
-          syncAllStarter = TemporalSyncAllStarter(temporalClient, taskQueue),
+          syncAllStarter = TemporalSyncAllStarter(temporalClient, workerConfig.taskQueue),
       )
       .start()
       .join()
