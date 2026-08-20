@@ -4,6 +4,7 @@ import software.medusa.farm.claude.CldEffort
 import software.medusa.farm.claude.CldModelId
 import software.medusa.farm.gitcli.GitCliAuthor
 import software.medusa.farm.github.GhAppPrivateKey
+import software.medusa.farm.shared.BakedConfig
 import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
@@ -41,16 +42,16 @@ data class WorkerConfig(
 
     fun signingKeyFrom(env: Map<String, String>): String? = env["FARM_COMMIT_SIGNING_KEY"]
 
-    fun claudeModelFrom(env: Map<String, String>): CldModelId =
-        CldModelId(env["FARM_MODEL"] ?: error("FARM_MODEL is required"))
+    /**
+     * What every session is asked for, baked rather than passed in: a worker that has to be told
+     * its model is one that can be started with the wrong one, and neither value is a secret or a
+     * property of the machine it runs on.
+     */
+    val claudeModel: CldModelId = CldModelId(BakedConfig.AGENT_MODEL)
 
-    fun claudeEffortFrom(env: Map<String, String>): CldEffort {
-      val raw = env["FARM_EFFORT"] ?: error("FARM_EFFORT is required")
-      val allowed = CldEffort.entries.joinToString(", ") { it.wireValue }
-
-      return CldEffort.entries.firstOrNull { it.wireValue == raw }
-          ?: error("FARM_EFFORT must be one of: $allowed (got \"$raw\")")
-    }
+    val claudeEffort: CldEffort =
+        CldEffort.entries.firstOrNull { it.wireValue == BakedConfig.AGENT_EFFORT }
+            ?: error("The baked effort \"${BakedConfig.AGENT_EFFORT}\" is not one this knows")
 
     fun fromEnvironment(env: Map<String, String> = System.getenv()): WorkerConfig =
         WorkerConfig(
@@ -71,8 +72,8 @@ data class WorkerConfig(
                 ),
             claudeOauthToken =
                 env["CLAUDE_CODE_OAUTH_TOKEN"] ?: error("CLAUDE_CODE_OAUTH_TOKEN is required"),
-            claudeModel = claudeModelFrom(env),
-            claudeEffort = claudeEffortFrom(env),
+            claudeModel = claudeModel,
+            claudeEffort = claudeEffort,
             openRouterApiKey = env["OPENROUTER_API_KEY"] ?: error("OPENROUTER_API_KEY is required"),
             commitAuthor = commitAuthorFrom(env),
             signingKey = signingKeyFrom(env),
