@@ -89,7 +89,11 @@ internal class ProperRunSummarizer(private val client: OaiConfiguredClient) : Ru
       }
 
   private companion object {
-    val INFERENCE_PARAMS = OaiInferenceParams(maxOutputTokenCount = 700)
+    // Headroom rather than a target. A summary that runs long is truncated, and a truncated
+    // summary is treated as no summary at all — which fails the run rather than shortening it, so
+    // the cap has to sit well above what the prompt asks for rather than near it. Seven hundred
+    // did not: the real model went past it.
+    val INFERENCE_PARAMS = OaiInferenceParams(maxOutputTokenCount = 2_000)
 
     val SYSTEM_PROMPT =
         """
