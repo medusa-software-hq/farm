@@ -109,7 +109,7 @@ class CldClaudeCliIntegrationTest {
       CldSessionConfig(
           workspacePath = workspacePath,
           configDirPath = configDirPath,
-          model = claudeModel(),
+          model = CldModelId("claude-opus-4-5"),
           permissionMode = CldPermissionMode.AcceptEdits,
           settingSources = listOf(CldSettingSource.Project),
           allowedToolRules = emptyList(),
@@ -128,12 +128,6 @@ class CldClaudeCliIntegrationTest {
     check(!token.isNullOrBlank()) { "CLAUDE_CODE_OAUTH_TOKEN is not set" }
     check(token.startsWith("sk-ant-")) { "CLAUDE_CODE_OAUTH_TOKEN is not a real token" }
     return token
-  }
-
-  private fun claudeModel(): CldModelId {
-    val model = System.getenv("FARM_MODEL")
-    check(!model.isNullOrBlank()) { "FARM_MODEL is not set" }
-    return CldModelId(model)
   }
 
   /**
