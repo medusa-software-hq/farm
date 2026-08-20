@@ -23,6 +23,10 @@ resource "google_cloud_run_v2_service" "primary" {
     # keeping an instance warm.
     scaling {
       min_instance_count = 0
+
+      # One is enough for the traffic this serves, and a ceiling means a burst — or a loop
+      # somewhere calling it — costs a queue rather than instances.
+      max_instance_count = 1
     }
 
     containers {
