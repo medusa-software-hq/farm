@@ -147,10 +147,15 @@ private constructor(
           }
           .toList()
 
-  override suspend fun listPullRequestPaths(repo: GhRepoFullName, number: Int): List<String> =
+  override suspend fun listPullRequestFiles(
+      repo: GhRepoFullName,
+      number: Int,
+  ): List<GhPullRequestFile> =
       http
           .getPaged("/repos/${repo.value}/pulls/$number/files", tokenProvider) { body ->
-            gitHubJson.decodeFromString<List<PullRequestFileDto>>(body).map { it.filename }
+            gitHubJson.decodeFromString<List<PullRequestFileDto>>(body).map {
+              GhPullRequestFile(path = it.filename, patch = it.patch)
+            }
           }
           .toList()
 
@@ -171,7 +176,9 @@ private constructor(
                         event = verdict.name,
                         body = body,
                         comments =
-                            comments.map { NewReviewCommentDto(path = it.path, body = it.body) },
+                            comments.map {
+                              NewReviewCommentDto(path = it.path, line = it.line, body = it.body)
+                            },
                     )
                 ),
         )
@@ -290,18 +297,17 @@ private class NewReviewDto(
     val comments: List<NewReviewCommentDto>,
 )
 
-// subject_type says the comment is against the file rather than a line of it, which is what lets
-// one be left without knowing the diff.
+// No side: GitHub reads the line as the head revision's, which is the side a pull request adds on.
 @Serializable
 private class NewReviewCommentDto(
     val path: String,
+    val line: Int,
     val body: String,
-    @SerialName("subject_type") val subjectType: String = "file",
 )
 
 @Serializable private class MergeDto(@SerialName("merge_method") val mergeMethod: String)
 
-@Serializable private class PullRequestFileDto(val filename: String)
+@Serializable private class PullRequestFileDto(val filename: String, val patch: String? = null)
 
 @Serializable
 private class ReviewDto(

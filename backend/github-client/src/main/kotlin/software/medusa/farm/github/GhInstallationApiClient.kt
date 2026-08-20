@@ -55,12 +55,12 @@ interface GhInstallationApiClient : GhResourcesApiClient {
   /** The repository's open pull requests, newest first. */
   suspend fun listOpenPullRequests(repo: GhRepoFullName): List<GhPullRequest>
 
-  /** The paths a pull request changes. */
-  suspend fun listPullRequestPaths(repo: GhRepoFullName, number: Int): List<String>
+  /** The files a pull request changes, each with the diff GitHub renders for it. */
+  suspend fun listPullRequestFiles(repo: GhRepoFullName, number: Int): List<GhPullRequestFile>
 
   /**
    * Submits a review saying [verdict], with [body] in the review's own box and [comments] against
-   * files. Requires the App's Pull requests:write permission.
+   * lines of the diff. Requires the App's Pull requests:write permission.
    *
    * GitHub will not accept a verdict of [GhReviewVerdict.APPROVE] or
    * [GhReviewVerdict.REQUEST_CHANGES] on a pull request the same App opened.

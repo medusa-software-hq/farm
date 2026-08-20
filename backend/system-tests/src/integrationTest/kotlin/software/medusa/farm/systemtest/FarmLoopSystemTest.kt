@@ -141,15 +141,25 @@ class FarmLoopSystemTest {
         "the run recorded nothing the agent did",
     )
 
-    // Reviewed the way a person does: something in the box, and something against a file the agent
-    // actually touched.
-    val touched = gitHub.listPullRequestPaths(repo, pullRequest.number).first()
+    // Reviewed the way a person does: something in the box, and something against a line the agent
+    // actually wrote.
+    val touched =
+        gitHub.listPullRequestFiles(repo, pullRequest.number).firstNotNullOfOrNull { file ->
+          file.findFirstAddedLine()?.let { file.path to it }
+        } ?: error("the pull request adds no line to comment on")
     gitHub.createReview(
         repo = repo,
         number = pullRequest.number,
         verdict = GhReviewVerdict.REQUEST_CHANGES,
         body = "Let's go with `Howdy there` instead — same again, keep the check passing.",
-        comments = listOf(GhNewReviewComment(path = touched, body = "This is the file I mean.")),
+        comments =
+            listOf(
+                GhNewReviewComment(
+                    path = touched.first,
+                    line = touched.second,
+                    body = "This is the line I mean.",
+                )
+            ),
     )
 
     // A fixup is a push to the same branch, so the pull request moving off the commit it was opened

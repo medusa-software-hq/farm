@@ -1,12 +1,13 @@
 package software.medusa.farm.github
 
 /**
- * A comment to leave on a file in a review.
+ * A comment to leave against [line] of [path] in a review, numbered as in the head revision.
  *
- * Against the file rather than a line of it: a line comment has to land inside the diff, so leaving
- * one means knowing what the diff contains and where.
+ * GitHub takes a review comment only against a line the pull request's diff contains, so a line it
+ * adds is the one to reach for — see [GhPullRequestFile.findFirstAddedLine].
  */
 data class GhNewReviewComment(
     val path: String,
+    val line: Int,
     val body: String,
 )
