@@ -4,6 +4,25 @@ What this repository expects, beyond what its build files already say. Read
 [the comment guideline](docs/comment-guideline.md) before writing a comment; it is the thing work
 here is most often sent back over.
 
+## Before you finish
+
+**Compile what you changed.** You have a shell, and the compiler is the cheapest reviewer you will
+ever get:
+
+```bash
+./gradlew ktfmtFormat
+./gradlew compileKotlin compileTestKotlin compileIntegrationTestKotlin
+```
+
+Run `ktfmtFormat` unscoped — formatting one module while a change touches three fails the check
+that guards it. Everything else CI does, CI will do; this is the part worth not finding out about
+an hour later.
+
+**Check an API you have not used before against the library, rather than writing what it ought to
+be.** A builder that reads exactly like every other builder may simply not exist, and the code that
+calls it will look right in a diff and fail to compile. `javap` against the dependency answers it
+in seconds.
+
 ## Kotlin
 
 **One type per file**, named for the type.
