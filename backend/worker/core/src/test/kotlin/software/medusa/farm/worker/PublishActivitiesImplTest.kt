@@ -208,6 +208,7 @@ class PublishActivitiesImplTest {
           summarizer = summarizer,
           commitAuthor = author,
           signingKey = null,
+          claudeModel = CldModelId("claude-opus-4-5"),
       )
 
   private fun handle(request: FakeGitHubServer.Request): FakeGitHubServer.Response {

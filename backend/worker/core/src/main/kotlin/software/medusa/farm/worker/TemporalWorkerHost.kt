@@ -18,6 +18,7 @@ import java.time.Duration
 import software.medusa.commons.system.SysExecutableHandle
 import software.medusa.commons.system.SysProcessSpawner
 import software.medusa.farm.claude.CldAuthToken
+import software.medusa.farm.claude.CldModelId
 import software.medusa.farm.claude.CldProperEngine
 import software.medusa.farm.claude.CldSystemEnvMap
 import software.medusa.farm.gitcli.GitCliAuthor
@@ -47,6 +48,7 @@ class TemporalWorkerHost(
     gitHubClientProvider: GhInstallationApiClientProvider,
     appApiClient: GhAppApiClient,
     claudeOauthToken: String,
+    claudeModel: CldModelId,
     summarizer: RunSummarizer,
     commitAuthor: GitCliAuthor,
     signingKey: String?,
@@ -94,6 +96,7 @@ class TemporalWorkerHost(
             commitAuthor,
             signingKey,
             attemptNumbering = TemporalAttemptNumbering(),
+            claudeModel = claudeModel,
         ),
     )
     // The sweep schedule is one per namespace and names the queue it fires onto, so only a worker

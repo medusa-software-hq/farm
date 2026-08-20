@@ -16,6 +16,9 @@ interface CldAnomalyReporter {
    */
   fun reportMissingInitMessage(firstLine: String?)
 
+  /** The engine started on [reported] instead of the [requested] model. */
+  fun reportModelMismatch(requested: CldModelId, reported: CldModelId)
+
   /** The engine said something unintelligible mid-session. */
   fun reportUnexpectedProgressLine(progressLine: String)
 

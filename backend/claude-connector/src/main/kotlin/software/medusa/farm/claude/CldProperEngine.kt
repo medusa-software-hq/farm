@@ -72,7 +72,7 @@ class CldProperEngine(
           config = config,
           prompt = prompt,
       ) {
-        parseClaudeOutput {
+        parseClaudeOutput(model = config.model) {
           coroutineScope {
             val resultMessageDeferred = async { awaitResultMessage() }
             val processTerminationDeferred = async { awaitExit() }
@@ -127,6 +127,8 @@ class CldProperEngine(
               "--output-format",
               "stream-json",
               "--verbose",
+              "--model",
+              config.model.id,
               "--permission-mode",
               config.permissionMode.value,
               "--max-budget-usd",
@@ -188,6 +190,7 @@ class CldProperEngine(
       )
 
   private suspend fun <ResultT> SysProcessScope.parseClaudeOutput(
+      model: CldModelId,
       block: suspend CldOutputScope.() -> ResultT,
   ): ResultT = coroutineScope {
     // Not a child of this scope. Reading the engine's output parks until the engine's output ends,
@@ -222,6 +225,13 @@ class CldProperEngine(
 
                 throw CldAbnormalStartError
               }
+
+      val reportedModel = systemInitMessage.sessionInfo.modelId
+      if (!model.matches(reportedModel)) {
+        anomalyReporter.reportModelMismatch(requested = model, reported = reportedModel)
+
+        throw CldAbnormalStartError
+      }
 
       val resultMessageDeferred = CompletableDeferred<CldProgressMessage.Result>()
 

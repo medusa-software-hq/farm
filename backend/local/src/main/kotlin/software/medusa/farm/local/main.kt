@@ -75,6 +75,7 @@ fun main() {
           claudeOauthToken =
               System.getenv("CLAUDE_CODE_OAUTH_TOKEN")
                   ?: error("CLAUDE_CODE_OAUTH_TOKEN is required (from `claude setup-token`)"),
+          claudeModel = WorkerConfig.claudeModelFrom(System.getenv()),
           // The dev's own OpenRouter key; the in-process worker summarizes each run it records.
           summarizer =
               RunSummarizer.from(

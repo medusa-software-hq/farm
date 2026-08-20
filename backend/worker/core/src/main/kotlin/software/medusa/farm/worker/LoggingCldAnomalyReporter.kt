@@ -2,6 +2,7 @@ package software.medusa.farm.worker
 
 import org.slf4j.LoggerFactory
 import software.medusa.farm.claude.CldAnomalyReporter
+import software.medusa.farm.claude.CldModelId
 import software.medusa.farm.claude.CldRunResult
 
 /**
@@ -16,6 +17,13 @@ class LoggingCldAnomalyReporter : CldAnomalyReporter {
 
   override fun reportMissingInitMessage(firstLine: String?) {
     logger.warn("claude did not greet us; it opened with: ${firstLine ?: "<nothing>"}")
+  }
+
+  override fun reportModelMismatch(requested: CldModelId, reported: CldModelId) {
+    logger.warn(
+        "claude started on ${reported.id} instead of the requested ${requested.id}; " +
+            "refusing to run on the wrong model"
+    )
   }
 
   override fun reportUnexpectedProgressLine(progressLine: String) {

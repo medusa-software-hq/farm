@@ -6,7 +6,8 @@ plugins {
 dependencies {
   implementation(project(":backend:shared"))
   implementation(project(":backend:github-client"))
-  implementation(project(":backend:claude-connector"))
+  // `api`: WorkerConfig.claudeModel is a CldModelId, so consumers (runner, local) see the type.
+  api(project(":backend:claude-connector"))
   // `api`: WorkerConfig.commitAuthor is a GitCliAuthor, so consumers (runner, local) see the type.
   api(project(":backend:git-cli"))
   // Locating and spawning the claude binary the connector drives.
