@@ -63,7 +63,11 @@ resource "github_repository_ruleset" "default_branch" {
     update                  = false
     deletion                = true
     required_linear_history = false
-    required_signatures     = true
+    # Off while Farm dogfoods this repo. Farm's commits are made by git and pushed, so they carry
+    # no signature GitHub will verify — and with merge commits the only method allowed, a pull
+    # request's own commits land on the default branch as they are. Back on once Farm commits
+    # through the API, which GitHub signs as the App.
+    required_signatures     = false
     non_fast_forward        = true # Block force pushes
 
     pull_request {
