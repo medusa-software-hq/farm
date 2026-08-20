@@ -200,7 +200,12 @@ class FarmLoopSystemTest {
         "the fixup was not recorded as a run of its own",
     )
 
-    gitHub.mergePullRequest(repo, pullRequest.number, GhMergeMethod.SQUASH)
+    // The fixup landed a moment ago, and GitHub refuses a merge while it is still working out
+    // whether the pull request can be merged — which it is doing because of that push. Asking
+    // again is what a person would do; if it never stops refusing, its own refusal is reported.
+    retrying(MERGE_ATTEMPTS) {
+      gitHub.mergePullRequest(repo, pullRequest.number, GhMergeMethod.SQUASH)
+    }
 
     val finished =
         awaitUntil("the session to finish", SETTLE_LIMIT) {
@@ -214,6 +219,23 @@ class FarmLoopSystemTest {
   private suspend fun runsOf(api: FarmServiceGrpcKt.FarmServiceCoroutineStub, sessionId: String) =
       api.getSessionRuns(GetSessionRunsRequest.newBuilder().setSessionId(sessionId).build())
           .runsList
+
+  /**
+   * Runs [action] until it stops throwing, [times] at most. The last failure is thrown rather than
+   * a failure of this method's own, so what GitHub said is what gets read.
+   */
+  private suspend fun retrying(times: Int, action: suspend () -> Unit) {
+    repeat(times - 1) { attempt ->
+      try {
+        return action()
+      } catch (refused: IllegalStateException) {
+        say("refused (${attempt + 1} of $times): ${refused.message?.take(SAID_LIMIT)}")
+        delay(POLL_INTERVAL)
+      }
+    }
+
+    action()
+  }
 
   /**
    * Waits for [probe] to have an answer, saying what it was waiting for when it runs out. Real work
@@ -328,5 +350,8 @@ class FarmLoopSystemTest {
     // Enough of a step to follow what the agent is doing, without wrapping the log it is printed
     // to.
     const val SAID_LIMIT = 120
+
+    // Enough for GitHub to work out that a just-pushed branch can be merged.
+    const val MERGE_ATTEMPTS = 5
   }
 }
