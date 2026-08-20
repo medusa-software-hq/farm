@@ -27,10 +27,10 @@ env:
   FARM_EPHEMERAL_ORG: medusa-farm-ephemeral-hq
   FARM_FIXTURE_TEMPLATE: farm-fixture-template
 
-  # The App Farm identifies as; the deployed Farm has its own.
+  # Identifies the ephemeral realization of the Farm GitHub App.
   FARM_EPHEMERAL_APP_CLIENT_ID: Iv23liCmt6NC7HIB4LXr
 
-  # The App the tests identify as.
+  # Identifies the App the tests act as.
   FIXTURE_MANAGER_APP_CLIENT_ID: Iv23liBgbbe2iLdqWmSl
 
 jobs:
