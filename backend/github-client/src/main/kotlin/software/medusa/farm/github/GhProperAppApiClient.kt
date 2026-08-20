@@ -36,6 +36,14 @@ private constructor(
     return GhInstallationId(gitHubJson.decodeFromString<InstallationDto>(response.body()).id)
   }
 
+  override suspend fun fetchDeclaredPermissions(): GhAppPermissionSet {
+    val response = http.get("/app", bearer = createAppJwt())
+    check(response.statusCode() == httpOk) {
+      "GitHub app lookup failed: ${response.statusCode()} ${response.body()}"
+    }
+    return gitHubJson.decodeFromString<AppDto>(response.body()).permissions.toPermissionSet()
+  }
+
   override suspend fun mintInstallationToken(
       installationId: GhInstallationId
   ): MintedGhInstallationToken {
@@ -95,6 +103,30 @@ private constructor(
     }
   }
 }
+
+/**
+ * Ids this client has no name for are dropped: a permission nothing asks for cannot be one
+ * something is missing. A mode it has no name for is not dropped — that would read as the App not
+ * holding a permission it does hold, and fail a farm that is fine.
+ */
+private fun Map<String, String>.toPermissionSet(): GhAppPermissionSet {
+  val idByWireValue = GhPermissionId.entries.associateBy { it.wireValue }
+  val modeByWireValue = GhPermissionMode.entries.associateBy { it.wireValue }
+
+  return GhAppPermissionSet(
+      mapNotNull { (id, mode) ->
+            val permissionId = idByWireValue[id] ?: return@mapNotNull null
+            val permissionMode =
+                checkNotNull(modeByWireValue[mode]) {
+                  "GitHub reported the $id permission as \"$mode\", which is neither read nor write"
+                }
+            permissionId to permissionMode
+          }
+          .toMap()
+  )
+}
+
+@Serializable private class AppDto(val permissions: Map<String, String>)
 
 @Serializable private class InstallationDto(val id: Long)
 

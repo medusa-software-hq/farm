@@ -8,6 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
 import software.medusa.farm.github.GhAppApiClient
+import software.medusa.farm.github.GhAppPermissionSet
 import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhOrgLogin
 import software.medusa.farm.github.MintedGhInstallationToken
@@ -44,6 +45,9 @@ class FarmServiceRepositoriesTest {
     override suspend fun mintInstallationToken(
         installationId: GhInstallationId
     ): MintedGhInstallationToken = error("the read path must not call GitHub")
+
+    override suspend fun fetchDeclaredPermissions(): GhAppPermissionSet =
+        error("the read path must not call GitHub")
   }
 
   // The read path never starts a workflow; this stands in for the starter, unused here.
