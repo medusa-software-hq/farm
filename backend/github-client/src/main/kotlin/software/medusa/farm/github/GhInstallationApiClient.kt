@@ -75,4 +75,18 @@ interface GhInstallationApiClient : GhResourcesApiClient {
 
   /** Merges a pull request. Requires the App's Pull requests:write permission. */
   suspend fun mergePullRequest(repo: GhRepoFullName, number: Int, method: GhMergeMethod)
+
+  /**
+   * Creates [name] in [owner] from [template], with the template's files and none of its issues,
+   * labels or history. Requires the App's Administration:write permission on the owner.
+   */
+  suspend fun createRepositoryFromTemplate(
+      template: GhRepoFullName,
+      owner: String,
+      name: String,
+      isPrivate: Boolean,
+  ): GhRepo
+
+  /** Deletes a repository. Requires the App's Administration:write permission. */
+  suspend fun deleteRepository(repo: GhRepoFullName)
 }

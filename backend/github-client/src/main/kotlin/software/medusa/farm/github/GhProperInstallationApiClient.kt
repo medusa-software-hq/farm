@@ -9,6 +9,7 @@ import kotlinx.serialization.encodeToString
 
 private const val httpOk = 200
 private const val httpCreated = 201
+private const val httpNoContent = 204
 private const val httpUnprocessable = 422
 
 // Grey, so a label made by a client rather than a person does not claim a meaning by its colour.
@@ -69,6 +70,35 @@ private constructor(
       "GitHub pull request creation failed: ${response.statusCode()} ${response.body()}"
     }
     return gitHubJson.decodeFromString<PullRequestDto>(response.body()).toGhPullRequest()
+  }
+
+  override suspend fun createRepositoryFromTemplate(
+      template: GhRepoFullName,
+      owner: String,
+      name: String,
+      isPrivate: Boolean,
+  ): GhRepo {
+    val response =
+        http.post(
+            "/repos/${template.value}/generate",
+            bearer = tokenProvider.provideToken(),
+            body =
+                gitHubJson.encodeToString(
+                    GenerateRepoDto(owner = owner, name = name, private = isPrivate)
+                ),
+        )
+    check(response.statusCode() == httpCreated) {
+      "GitHub repository creation failed: ${response.statusCode()} ${response.body()}"
+    }
+
+    return gitHubJson.decodeFromString<RepositoryDto>(response.body()).toGhRepo()
+  }
+
+  override suspend fun deleteRepository(repo: GhRepoFullName) {
+    val response = http.delete("/repos/${repo.value}", bearer = tokenProvider.provideToken())
+    check(response.statusCode() == httpNoContent) {
+      "GitHub repository deletion failed: ${response.statusCode()} ${response.body()}"
+    }
   }
 
   override suspend fun ensureLabel(repo: GhRepoFullName, name: String) {
@@ -242,6 +272,9 @@ private fun PullRequestDto.toGhPullRequest(): GhPullRequest =
         headSha = head.sha,
         mergedAt = mergedAt?.let(Instant::parse),
     )
+
+@Serializable
+private class GenerateRepoDto(val owner: String, val name: String, val private: Boolean)
 
 @Serializable private class NewLabelDto(val name: String, val color: String)
 

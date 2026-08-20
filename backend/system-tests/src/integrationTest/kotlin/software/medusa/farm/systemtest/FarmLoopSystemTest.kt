@@ -10,6 +10,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import software.medusa.farm.github.GhInstallationApiClient
 import software.medusa.farm.github.GhMergeMethod
 import software.medusa.farm.github.GhNewReviewComment
 import software.medusa.farm.github.GhOrgLogin
@@ -33,15 +34,14 @@ import software.medusa.farm.v1.SyncRepositoriesRequest
  * What it knows of the farm is where its API answers. A farm started beside it and one deployed
  * somewhere are the same thing from here, which is what lets these cover both.
  *
- * The repository it drives is expected to be made for the run and dropped after it: the tree the
- * agent starts from is then the same every time, where a shared one would move forward with every
- * merge and never be the same twice.
+ * The repository it drives is made for the run and dropped after it, so the tree the agent starts
+ * from is the same every time — a shared one would move forward with every merge and never be the
+ * same twice.
  */
 class FarmLoopSystemTest {
   @Test
   fun `an issue is worked, reviewed, worked again, and merged`(): Unit = runBlocking {
     val config = SystemTestConfig.fromEnvironment()
-    val repo = GhRepoFullName(config.repoFullName)
 
     // As the harness, not as the farm: GitHub will not let an App ask for changes on a pull
     // request it opened, and reviewing is the test's own business either way.
@@ -50,6 +50,49 @@ class FarmLoopSystemTest {
         GhProperInstallationApiClientProvider(appApiClient)
             .provideForInstallation(appApiClient.resolveInstallationId(GhOrgLogin(config.orgLogin)))
 
+    dropWhatEarlierRunsLeft(gitHub, config)
+
+    // Made here and dropped below, so the tree the agent starts from is the same every time and the
+    // test can be run anywhere rather than only by something that made a repository for it.
+    val repo =
+        gitHub
+            .createRepositoryFromTemplate(
+                template = GhRepoFullName(config.templateFullName),
+                owner = config.orgLogin,
+                name = config.repoName,
+                isPrivate = true,
+            )
+            .fullName
+
+    try {
+      driveTheLoop(config, gitHub, repo)
+    } finally {
+      // The fast path. A run that dies outright leaves this undone, which is what the sweep above
+      // is for — an `always()` step would not have survived that either.
+      gitHub.deleteRepository(repo)
+    }
+  }
+
+  /**
+   * Drops repositories an earlier run made and never got to drop. Runs are serialised, so anything
+   * named for a run other than this one belongs to nobody — and a leftover still holds a labelled
+   * issue, which the next farm to sweep would pick up and work as its own.
+   */
+  private suspend fun dropWhatEarlierRunsLeft(
+      gitHub: GhInstallationApiClient,
+      config: SystemTestConfig,
+  ) {
+    gitHub
+        .listInstallationRepositories()
+        .filter { it.name.startsWith(SystemTestConfig.REPO_PREFIX) && it.name != config.repoName }
+        .forEach { gitHub.deleteRepository(it.fullName) }
+  }
+
+  private suspend fun driveTheLoop(
+      config: SystemTestConfig,
+      gitHub: GhInstallationApiClient,
+      repo: GhRepoFullName,
+  ) {
     val api =
         FarmServiceGrpcKt.FarmServiceCoroutineStub(
             ManagedChannelBuilder.forAddress(config.apiHost, config.apiPort).usePlaintext().build()

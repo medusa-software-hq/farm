@@ -32,9 +32,9 @@ env:
   FARM_FIXTURE_TEMPLATE: farm-fixture-template
 
   # Client ids, not secrets — only the private keys are. Client ids rather than app ids because
-  # that is what GitHub now asks for as a token request's issuer, and what the farm's own client
-  # already signs with. The farm App does what Farm does; the fixture manager makes and drops the
-  # run's repository, which is the harness's job and not Farm's.
+  # that is what GitHub now asks for as a token request's issuer, and what the client already signs
+  # with. The farm App does what Farm does; the harness App makes the run's repository, files the
+  # issue and reviews what comes back, none of which is Farm's to do.
   FARM_EPHEMERAL_APP_CLIENT_ID: Iv23livarUcAaPSh7nTl
   FIXTURE_MANAGER_APP_CLIENT_ID: Iv23li7hPF70qxLrlrNQ
 
@@ -120,46 +120,6 @@ jobs:
           echo "Temporal did not come up." >&2
           exit 1
 
-      # Two tokens because there are two Apps, and the split is the point: a leaked farm key cannot
-      # delete a repository.
-      - name: Mint the fixture manager's token
-        if: steps.changes.outputs.relevant == 'true'
-        id: fixture-manager
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ env.FIXTURE_MANAGER_APP_CLIENT_ID }}
-          private-key: ${{ secrets.FIXTURE_MANAGER_GITHUB_APP_PEM }}
-          owner: ${{ env.FARM_EPHEMERAL_ORG }}
-
-      # Made for this run and dropped after it, so the tree the agent starts from is the same every
-      # time. A shared repository would move forward with every merge and never be the same twice.
-      # A run whose cleanup never happened leaves a repository behind, and that repository still
-      # has a labelled issue in it — which the next run's farm would sweep up and work. Runs are
-      # serialised, so anything still here belongs to nobody.
-      - name: Drop anything a previous run left behind
-        if: steps.changes.outputs.relevant == 'true'
-        env:
-          GH_TOKEN: ${{ steps.fixture-manager.outputs.token }}
-        run: |
-          gh repo list "${{ env.FARM_EPHEMERAL_ORG }}" --limit 100 --json name --jq '.[].name' \
-            | grep '^farm-ephemeral-' \
-            | while read -r leftover; do
-                echo "Dropping $leftover, left by an earlier run."
-                gh repo delete "${{ env.FARM_EPHEMERAL_ORG }}/$leftover" --yes
-              done
-
-      - name: Make this run's repository
-        if: steps.changes.outputs.relevant == 'true'
-        id: fixture
-        env:
-          GH_TOKEN: ${{ steps.fixture-manager.outputs.token }}
-        run: |
-          name="farm-ephemeral-${{ github.run_id }}"
-          gh repo create "${{ env.FARM_EPHEMERAL_ORG }}/$name" \
-            --template "${{ env.FARM_EPHEMERAL_ORG }}/${{ env.FARM_FIXTURE_TEMPLATE }}" \
-            --private
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-
       # Its own process, not the test's: the farm's logs stay its own, and the tests are pointed
       # at it the way they would be pointed at a deployed one.
       - name: Start the ephemeral farm
@@ -191,28 +151,18 @@ jobs:
           FARM_API_HOST: localhost
           FARM_API_PORT: "8081"
           FARM_TEST_ORG: ${{ env.FARM_EPHEMERAL_ORG }}
-          FARM_TEST_REPO: ${{ steps.fixture.outputs.name }}
+          FARM_TEST_TEMPLATE: ${{ env.FARM_FIXTURE_TEMPLATE }}
+          # Names the repository the test makes for itself, and tells a leftover from an earlier
+          # run apart from this one's.
+          FARM_TEST_RUN_ID: ${{ github.run_id }}
           # The test files and reviews as the harness, not as the farm — GitHub will not let an App
           # ask for changes on a pull request it opened.
           HARNESS_APP_CLIENT_ID: ${{ env.FIXTURE_MANAGER_APP_CLIENT_ID }}
           HARNESS_APP_PEM: ${{ secrets.FIXTURE_MANAGER_GITHUB_APP_PEM }}
         run: ./gradlew --no-daemon :backend:system-tests:integrationTest
 
-      # What the farm itself said, which is where a failure in the loop rather than in the test will
-      # have left its trail.
+      # What the farm itself said, which is where a failure in the loop rather than in the test
+      # will have left its trail.
       - name: The farm's log
         if: always() && steps.changes.outputs.relevant == 'true'
         run: tail -200 farm.log || true
-
-      # Whatever happened above, including the run being cancelled. The name comes from the run id
-      # rather than from a step's output, so this works even if the repository step is what failed.
-      # Runs however the job ended, cancellation included — which is when a repository is most
-      # likely to be left behind.
-      - name: Drop this run's repository
-        if: always() && steps.changes.outputs.relevant == 'true'
-        env:
-          GH_TOKEN: ${{ steps.fixture-manager.outputs.token }}
-        run: |
-          name="farm-ephemeral-${{ github.run_id }}"
-          gh repo delete "${{ env.FARM_EPHEMERAL_ORG }}/$name" --yes || \
-            echo "Nothing to drop: $name was never made."

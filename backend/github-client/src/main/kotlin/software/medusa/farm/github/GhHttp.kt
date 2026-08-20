@@ -30,6 +30,9 @@ internal class GhHttp(
   suspend fun post(url: String, bearer: String): HttpResponse<String> =
       send(request(url, bearer).POST(HttpRequest.BodyPublishers.noBody()).build())
 
+  suspend fun delete(url: String, bearer: String): HttpResponse<String> =
+      send(request(url, bearer).DELETE().build())
+
   suspend fun put(url: String, bearer: String, body: String): HttpResponse<String> =
       send(request(url, bearer).PUT(HttpRequest.BodyPublishers.ofString(body)).build())
 
