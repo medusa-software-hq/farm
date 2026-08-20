@@ -152,20 +152,14 @@ class TemporalWorkerHost(
       // A prior startup already created it. The schedule outlives the process that created it, so
       // any change to the action or spec has to be pushed here or it never takes effect. Carry the
       // existing state through so an operator-applied pause survives a worker restart.
-      scheduleClient
-          .getHandle(REPO_SYNC_ALL_SCHEDULE_ID)
-          .update { input ->
-            val state = input.description.schedule.state
-            ScheduleUpdate.newBuilder()
-                .setSchedule(
-                    Schedule.newBuilder()
-                        .setAction(schedule.action)
-                        .setSpec(schedule.spec)
-                        .setState(state)
-                        .build()
-                )
+      scheduleClient.getHandle(REPO_SYNC_ALL_SCHEDULE_ID).update { input ->
+        ScheduleUpdate(
+            Schedule.newBuilder(input.description.schedule)
+                .setAction(schedule.action)
+                .setSpec(schedule.spec)
                 .build()
-          }
+        )
+      }
     }
   }
 
