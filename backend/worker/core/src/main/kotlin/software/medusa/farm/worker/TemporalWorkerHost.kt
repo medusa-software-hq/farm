@@ -11,6 +11,7 @@ import io.temporal.client.schedules.ScheduleClientOptions
 import io.temporal.client.schedules.ScheduleIntervalSpec
 import io.temporal.client.schedules.ScheduleOptions
 import io.temporal.client.schedules.ScheduleSpec
+import io.temporal.client.schedules.ScheduleUpdate
 import io.temporal.serviceclient.WorkflowServiceStubs
 import io.temporal.serviceclient.WorkflowServiceStubsOptions
 import io.temporal.worker.WorkerFactory
@@ -130,6 +131,7 @@ class TemporalWorkerHost(
                         WorkflowOptions.newBuilder()
                             .setWorkflowId(syncAllReposWorkflowId())
                             .setTaskQueue(taskQueue)
+                            .setWorkflowExecutionTimeout(SWEEP_EXECUTION_TIMEOUT)
                             .build()
                     )
                     .build()
@@ -146,8 +148,18 @@ class TemporalWorkerHost(
           schedule,
           ScheduleOptions.newBuilder().build(),
       )
-    } catch (ignored: ScheduleAlreadyRunningException) {
-      // A prior startup already created it; nothing to do.
+    } catch (e: ScheduleAlreadyRunningException) {
+      // A prior startup already created it. The schedule outlives the process that created it, so
+      // any change to the action or spec has to be pushed here or it never takes effect. Carry the
+      // existing state through so an operator-applied pause survives a worker restart.
+      scheduleClient.getHandle(REPO_SYNC_ALL_SCHEDULE_ID).update { input ->
+        ScheduleUpdate(
+            Schedule.newBuilder(input.description.schedule)
+                .setAction(schedule.action)
+                .setSpec(schedule.spec)
+                .build()
+        )
+      }
     }
   }
 
@@ -157,6 +169,11 @@ class TemporalWorkerHost(
     // How often the sweep fires. One hour backstops the on-link sync without hammering GitHub; bump
     // it here to change the cadence.
     private val REPO_SYNC_SWEEP_INTERVAL: Duration = Duration.ofHours(1)
+
+    // Hard ceiling on a single sweep run. Production completes in ~51 s; 15 minutes is generous
+    // enough to survive transient slowness while still letting a wedged run time out on its own so
+    // it cannot hold the Skip overlap policy hostage and silence every subsequent fire.
+    private val SWEEP_EXECUTION_TIMEOUT: Duration = Duration.ofMinutes(15)
 
     // The engine driving the real `claude` binary. Locating claude here means a worker launched
     // without it on PATH fails loudly at startup rather than mid-run.
