@@ -18,6 +18,8 @@ object AgentPrompt {
     return """
         |Implement the issue below, in the repository you are working in.
         |
+        |$READ_THE_REPOSITORY_FIRST
+        |
         |${block(nonce, name = "ISSUE", content = issue(title, body))}
         """
         .trimMargin()
@@ -40,6 +42,8 @@ object AgentPrompt {
         |Address the review feedback below, in the repository you are working in. The work it is
         |about is already committed to the branch you are on; change what the review asks for and
         |leave the rest alone.
+        |
+        |$READ_THE_REPOSITORY_FIRST
         |
         |${block(nonce, name = "ISSUE", content = issue(title, body))}
         |
@@ -84,6 +88,18 @@ object AgentPrompt {
 
     return bytes.joinToString(separator = "") { "%02x".format(it) }
   }
+
+  // A repository says how it wants to be worked in — how to build it, what its checks are, what it
+  // will send a change back for. None of that is knowable from the issue, and a run that guesses at
+  // it writes a pull request that fails the repository's own checks.
+  private val READ_THE_REPOSITORY_FIRST =
+      """
+      |Read the repository first: its README, and whatever guidance it keeps for people working in
+      |it — AGENTS.md, CLAUDE.md, a contributing guide, a docs directory. Build and check your work
+      |the way it says to, and follow the conventions it asks for. Where it says nothing, follow
+      |what the surrounding code already does.
+      """
+          .trimMargin()
 
   private const val NONCE_BYTES = 8
 
