@@ -44,7 +44,10 @@ class FarmLoopSystemTest {
     val config = SystemTestConfig.fromEnvironment()
 
     val appApiClient =
-        GhProperAppApiClient.build(config.harnessApp.clientId, config.harnessApp.privateKey)
+        GhProperAppApiClient.build(
+            config.fixtureManagerApp.clientId,
+            config.fixtureManagerApp.privateKey,
+        )
     val gitHub =
         GhProperInstallationApiClientProvider(appApiClient)
             .provideForInstallation(appApiClient.resolveInstallationId(GhOrgLogin(config.orgLogin)))

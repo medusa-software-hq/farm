@@ -23,8 +23,8 @@ locals {
   gcp_cicd_wi_pool_name = data.terraform_remote_state.meta_foundation.outputs.gcp_cicd_wi_pool_name
 
   system_test_app_secret_ids = {
-    farm    = "farm-ephemeral-app-pem"
-    fixture = "fixture-manager-app-pem"
+    farm    = "ephemeral-github-app-pem"
+    fixture = "fixture-manager-github-app-pem"
   }
 }
 

@@ -22,7 +22,7 @@ data class SystemTestConfig(
      */
     val runId: String,
     /** The App the test works as: filing the issue, asking for changes, merging. */
-    val harnessApp: GitHubAppConfig,
+    val fixtureManagerApp: GitHubAppConfig,
 ) {
   /** The repository this run makes for itself, dropped when it is done with it. */
   val repoName: String
@@ -42,10 +42,10 @@ data class SystemTestConfig(
             orgLogin = env.required("FARM_TEST_ORG"),
             templateRepoName = env.required("FARM_TEST_TEMPLATE"),
             runId = env.required("FARM_TEST_RUN_ID"),
-            harnessApp =
+            fixtureManagerApp =
                 GitHubAppConfig(
-                    env.required("HARNESS_APP_CLIENT_ID"),
-                    GhAppPrivateKey(env.required("HARNESS_APP_PEM")),
+                    env.required("FIXTURE_MANAGER_APP_CLIENT_ID"),
+                    GhAppPrivateKey(env.required("FIXTURE_MANAGER_APP_PEM")),
                 ),
         )
 

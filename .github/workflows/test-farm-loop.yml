@@ -104,8 +104,8 @@ jobs:
         uses: google-github-actions/get-secretmanager-secrets@v2
         with:
           secrets: |-
-            farm:${{ vars.GCP_SHARED_PROJECT_ID }}/farm-ephemeral-app-pem
-            fixture:${{ vars.GCP_SHARED_PROJECT_ID }}/fixture-manager-app-pem
+            farm:${{ vars.GCP_SHARED_PROJECT_ID }}/ephemeral-github-app-pem
+            fixture:${{ vars.GCP_SHARED_PROJECT_ID }}/fixture-manager-github-app-pem
 
       - name: Install the claude CLI
         if: steps.changes.outputs.relevant == 'true'
@@ -170,8 +170,8 @@ jobs:
           # Names the repository the test makes for itself, and tells a leftover from an earlier
           # run apart from this one's.
           FARM_TEST_RUN_ID: ${{ github.run_id }}
-          HARNESS_APP_CLIENT_ID: ${{ env.FIXTURE_MANAGER_APP_CLIENT_ID }}
-          HARNESS_APP_PEM: ${{ steps.app-keys.outputs.fixture }}
+          FIXTURE_MANAGER_APP_CLIENT_ID: ${{ env.FIXTURE_MANAGER_APP_CLIENT_ID }}
+          FIXTURE_MANAGER_APP_PEM: ${{ steps.app-keys.outputs.fixture }}
         run: ./gradlew --no-daemon :backend:system-tests:integrationTest
 
       # What the farm itself said, which is where a failure in the loop rather than in the test
