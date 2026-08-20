@@ -17,6 +17,15 @@ locals {
     key_project = "ms-farm-shared-c83577a8"
   }
 
+  # What the agent is asked for on every run: the model, and how hard it is asked to think. Shared
+  # across environments, chosen offline, and secret from nobody — so it is baked into what runs
+  # rather than passed at launch. A worker that has to be told its model is one that can be started
+  # with the wrong one.
+  agent = {
+    model  = "claude-opus-5"
+    effort = "high"
+  }
+
   # Secret ids, shared across every environment because each environment's are in a project of its
   # own — except the Temporal key, which is one secret in the shared project. Named here because
   # Terraform creates them and the worker runner reads them, and a name those two disagree on is a
@@ -58,6 +67,7 @@ locals {
     variant  = local.variant
     domain   = local.domain
     temporal = local.temporal
+    agent    = local.agent
     secrets  = local.secrets
     environments = {
       for env, config in local.environments : env => merge(config, {

@@ -7,6 +7,9 @@ object BakedConfig {
   const val TEMPORAL_NAMESPACE = "farm.kr9zt"
   const val TEMPORAL_KEY_PROJECT = "ms-farm-shared-c83577a8"
 
+  const val AGENT_MODEL = "claude-opus-5"
+  const val AGENT_EFFORT = "high"
+
   const val DATABASE_URL_SECRET_ID = "api-database-url"
   const val GITHUB_APP_PEM_SECRET_ID = "api-github-app-pem"
   const val OPENROUTER_API_KEY_SECRET_ID = "worker-openrouter-api-key"

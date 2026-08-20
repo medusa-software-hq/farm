@@ -7,6 +7,7 @@ import kotlin.test.assertNull
 import software.medusa.farm.claude.CldEffort
 import software.medusa.farm.claude.CldModelId
 import software.medusa.farm.gitcli.GitCliAuthor
+import software.medusa.farm.shared.BakedConfig
 import software.medusa.farm.shared.WorkflowServiceAuthConfig
 
 class WorkerConfigTest {
@@ -19,8 +20,6 @@ class WorkerConfigTest {
           "GITHUB_APP_CLIENT_ID" to "Iv1.test",
           "GITHUB_APP_PEM" to pemStandIn,
           "CLAUDE_CODE_OAUTH_TOKEN" to "sk-ant-oat01-test",
-          "FARM_MODEL" to "claude-opus-4-5",
-          "FARM_EFFORT" to "high",
           "OPENROUTER_API_KEY" to "sk-or-test",
       )
 
@@ -34,7 +33,8 @@ class WorkerConfigTest {
     assertEquals("Iv1.test", config.gitHubApp.clientId)
     assertEquals(pemStandIn, config.gitHubApp.privateKey.pem)
     assertEquals("sk-ant-oat01-test", config.claudeOauthToken)
-    assertEquals(CldModelId("claude-opus-4-5"), config.claudeModel)
+    // Baked rather than read from the environment, so the environment cannot get it wrong.
+    assertEquals(CldModelId(BakedConfig.AGENT_MODEL), config.claudeModel)
     assertEquals(CldEffort.High, config.claudeEffort)
     // Commit identity defaults to Farm's, and signing is off unless a key is provided.
     assertEquals(GitCliAuthor("Farm", "farm@medusa.software"), config.commitAuthor)

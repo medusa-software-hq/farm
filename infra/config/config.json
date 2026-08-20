@@ -1,4 +1,8 @@
 {
+  "agent": {
+    "effort": "high",
+    "model": "claude-opus-5"
+  },
   "domain": "medusa.software",
   "environments": {
     "prod": {

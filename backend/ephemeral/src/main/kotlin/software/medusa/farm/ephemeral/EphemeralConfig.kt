@@ -62,8 +62,8 @@ data class EphemeralConfig(
                     GhAppPrivateKey(env.required("GITHUB_APP_PEM")),
                 ),
             claudeOauthToken = env.required("CLAUDE_CODE_OAUTH_TOKEN"),
-            claudeModel = WorkerConfig.claudeModelFrom(env),
-            claudeEffort = WorkerConfig.claudeEffortFrom(env),
+            claudeModel = WorkerConfig.claudeModel,
+            claudeEffort = WorkerConfig.claudeEffort,
             openRouterApiKey = env.required("OPENROUTER_API_KEY"),
             apiPort = env["FARM_API_PORT"]?.toInt() ?: DEFAULT_API_PORT,
         )
