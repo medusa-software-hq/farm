@@ -1,7 +1,7 @@
 # `backend:github-client`
 
-A GitHub REST API client that acts **as the Farm app**. It is organised around GitHub's own auth
-model, in three surfaces:
+A GitHub REST API client, covering the parts of the API its callers reach for rather than the whole
+of it. It is organised around GitHub's own auth model, in three surfaces:
 
 - an **App** surface, driven by the app's private-key JWT, for the endpoints only the app itself can
   reach — resolving an org's installation and minting installation access tokens;
@@ -12,20 +12,6 @@ model, in three surfaces:
   refreshing its own token behind the seam.
 
 The type names all begin `Gh`.
-
-## The Farm App
-
-The GitHub App Farm acts as. Every environment registers its own — production, staging, the one a
-local stack uses, and the ephemeral one the system tests drive — and a registration is a
-realization of the same App: the same permissions, on whichever organizations are linked to it.
-
-Contents, issues and pull requests, each read and write. That is what the work needs: cloning a
-repository, reading the issue it was pointed at, pushing what the agent changed, and opening and
-following the pull request that carries it.
-
-Two other Apps appear alongside it and are not realizations of it: the one the system tests act as,
-which drives Farm from outside rather than being Farm, and the one that publishes the CLI's
-releases.
 
 ## The private key must be PKCS#8
 
