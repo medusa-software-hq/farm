@@ -147,12 +147,42 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
   }
 
   /**
-   * Follows the pull request until it stops being open, running a fixup for each review that asks
-   * for changes, and reports how it ended. Gives up after [REVIEW_SILENCE_LIMIT] of nothing
-   * happening: the session is over either way, and whether it succeeded is read from the merge, not
-   * from the session ending.
+   * Follows the pull request until it stops being open and reports how it ended, saying while it
+   * does so that the session is waiting on a person rather than on the agent.
    */
   private fun followPullRequest(
+      sessionId: String,
+      installationId: Long,
+      repoFullName: String,
+      number: Int,
+      title: String,
+      pullRequestNumber: Int,
+  ): IssueOutcome {
+    // Written down here rather than worked out from the session later, because here is where it is
+    // known: the agent is done and nothing else happens until somebody reviews. Derived instead,
+    // the moment between the attempt ending and the pull request being recorded is neither state.
+    activities.awaitReview(sessionId)
+    val outcome =
+        awaitPullRequestEnd(
+            sessionId,
+            installationId,
+            repoFullName,
+            number,
+            title,
+            pullRequestNumber,
+        )
+    // Settled: whatever the pull request did, finishing the issue is Farm's own work, and nobody
+    // is being waited on for it.
+    activities.resumeWork(sessionId)
+    return outcome
+  }
+
+  /**
+   * Polls the pull request, running a fixup for each review that asks for changes, until it stops
+   * being open. Gives up after [REVIEW_SILENCE_LIMIT] of nothing happening: the session is over
+   * either way, and whether it succeeded is read from the merge, not from the session ending.
+   */
+  private fun awaitPullRequestEnd(
       sessionId: String,
       installationId: Long,
       repoFullName: String,
@@ -190,6 +220,9 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
       if (fixupsRun >= MAX_FIXUP_RUNS) continue
 
       fixupsRun++
+      // The review is in, so the wait on a person is over until the fixup gives them something to
+      // look at again.
+      activities.resumeWork(sessionId)
       publishActivities.fixupIssue(
           sessionId,
           installationId,
@@ -199,6 +232,7 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
           fixupsRun,
           feedback,
       )
+      activities.awaitReview(sessionId)
 
       // Somebody is engaged with this pull request, so the clock that gives up on silence starts
       // again rather than running out mid-conversation.

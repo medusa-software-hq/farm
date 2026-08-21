@@ -20,6 +20,7 @@ import software.medusa.farm.github.TestAppKey
 import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.InMemorySessionStore
 import software.medusa.farm.shared.ProcessIssueWorkflow
+import software.medusa.farm.shared.Session
 import software.medusa.farm.shared.SessionState
 import software.medusa.farm.shared.SessionStore
 
@@ -52,6 +53,9 @@ class ProcessIssueWorkflowTest {
   private var reviewComments = "[]"
   private val fixupsRun = mutableListOf<ReviewFeedback>()
 
+  // What the session said it was at the moment each fixup ran.
+  private val statesDuringFixup = mutableListOf<SessionState?>()
+
   private val server = FakeGitHubServer(::handle)
   private val sessions = InMemorySessionStore(Clock.systemUTC())
 
@@ -75,6 +79,7 @@ class ProcessIssueWorkflowTest {
         feedback: ReviewFeedback,
     ) {
       fixupsRun += feedback
+      statesDuringFixup += runBlocking { sessions.get(sessionId) }?.state
     }
 
     override fun attemptIssue(
@@ -299,6 +304,46 @@ class ProcessIssueWorkflowTest {
   }
 
   @Test
+  fun `an open pull request says the session waits on a review, not that it is working`() {
+    pullRequestState = "open"
+    pullRequestMerged = false
+
+    // Read from inside the wait, since that is the only time the state is on show: by the time
+    // process() returns the session has been finished.
+    val waiting = mutableListOf<Session>()
+    env.registerDelayedCallback(Duration.ofMinutes(5)) { waiting += onlySession() }
+    env.registerDelayedCallback(Duration.ofMinutes(25)) {
+      waiting += onlySession()
+      pullRequestState = "closed"
+      pullRequestMerged = true
+    }
+
+    process()
+
+    assertEquals(
+        listOf(SessionState.AWAITING_REVIEW, SessionState.AWAITING_REVIEW),
+        waiting.map { it.state },
+        "a session asleep between review polls said the agent was working",
+    )
+    // A finish time is what the screens read a session as over by, and waiting is not over.
+    assertTrue(waiting.all { it.finishedAt == null }, "a session still waiting claimed to be over")
+
+    assertEquals(SessionState.COMPLETED, onlySession().state)
+  }
+
+  @Test
+  fun `a fixup puts the session back to working`() {
+    reviews =
+        """[{"id": 901, "state": "CHANGES_REQUESTED", "body": "Needs work",
+             "submitted_at": "2026-08-19T20:05:00Z"}]"""
+
+    process()
+
+    // The review is in and the agent is redoing the work: nobody is being waited on.
+    assertEquals(listOf<SessionState?>(SessionState.RUNNING), statesDuringFixup)
+  }
+
+  @Test
   fun `a review asking for changes is worked, and the pull request is followed on`() {
     reviews =
         """[{"id": 900, "state": "COMMENTED", "body": "Nice",
@@ -387,6 +432,10 @@ class ProcessIssueWorkflowTest {
     val session = runBlocking { sessions.listForOrgs(listOf(installationId)) }.single()
     assertEquals(SessionState.FAILED, session.state)
   }
+
+  /** The one session the run opened, as it stands now. */
+  private fun onlySession(): Session =
+      runBlocking { sessions.listForOrgs(listOf(installationId)) }.single()
 
   /** What Farm said on the issue, in the order it said it. */
   private fun issueComments(): List<String> =

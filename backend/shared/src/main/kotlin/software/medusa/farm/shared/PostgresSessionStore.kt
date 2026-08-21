@@ -35,6 +35,18 @@ class PostgresSessionStore(
     }
   }
 
+  override suspend fun awaitReview(id: String) {
+    withContext(Dispatchers.IO) {
+      database.sessionsQueries.setState(state = SessionState.AWAITING_REVIEW.name, id = id)
+    }
+  }
+
+  override suspend fun resumeWork(id: String) {
+    withContext(Dispatchers.IO) {
+      database.sessionsQueries.setState(state = SessionState.RUNNING.name, id = id)
+    }
+  }
+
   override suspend fun complete(id: String) {
     withContext(Dispatchers.IO) {
       database.sessionsQueries.setState(state = SessionState.COMPLETED.name, id = id)
@@ -247,7 +259,9 @@ class PostgresSessionStore(
         title = title,
         state = parsed,
         startedAt = createdAt.toInstant(),
-        finishedAt = if (parsed == SessionState.RUNNING) null else updatedAt.toInstant(),
+        // There is no finished_at column: the row's last touch stands in for one, which it only
+        // is once the session is over. A live session is touched by every state on the way there.
+        finishedAt = if (parsed.finished) updatedAt.toInstant() else null,
         pullRequest =
             if (prNumber != null && prUrl != null && prHeadSha != null) {
               SessionPullRequest(prNumber, prUrl, prHeadSha, prMergedAt?.toInstant())

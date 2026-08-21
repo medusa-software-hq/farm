@@ -46,6 +46,15 @@ interface ProcessIssueActivities {
       afterReviewId: Long,
   ): PullRequestReport
 
+  /**
+   * Says the session is waiting on somebody to review the pull request it opened, rather than on
+   * the agent. Idempotent.
+   */
+  @ActivityMethod fun awaitReview(sessionId: String)
+
+  /** Says Farm has work of its own to do on the session again, after [awaitReview]. Idempotent. */
+  @ActivityMethod fun resumeWork(sessionId: String)
+
   @ActivityMethod fun completeSession(sessionId: String)
 
   @ActivityMethod fun failSession(sessionId: String)

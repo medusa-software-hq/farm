@@ -58,7 +58,7 @@ message Issue {
   string repo_full_name = 1;
   int32 number = 2;
   string title = 3;
-  // Latest processing session state: "", "RUNNING", or "COMPLETED".
+  // Latest processing session state: "", "RUNNING", "AWAITING_REVIEW", "COMPLETED", or "FAILED".
   string session_state = 4;
 }
 
@@ -83,10 +83,12 @@ message Session {
   string repo_full_name = 2;
   int32 number = 3;
   string title = 4;
-  // "RUNNING", "COMPLETED", or "FAILED".
+  // "RUNNING" (Farm is working), "AWAITING_REVIEW" (the pull request is open and the next move is a
+  // person's), "COMPLETED", or "FAILED". A string rather than an enum: proto enums do not survive
+  // the frontend's erasableSyntaxOnly.
   string state = 5;
   int64 started_at_millis = 6;
-  // 0 while the session is still running.
+  // 0 until the session ends, which neither RUNNING nor AWAITING_REVIEW has done.
   int64 finished_at_millis = 7;
   // The pull request the run opened, or empty if it opened none.
   string pull_request_url = 8;

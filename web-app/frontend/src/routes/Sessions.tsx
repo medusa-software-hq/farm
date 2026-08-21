@@ -12,8 +12,9 @@ import {
 } from '@mantine/core';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { IconActivity, IconSessions } from '../icons.tsx';
+import { IconActivity, IconReview, IconSessions } from '../icons.tsx';
 import { SessionBadge } from '../SessionBadge.tsx';
+import { isAwaitingReview, isLive } from '../sessionState.ts';
 import { duration, relativeTime } from '../time.ts';
 import { type Session, useSessions } from '../useSessions.ts';
 
@@ -35,13 +36,18 @@ function SectionHead({ label, count }: { label: string; count?: number }) {
 function ActiveCard({ session, now }: { session: Session; now: number }) {
   const navigate = useNavigate();
   const elapsed = duration(session.startedAtMillis, now);
+  const awaiting = isAwaitingReview(session.state);
+  const accent = awaiting ? 'blue' : 'yellow';
   return (
     <Card
       withBorder
       radius="md"
       padding="md"
       onClick={() => navigate(`/sessions/${session.id}`)}
-      style={{ cursor: 'pointer', borderLeft: '3px solid var(--mantine-color-yellow-6)' }}
+      style={{
+        cursor: 'pointer',
+        borderLeft: `3px solid var(--mantine-color-${accent}-6)`,
+      }}
     >
       <Group justify="space-between" wrap="nowrap">
         <Text ff="monospace" size="xs" c="dimmed" truncate>
@@ -53,10 +59,10 @@ function ActiveCard({ session, now }: { session: Session; now: number }) {
         {session.title}
       </Text>
       <Group gap="xs" mt="sm" c="dimmed">
-        <Text c="yellow.7" style={{ display: 'inline-flex' }}>
-          <IconActivity size={14} />
+        <Text c={`${accent}.7`} style={{ display: 'inline-flex' }}>
+          {awaiting ? <IconReview size={14} /> : <IconActivity size={14} />}
         </Text>
-        <Text size="sm">Working…</Text>
+        <Text size="sm">{awaiting ? 'Waiting for your review' : 'Working…'}</Text>
         <Text size="sm" ff="monospace" ml="auto" style={{ fontVariantNumeric: 'tabular-nums' }}>
           {elapsed} elapsed
         </Text>
@@ -75,8 +81,8 @@ export function Sessions() {
     return () => clearInterval(t);
   }, []);
 
-  const active = (sessions ?? []).filter((s) => s.state === 'RUNNING');
-  const recent = (sessions ?? []).filter((s) => s.state !== 'RUNNING').slice(0, 6);
+  const active = (sessions ?? []).filter((s) => isLive(s.state));
+  const recent = (sessions ?? []).filter((s) => !isLive(s.state)).slice(0, 6);
 
   return (
     <Stack gap="xl">

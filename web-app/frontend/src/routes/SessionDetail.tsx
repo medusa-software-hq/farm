@@ -2,9 +2,17 @@ import { Anchor, Card, Grid, Group, Loader, Stack, Text, Timeline, Title } from 
 import { type ReactNode, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { farm } from '../api.ts';
-import { IconActivity, IconArrowLeft, IconCheck, IconSprout, IconX } from '../icons.tsx';
+import {
+  IconActivity,
+  IconArrowLeft,
+  IconCheck,
+  IconReview,
+  IconSprout,
+  IconX,
+} from '../icons.tsx';
 import { type Run, type RunAttempt, fetchRuns } from '../runs.ts';
 import { SessionBadge } from '../SessionBadge.tsx';
+import { isAwaitingReview, isLive } from '../sessionState.ts';
 import { clockTime, duration, relativeTime } from '../time.ts';
 import { useApiHeaders } from '../useApiHeaders.ts';
 import { type Session } from '../useSessions.ts';
@@ -65,9 +73,9 @@ export function SessionDetail() {
             pullRequestUrl: s.pullRequestUrl,
           },
         });
-        // A session that has finished will not change again, and its runs are the larger of the
-        // two reads and grow with the work the agent did.
-        if (s.state !== 'RUNNING') {
+        // A finished session will not change again. One awaiting review still will: a review
+        // lands elsewhere entirely, and this page only learns of it by asking.
+        if (!isLive(s.state)) {
           stopPolling();
         }
       } catch {
@@ -109,7 +117,8 @@ export function SessionDetail() {
 }
 
 function Detail({ session, runs }: { session: Session; runs: Run[] }) {
-  const running = session.state === 'RUNNING';
+  const live = isLive(session.state);
+  const awaiting = isAwaitingReview(session.state);
   const failed = session.state === 'FAILED';
 
   return (
@@ -128,7 +137,7 @@ function Detail({ session, runs }: { session: Session; runs: Run[] }) {
 
       <Grid gap="xl">
         <Grid.Col span={{ base: 12, sm: 8 }}>
-          <Timeline active={running ? 0 : 1} bulletSize={26} lineWidth={2} color="fern">
+          <Timeline active={live ? 0 : 1} bulletSize={26} lineWidth={2} color="fern">
             <Timeline.Item bullet={<IconSprout size={13} />} title="Session started" color="fern">
               <Text size="sm" c="dimmed">
                 Picked up {session.repoFullName}#{session.number}.
@@ -152,7 +161,31 @@ function Detail({ session, runs }: { session: Session; runs: Run[] }) {
               ))
             )}
 
-            {running ? (
+            {awaiting ? (
+              <Timeline.Item
+                bullet={<IconReview size={13} />}
+                title="Waiting for your review"
+                color="blue"
+                lineVariant="dashed"
+              >
+                <Text size="sm" c="dimmed">
+                  The agent has finished and opened its pull request. Nothing else happens until
+                  somebody reviews it: merge it to end the session, or request changes and Farm
+                  works them.
+                </Text>
+                {session.pullRequestUrl && (
+                  <Anchor
+                    href={session.pullRequestUrl}
+                    target="_blank"
+                    size="sm"
+                    mt={4}
+                    display="block"
+                  >
+                    Review pull request #{session.pullRequestUrl.split('/').pop()}
+                  </Anchor>
+                )}
+              </Timeline.Item>
+            ) : live ? (
               <Timeline.Item
                 bullet={<IconActivity size={13} />}
                 title="Working…"

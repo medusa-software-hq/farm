@@ -109,6 +109,10 @@ class ProcessIssueActivitiesImpl(
     return ReviewFeedback(reviewId = review.id, body = review.body, comments = comments)
   }
 
+  override fun awaitReview(sessionId: String) = runBlocking { sessionStore.awaitReview(sessionId) }
+
+  override fun resumeWork(sessionId: String) = runBlocking { sessionStore.resumeWork(sessionId) }
+
   override fun completeSession(sessionId: String) = runBlocking { sessionStore.complete(sessionId) }
 
   override fun failSession(sessionId: String) = runBlocking { sessionStore.fail(sessionId) }

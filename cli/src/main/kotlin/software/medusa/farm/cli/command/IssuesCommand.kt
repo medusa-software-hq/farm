@@ -13,7 +13,9 @@ class IssuesCommand : ManagementCommand(name = "issues") {
       echo("No issues synced.")
     } else {
       issues.forEach {
-        val state = if (it.sessionState.isEmpty()) "" else " [${it.sessionState.lowercase()}]"
+        // The wire spells a state SHOUTED_WITH_UNDERSCORES; a line someone reads wants words.
+        val said = it.sessionState.lowercase().replace('_', ' ')
+        val state = if (said.isEmpty()) "" else " [$said]"
         echo("${it.repoFullName}#${it.number}$state  ${it.title}")
       }
     }
