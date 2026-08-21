@@ -10,8 +10,8 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import software.medusa.farm.shared.FarmWorker
-import software.medusa.farm.shared.FetchedIssue
-import software.medusa.farm.shared.FetchedRepo
+import software.medusa.farm.shared.FetchedRepoWithIssues
+import software.medusa.farm.shared.ReadyIssue
 import software.medusa.farm.shared.SyncAllReposWorkflow
 
 /** Drives the periodic sweep against Temporal's in-memory test server with scripted activities. */
@@ -33,33 +33,17 @@ class SyncAllReposWorkflowTest {
       started += installationId
     }
 
-    override fun fetchInstallationRepos(installationId: Long): List<FetchedRepo> =
+    override fun fetchInstallationRepos(installationId: Long): List<FetchedRepoWithIssues> =
         error("not exercised by the sweep")
 
-    override fun reconcileRepos(
+    override fun reconcile(
         installationId: Long,
-        repos: List<FetchedRepo>,
+        repos: List<FetchedRepoWithIssues>,
         syncStartedAtEpochMillis: Long,
     ) = error("not exercised by the sweep")
 
-    override fun fetchRepoIssues(installationId: Long, repoFullName: String): List<FetchedIssue> =
+    override fun startIssueProcessing(installationId: Long, issues: List<ReadyIssue>) =
         error("not exercised by the sweep")
-
-    override fun reconcileIssues(
-        installationId: Long,
-        githubRepoId: Long,
-        repoFullName: String,
-        issues: List<FetchedIssue>,
-        syncStartedAtEpochMillis: Long,
-    ) = error("not exercised by the sweep")
-
-    override fun startIssueProcessing(
-        installationId: Long,
-        githubRepoId: Long,
-        repoFullName: String,
-        number: Int,
-        title: String,
-    ) = error("not exercised by the sweep")
   }
 
   private val env =

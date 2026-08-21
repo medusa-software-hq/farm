@@ -4,6 +4,21 @@ package software.medusa.farm.github
 interface GhInstallationApiClient : GhResourcesApiClient {
   suspend fun listInstallationRepositories(): List<GhRepo>
 
+  /**
+   * Every repository this installation can reach, each with the issues open on it, in a number of
+   * requests that does not grow with the number of repositories.
+   *
+   * The set is the installation's own listing intersected with what its org will show: a repository
+   * the org does not return is left out, and so is one the installation may not act on. That
+   * intersection is the point — a sync treats what it fetched as the whole truth and orphans
+   * everything else, so a repository nobody here can touch must not arrive looking like one that
+   * can be.
+   *
+   * An issue carries as many labels as fit one page: enough to ask whether a given label is on it,
+   * not enough to enumerate them.
+   */
+  suspend fun listReposWithOpenIssues(): List<GhRepoWithOpenIssues>
+
   /** Posts a comment on an issue. Requires the App's Issues:write permission. */
   suspend fun createIssueComment(repo: GhRepoFullName, number: Int, body: String)
 

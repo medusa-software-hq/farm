@@ -9,13 +9,15 @@ import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationId
-import software.medusa.farm.github.GhRepoFullName
+import software.medusa.farm.github.GhRepoWithOpenIssues
 import software.medusa.farm.shared.FarmLabels
 import software.medusa.farm.shared.FetchedIssue
 import software.medusa.farm.shared.FetchedRepo
+import software.medusa.farm.shared.FetchedRepoWithIssues
 import software.medusa.farm.shared.IssueStore
 import software.medusa.farm.shared.LinkedOrgStore
 import software.medusa.farm.shared.ProcessIssueWorkflow
+import software.medusa.farm.shared.ReadyIssue
 import software.medusa.farm.shared.RepoStore
 import software.medusa.farm.shared.RepoSyncWorkflow
 import software.medusa.farm.shared.processIssueWorkflowId
@@ -32,57 +34,32 @@ class RepoSyncActivitiesImpl(
     // not hand its work to the deployment.
     private val taskQueue: String,
 ) : RepoSyncActivities {
-  override fun fetchInstallationRepos(installationId: Long): List<FetchedRepo> = runBlocking {
-    clientProvider
-        .provideForInstallation(GhInstallationId(installationId))
-        .listInstallationRepositories()
-        .map {
-          FetchedRepo(
-              githubRepoId = it.id.value,
-              fullName = it.fullName.value,
-              name = it.name,
-              isPrivate = it.isPrivate,
-              defaultBranch = it.defaultBranch,
-          )
-        }
-  }
-
-  override fun reconcileRepos(
-      installationId: Long,
-      repos: List<FetchedRepo>,
-      syncStartedAtEpochMillis: Long,
-  ) = runBlocking {
-    repoStore.reconcile(installationId, repos, Instant.ofEpochMilli(syncStartedAtEpochMillis))
-  }
-
-  override fun fetchRepoIssues(installationId: Long, repoFullName: String): List<FetchedIssue> =
+  override fun fetchInstallationRepos(installationId: Long): List<FetchedRepoWithIssues> =
       runBlocking {
         clientProvider
             .provideForInstallation(GhInstallationId(installationId))
-            .listIssues(GhRepoFullName(repoFullName))
-            .map {
-              FetchedIssue(
-                  number = it.number,
-                  title = it.title,
-                  isReady = FarmLabels.READY in it.labels,
-              )
-            }
+            .listReposWithOpenIssues()
+            .map { it.toFetched() }
       }
 
-  override fun reconcileIssues(
+  override fun reconcile(
       installationId: Long,
-      githubRepoId: Long,
-      repoFullName: String,
-      issues: List<FetchedIssue>,
+      repos: List<FetchedRepoWithIssues>,
       syncStartedAtEpochMillis: Long,
   ) = runBlocking {
-    issueStore.reconcile(
-        installationId,
-        githubRepoId,
-        repoFullName,
-        issues,
-        Instant.ofEpochMilli(syncStartedAtEpochMillis),
-    )
+    // One watermark for the whole fetch, taken before it: everything the fetch saw counts as
+    // present, and everything it did not is orphaned together.
+    val syncStartedAt = Instant.ofEpochMilli(syncStartedAtEpochMillis)
+    repoStore.reconcile(installationId, repos.map { it.repo }, syncStartedAt)
+    for (fetched in repos) {
+      issueStore.reconcile(
+          installationId,
+          fetched.repo.githubRepoId,
+          fetched.repo.fullName,
+          fetched.issues,
+          syncStartedAt,
+      )
+    }
   }
 
   override fun listLinkedInstallations(): List<Long> = runBlocking {
@@ -109,19 +86,19 @@ class RepoSyncActivitiesImpl(
     WorkflowClient.start(stub::sync, installationId)
   }
 
-  override fun startIssueProcessing(
-      installationId: Long,
-      githubRepoId: Long,
-      repoFullName: String,
-      number: Int,
-      title: String,
-  ) {
+  override fun startIssueProcessing(installationId: Long, issues: List<ReadyIssue>) {
+    for (issue in issues) {
+      startOne(installationId, issue)
+    }
+  }
+
+  private fun startOne(installationId: Long, issue: ReadyIssue) {
     val stub =
         workflowClient.newWorkflowStub(
             ProcessIssueWorkflow::class.java,
             WorkflowOptions.newBuilder()
                 .setTaskQueue(taskQueue)
-                .setWorkflowId(processIssueWorkflowId(githubRepoId, number))
+                .setWorkflowId(processIssueWorkflowId(issue.githubRepoId, issue.number))
                 // A finished run does not stand in the way of a new one. Refusing the id would
                 // read as "process each issue once" and mean "once per retention window": the
                 // refusal expires with the execution, and the issue would be worked afresh
@@ -137,9 +114,36 @@ class RepoSyncActivitiesImpl(
                 .build(),
         )
     try {
-      WorkflowClient.start(stub::process, installationId, githubRepoId, repoFullName, number, title)
+      WorkflowClient.start(
+          stub::process,
+          installationId,
+          issue.githubRepoId,
+          issue.repoFullName,
+          issue.number,
+          issue.title,
+      )
     } catch (ignored: WorkflowExecutionAlreadyStarted) {
       // Being worked already. Nothing to do.
     }
   }
 }
+
+private fun GhRepoWithOpenIssues.toFetched(): FetchedRepoWithIssues =
+    FetchedRepoWithIssues(
+        repo =
+            FetchedRepo(
+                githubRepoId = repo.id.value,
+                fullName = repo.fullName.value,
+                name = repo.name,
+                isPrivate = repo.isPrivate,
+                defaultBranch = repo.defaultBranch,
+            ),
+        issues =
+            openIssues.map {
+              FetchedIssue(
+                  number = it.number,
+                  title = it.title,
+                  isReady = FarmLabels.READY in it.labels,
+              )
+            },
+    )
