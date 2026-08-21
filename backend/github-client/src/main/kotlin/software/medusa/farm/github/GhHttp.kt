@@ -63,8 +63,13 @@ internal class GhHttp(
     var url: String? = if ("?" in path) "$path&per_page=$perPage" else "$path?per_page=$perPage"
     while (url != null) {
       val response = get(url, bearer = tokenProvider.provideToken())
-      check(response.statusCode() == httpOk) {
-        "GitHub paged GET failed: ${response.statusCode()} ${response.body()}"
+      if (response.statusCode() != httpOk) {
+        throw GhRequestFailed(
+            statusCode = response.statusCode(),
+            body = response.body(),
+            rateLimited = GhRequestFailed.rateLimitedBy(response.headers().map()),
+            message = "GitHub paged GET failed: ${response.statusCode()} ${response.body()}",
+        )
       }
       decodePage(response.body()).forEach { emit(it) }
       url = response.headers().firstValue("Link").map(::nextLink).orElse(null)

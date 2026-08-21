@@ -262,14 +262,28 @@ private constructor(
       repo: GhRepoFullName,
       branch: String,
   ): List<String> =
-      http
-          .getPaged("/repos/${repo.value}/rules/branches/${pathSegment(branch)}", tokenProvider) {
-              body ->
-            gitHubJson.decodeFromString<List<BranchRuleDto>>(body).flatMap {
-              it.requiredCheckNames()
+      try {
+        http
+            .getPaged(
+                "/repos/${repo.value}/rules/branches/${pathSegment(branch)}",
+                tokenProvider,
+            ) { body ->
+              gitHubJson.decodeFromString<List<BranchRuleDto>>(body).flatMap {
+                it.requiredCheckNames()
+              }
             }
-          }
-          .toList()
+            .toList()
+      } catch (refusal: GhRequestFailed) {
+        // A repository whose plan does not include rules, or a token not allowed to read them,
+        // answers by refusing. Neither is an answer that changes by asking again, and a branch
+        // whose requirements cannot be read requires nothing that anyone can be held to — the same
+        // as the older per-branch protection, which reads as empty here too.
+        //
+        // Only a refusal. A rate limit or a fault means the requirements are unknown rather than
+        // absent, and a pull request must not be treated as unguarded because GitHub was busy.
+        if (!refusal.refused) throw refusal
+        emptyList()
+      }
 
   override suspend fun listCheckRunAnnotations(
       repo: GhRepoFullName,

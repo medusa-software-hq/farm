@@ -50,7 +50,8 @@ interface GhInstallationApiClient : GhResourcesApiClient {
    *
    * A second question rather than a field on the check run, because whether a check has to pass is
    * a property of the branch and not of the run reporting it. Rulesets are the whole answer here: a
-   * branch guarded by the older per-branch protection instead reads as requiring nothing.
+   * branch guarded by the older per-branch protection instead reads as requiring nothing, as does
+   * one whose rules GitHub refuses to show — an unanswerable question is not a failure to ask it.
    */
   suspend fun listRequiredCheckNames(repo: GhRepoFullName, branch: String): List<String>
 

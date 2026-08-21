@@ -342,6 +342,41 @@ class GhProperInstallationApiClientTest {
       }
 
   @Test
+  fun `a branch whose rules GitHub will not show requires no check`() = runBlocking {
+    FakeGitHubServer { _ ->
+          FakeGitHubServer.Response(
+              403,
+              """{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature."}""",
+          )
+        }
+        .use { server ->
+          assertEquals(
+              emptyList(),
+              clientAgainst(server).listRequiredCheckNames(GhRepoFullName("acme/one"), "trunk"),
+          )
+        }
+  }
+
+  @Test
+  fun `a spent rate limit is not mistaken for a branch that requires nothing`() = runBlocking {
+    FakeGitHubServer { _ ->
+          FakeGitHubServer.Response(
+              403,
+              """{"message":"API rate limit exceeded"}""",
+              headers = mapOf("x-ratelimit-remaining" to "0"),
+          )
+        }
+        .use { server ->
+          val failure =
+              assertFailsWith<GhRequestFailed> {
+                clientAgainst(server).listRequiredCheckNames(GhRepoFullName("acme/one"), "trunk")
+              }
+
+          assertTrue(failure.rateLimited, "a spent allowance read as a refusal")
+        }
+  }
+
+  @Test
   fun `a branch under no rules requires no check`() = runBlocking {
     FakeGitHubServer { _ -> FakeGitHubServer.Response(200, "[]") }
         .use { server ->
