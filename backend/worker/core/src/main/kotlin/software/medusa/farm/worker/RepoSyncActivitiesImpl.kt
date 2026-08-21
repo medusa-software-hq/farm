@@ -127,6 +127,10 @@ class RepoSyncActivitiesImpl(
                 // refusal expires with the execution, and the issue would be worked afresh
                 // whenever that happened to be. The label is what says an issue wants working,
                 // and the session takes it off when it is done with it.
+                //
+                // The id still refuses a start while a run is in flight, and a run does not
+                // finish until the issue is out of the queue — so an issue that cannot be
+                // unlabelled holds a run open rather than being offered up on every pass.
                 .setWorkflowIdReusePolicy(
                     WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE
                 )

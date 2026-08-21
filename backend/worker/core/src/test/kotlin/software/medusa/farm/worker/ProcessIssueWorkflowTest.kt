@@ -21,6 +21,7 @@ import software.medusa.farm.shared.FarmWorker
 import software.medusa.farm.shared.InMemorySessionStore
 import software.medusa.farm.shared.ProcessIssueWorkflow
 import software.medusa.farm.shared.SessionState
+import software.medusa.farm.shared.SessionStore
 
 /**
  * Drives the issue-processing workflow against Temporal's test server, GitHub, and a fake attempt.
@@ -35,6 +36,13 @@ class ProcessIssueWorkflowTest {
   // Flip to make the agent find nothing worth changing, so no pull request is opened.
   private var attemptChangesNothing = false
 
+  // Flip to make putting the session away fail, which is how a run reaches its failure path having
+  // already finished with the issue.
+  private var failCompleteSession = false
+
+  // How many attempts at taking the label off the fake GitHub refuses before letting one through.
+  private var labelRemovalRefusals = 0
+
   // What the fake GitHub reports the pull request as, and when it says it was merged.
   private var pullRequestState = "open"
   private var pullRequestMerged = false
@@ -46,6 +54,14 @@ class ProcessIssueWorkflowTest {
 
   private val server = FakeGitHubServer(::handle)
   private val sessions = InMemorySessionStore(Clock.systemUTC())
+
+  /** The store the run writes to, which fails to put a session away while asked to. */
+  private inner class FlakySessionStore : SessionStore by sessions {
+    override suspend fun complete(id: String) {
+      check(!failCompleteSession) { "complete boom" }
+      sessions.complete(id)
+    }
+  }
 
   /** A stand-in [PublishActivities]: reports a PR, or throws when [failAttempt] is set. */
   private inner class FakePublishActivities : PublishActivities {
@@ -103,7 +119,7 @@ class ProcessIssueWorkflowTest {
     val worker = env.newWorker(FarmWorker.DEFAULT_TASK_QUEUE)
     worker.registerWorkflowImplementationTypes(ProcessIssueWorkflowImpl::class.java)
     worker.registerActivitiesImplementations(
-        ProcessIssueActivitiesImpl(clientProvider, sessions),
+        ProcessIssueActivitiesImpl(clientProvider, FlakySessionStore()),
         FakePublishActivities(),
     )
     env.start()
@@ -167,6 +183,42 @@ class ProcessIssueWorkflowTest {
             server.requests.indexOfFirst { it.method == "DELETE" },
         "the label went before anything on the issue said why",
     )
+  }
+
+  @Test
+  fun `a label GitHub will not take off keeps the run going rather than ending on it`() {
+    // More refusals than an ordinary step is given attempts. A run that gave up here would end
+    // with the issue still labelled, and the next sweep — an hour away, not a retention window —
+    // would put a fresh agent and a fresh pull request on work already merged. Staying in flight
+    // is what refuses that sweep.
+    labelRemovalRefusals = 8
+    env.registerDelayedCallback(Duration.ofMinutes(5)) {
+      pullRequestState = "closed"
+      pullRequestMerged = true
+    }
+
+    process()
+
+    assertEquals(9, readyLabelRemovals().size, "the run gave up on taking the label off")
+  }
+
+  @Test
+  fun `an issue is not told two disagreeing things about one run`() {
+    // Trouble after the merge has already been reported: the failure path finishes the issue too,
+    // and what it must not do is tell the issue its merged run failed.
+    failCompleteSession = true
+    env.registerDelayedCallback(Duration.ofMinutes(5)) {
+      pullRequestState = "closed"
+      pullRequestMerged = true
+    }
+
+    runCatching { process() }
+
+    // Everything after the one saying where the work went.
+    val endings = issueComments().drop(1)
+    assertEquals(1, endings.size, "the issue was given more than one account of the run: $endings")
+    assertTrue(endings.single().contains("was merged"), endings.single())
+    assertEquals(1, readyLabelRemovals().size)
   }
 
   @Test
@@ -356,7 +408,9 @@ class ProcessIssueWorkflowTest {
               201,
               """{"token": "tok", "expires_at": "2999-01-01T00:00:00Z"}""",
           )
-      path.contains("/labels/") -> FakeGitHubServer.Response(200, "[]")
+      path.contains("/labels/") ->
+          if (labelRemovalRefusals-- > 0) FakeGitHubServer.Response(500, "not now")
+          else FakeGitHubServer.Response(200, "[]")
       path.endsWith("/reviews") -> FakeGitHubServer.Response(200, reviews)
       // Before the issue-comment clause below: a review's line comments hang off the pull request
       // and end in "/comments" too.

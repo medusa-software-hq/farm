@@ -29,6 +29,21 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
               .build(),
       )
 
+  // Finishing does not give up, where the work does: while this run is alive the sweep's start is
+  // refused, so an issue GitHub will not let Farm unlabel costs one visibly stuck run — whereas a
+  // run that ended with the label still on would be worked afresh, by a fresh agent opening a
+  // fresh pull request, every sweep.
+  private val finishActivities =
+      Workflow.newActivityStub(
+          ProcessIssueActivities::class.java,
+          ActivityOptions.newBuilder()
+              .setStartToCloseTimeout(Duration.ofMinutes(1))
+              .setRetryOptions(
+                  RetryOptions.newBuilder().setMaximumInterval(FINISH_RETRY_INTERVAL_CAP).build()
+              )
+              .build(),
+      )
+
   // The attempt clones and runs a real coding agent, so it gets a long timeout and few retries
   // (each attempt is expensive, and a repeated failure is usually a real problem, not a blip).
   private val publishActivities =
@@ -41,6 +56,11 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
               )
               .build(),
       )
+
+  // How far finishing the issue got. Both endings of the run finish it, so the second one has to
+  // know what the first managed.
+  private var outcomeReported = false
+  private var leftQueue = false
 
   override fun process(
       installationId: Long,
@@ -107,8 +127,23 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
       number: Int,
       outcome: IssueOutcome,
   ) {
-    activities.postIssueComment(installationId, repoFullName, number, finishComment(outcome))
-    activities.removeReadyLabel(installationId, repoFullName, number)
+    // Both endings of the run come here, and the failure one after the other may already have got
+    // part of the way — so each step is taken at most once and the account already given stands. A
+    // merge reported and then followed by trouble is still a merge, and an issue told two things
+    // about one run leaves whoever reads it to guess.
+    if (!outcomeReported) {
+      finishActivities.postIssueComment(
+          installationId,
+          repoFullName,
+          number,
+          finishComment(outcome),
+      )
+      outcomeReported = true
+    }
+    if (!leftQueue) {
+      finishActivities.removeReadyLabel(installationId, repoFullName, number)
+      leftQueue = true
+    }
   }
 
   /**
@@ -179,6 +214,10 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
     private const val MAX_ATTEMPTS = 5
 
     private const val ATTEMPT_MAX_ATTEMPTS = 2
+
+    // Retrying without end, so the backoff is capped rather than doubling into hours: whatever is
+    // keeping the issue in the queue is worth trying again soon after it clears.
+    private val FINISH_RETRY_INTERVAL_CAP: Duration = Duration.ofMinutes(5)
 
     // Nothing pushes review events to us — there is no webhook receiver — so the gate polls, as
     // the issue sweep does. A minute is how long someone waits between merging and Farm noticing,
