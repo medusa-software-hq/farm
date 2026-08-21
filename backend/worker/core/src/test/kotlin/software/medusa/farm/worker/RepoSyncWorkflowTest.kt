@@ -125,8 +125,7 @@ class RepoSyncWorkflowTest {
         val body =
             currentRepos.joinToString(",") {
               val name = it.substringAfter('/')
-              val id = it.hashCode().toLong() and 0x7fffffff
-              """{"id": $id, "full_name": "$it", "name": "$name", """ +
+              """{"id": ${repoId(it)}, "full_name": "$it", "name": "$name", """ +
                   """"private": false, "default_branch": "main"}"""
             }
         FakeGitHubServer.Response(
@@ -134,12 +133,26 @@ class RepoSyncWorkflowTest {
             """{"total_count": ${currentRepos.size}, "repositories": [$body]}""",
         )
       }
-      // The workflow syncs each repo's issues after the repos; this test only exercises the repo
-      // reconcile, so every repo serves an empty issue list.
-      path.startsWith("/repos/") && path.endsWith("/issues") -> FakeGitHubServer.Response(200, "[]")
+      // The fetch reads every repo's issues from the org query. This test exercises the repo
+      // reconcile, so the org serves the same repos with no issues open on any of them.
+      path == "/graphql" -> {
+        val nodes =
+            currentRepos.joinToString(",") {
+              """{"databaseId": ${repoId(it)}, "name": "${it.substringAfter('/')}", """ +
+                  """"issues": {"pageInfo": {"hasNextPage": false}, "nodes": []}}"""
+            }
+        FakeGitHubServer.Response(
+            200,
+            """{"data": {"organization": {"repositories": """ +
+                """{"pageInfo": {"hasNextPage": false}, "nodes": [$nodes]}}}}""",
+        )
+      }
       else -> FakeGitHubServer.Response(404, "unexpected ${request.pathAndQuery}")
     }
   }
+
+  /** The id GitHub would have for a repo, matched between the listing and the org query. */
+  private fun repoId(fullName: String): Long = fullName.hashCode().toLong() and 0x7fffffff
 
   private class EnvClock(private val env: TestWorkflowEnvironment) : Clock() {
     override fun instant(): Instant = Instant.ofEpochMilli(env.currentTimeMillis())

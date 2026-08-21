@@ -2,9 +2,12 @@ package software.medusa.farm.github
 
 /**
  * A data-scripted GitHub for [FakeGitHubServer] to answer from: give it the installations, their
- * repositories, and (optionally) each repo's issues, and it routes the App, installation, and
- * resource endpoints the clients call. The token it mints for an installation encodes that
+ * repositories, and (optionally) each repo's issues, and it routes the App, installation, resource
+ * and GraphQL endpoints the clients call. The token it mints for an installation encodes that
  * installation's id, so later repo and issue calls can be attributed back to it.
+ *
+ * An org holds every repository given to any of its installations, so scripting two installations
+ * over one org is how a repository the caller cannot reach is put in front of it.
  */
 class FakeGitHub(
     private val installationIdsByOrg: Map<GhOrgLogin, GhInstallationId>,
@@ -35,10 +38,7 @@ class FakeGitHub(
         val body =
             pageRepos.joinToString(",") {
               val name = it.value.substringAfter('/')
-              // A stable synthetic numeric id derived from the full name, so a repo keeps its id
-              // across fetches (only a rename would change it).
-              val repoId = it.value.hashCode().toLong() and 0x7fffffff
-              """{"id": $repoId, "full_name": "${it.value}", "name": "$name", """ +
+              """{"id": ${repoId(it)}, "full_name": "${it.value}", "name": "$name", """ +
                   """"private": false, "default_branch": "main"}"""
             }
         // Advertise a next page via the Link header (as GitHub does) whenever more remain, so the
@@ -69,10 +69,47 @@ class FakeGitHub(
       }
       path.startsWith("/repos/") && path.endsWith("/comments") ->
           FakeGitHubServer.Response(201, """{"id": 1}""")
+      // The org query, answered as GitHub answers it: from the org rather than from the asking
+      // installation, so a repo the org has and the caller cannot reach is offered up too.
+      path == "/graphql" -> {
+        val org = GhOrgLogin(variable(request.body, "login"))
+        val nodes =
+            reposByInstallation.values
+                .flatten()
+                .distinct()
+                .filter { it.owner == org }
+                .joinToString(",") { repositoryNode(it) }
+        FakeGitHubServer.Response(
+            200,
+            """{"data": {"organization": {"repositories": ${connection(nodes)}}}}""",
+        )
+      }
       else -> FakeGitHubServer.Response(404, "unexpected ${request.pathAndQuery}")
     }
   }
 
+  private fun repositoryNode(repo: GhRepoFullName): String {
+    val issues =
+        issuesByRepo[repo].orEmpty().joinToString(",") { issue ->
+          val labels = issue.labels.joinToString(",") { """{"name": "$it"}""" }
+          """{"number": ${issue.number}, "title": "${issue.title}", """ +
+              """"labels": {"nodes": [$labels]}}"""
+        }
+    return """{"databaseId": ${repoId(repo)}, "name": "${repo.value.substringAfter('/')}", """ +
+        """"issues": ${connection(issues)}}"""
+  }
+
+  /** A stable synthetic id derived from the full name, so a repo keeps its id across fetches. */
+  private fun repoId(repo: GhRepoFullName): Long = repo.value.hashCode().toLong() and 0x7fffffff
+
   private fun queryParam(pathAndQuery: String, name: String): String? =
       Regex("[?&]$name=([^&]+)").find(pathAndQuery)?.groupValues?.get(1)
+
+  // The document quotes no string, so the only quoted value under this name is the variable's.
+  private fun variable(body: String, name: String): String =
+      Regex(""""$name"\s*:\s*"([^"]+)"""").find(body)!!.groupValues[1]
+
+  /** A GraphQL connection holding [nodes] whole — this fake never splits one across pages. */
+  private fun connection(nodes: String): String =
+      """{"pageInfo": {"hasNextPage": false, "endCursor": null}, "nodes": [$nodes]}"""
 }

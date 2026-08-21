@@ -18,6 +18,7 @@ import software.medusa.farm.shared.InMemoryIssueStore
 import software.medusa.farm.shared.InMemoryLinkedOrgStore
 import software.medusa.farm.shared.InMemoryRepoStore
 import software.medusa.farm.shared.ProcessIssueWorkflow
+import software.medusa.farm.shared.ReadyIssue
 import software.medusa.farm.shared.processIssueWorkflowId
 
 /**
@@ -88,7 +89,10 @@ class StartIssueProcessingTest {
   private fun distinctRuns(): Int = runIds.distinct().size
 
   private fun startProcessing() =
-      activities.startIssueProcessing(installationId, githubRepoId, "acme/one", number, "Do it")
+      activities.startIssueProcessing(
+          installationId,
+          listOf(ReadyIssue(githubRepoId, "acme/one", number, "Do it")),
+      )
 
   private fun awaitRunFinished() {
     env.workflowClient

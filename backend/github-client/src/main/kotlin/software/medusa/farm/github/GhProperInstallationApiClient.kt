@@ -41,6 +41,7 @@ private constructor(
     GhInstallationApiClient,
     GhResourcesApiClient by GhUniversalResourcesApiClient(tokenProvider, baseUrl, httpClient) {
   private val http = GhHttp(baseUrl, httpClient)
+  private val orgOpenIssues = GhOrgOpenIssues(GhGraphQl(baseUrl, httpClient), tokenProvider)
 
   override suspend fun listInstallationRepositories(): List<GhRepo> =
       http
@@ -50,6 +51,20 @@ private constructor(
             }
           }
           .toList()
+
+  override suspend fun listReposWithOpenIssues(): List<GhRepoWithOpenIssues> {
+    val reachable = listInstallationRepositories()
+    // An installation belongs to one account, so any repository it reaches names that account, and
+    // one that reaches none has nothing to ask an org about.
+    val org = reachable.firstOrNull()?.fullName?.owner ?: return emptyList()
+    val issuesByRepo = orgOpenIssues.byRepo(org)
+
+    // Each repository's fields come from the listing that decided it was reachable, so what a sync
+    // stores about a repository is exactly what it stored before the org query existed.
+    return reachable.mapNotNull { repo ->
+      issuesByRepo[repo.id]?.let { GhRepoWithOpenIssues(repo, it) }
+    }
+  }
 
   override suspend fun createIssueComment(repo: GhRepoFullName, number: Int, body: String) {
     val response =

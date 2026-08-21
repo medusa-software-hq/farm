@@ -3,23 +3,24 @@ package software.medusa.farm.worker
 import io.temporal.activity.ActivityOptions
 import io.temporal.workflow.Workflow
 import java.time.Duration
+import software.medusa.farm.shared.FetchedRepoWithIssues
+import software.medusa.farm.shared.ReadyIssue
 import software.medusa.farm.shared.RepoSyncWorkflow
 
 /**
- * Captures the sync watermark, fetches the installation's repos in full, then reconciles them, then
- * syncs each repo's open issues. The watermark is taken before the fetch so a repo seen mid-fetch
- * still counts as present. An empty-but-successful repo fetch is left un-reconciled: never
- * mass-orphan on a fetch that returned nothing (a real removal of the last repo simply waits for
- * the next non-empty sync).
+ * Captures the sync watermark, fetches the installation's repos and their open issues in full, then
+ * reconciles them, then kicks processing for the issues that ask for it. Three activities at most,
+ * however many repos the org has, so what a sync costs is not a property of the org's size.
  *
- * Issues are synced per repo off the just-fetched list, so a repo's issues follow its repo row in
- * the same pass. An empty issue fetch *is* reconciled — no open issues is a valid state that should
- * orphan any that were open — since the fetch throws rather than returning empty on failure.
+ * The watermark is taken before the fetch so a repo or issue seen mid-fetch still counts as
+ * present. An empty-but-successful fetch is left un-reconciled: never mass-orphan on a fetch that
+ * returned nothing (a real removal of the last repo simply waits for the next non-empty sync). A
+ * fetched repo with no issues *is* reconciled — no open issues is a valid state that should orphan
+ * any that were open — since the fetch throws rather than returning empty on failure.
  *
- * After reconciling a repo's issues, processing is kicked for each open issue **that carries the
- * `farm:ready` label** — the opt-in gate. The start is once-per-issue (REJECT_DUPLICATE), so
- * re-running the sweep never re-processes an issue already handled; it only picks up ones newly
- * labelled ready. Non-ready issues are still synced and listed, just not processed.
+ * Processing is kicked only for issues carrying the `farm:ready` label — the opt-in gate. The start
+ * is a no-op for an issue already in flight, so re-running the sweep never doubles up on one being
+ * worked; it only picks up ones newly labelled ready. Non-ready issues are still synced and listed.
  */
 class RepoSyncWorkflowImpl : RepoSyncWorkflow {
   private val activities =
@@ -32,29 +33,23 @@ class RepoSyncWorkflowImpl : RepoSyncWorkflow {
     val syncStartedAtEpochMillis = Workflow.currentTimeMillis()
     val repos = activities.fetchInstallationRepos(installationId)
     if (repos.isEmpty()) return
-    activities.reconcileRepos(installationId, repos, syncStartedAtEpochMillis)
+    activities.reconcile(installationId, repos, syncStartedAtEpochMillis)
 
-    for (repo in repos) {
-      val issuesStartedAtEpochMillis = Workflow.currentTimeMillis()
-      val issues = activities.fetchRepoIssues(installationId, repo.fullName)
-      activities.reconcileIssues(
-          installationId,
-          repo.githubRepoId,
-          repo.fullName,
-          issues,
-          issuesStartedAtEpochMillis,
-      )
-      for (issue in issues) {
-        if (issue.isReady) {
-          activities.startIssueProcessing(
-              installationId,
-              repo.githubRepoId,
-              repo.fullName,
-              issue.number,
-              issue.title,
-          )
-        }
-      }
-    }
+    val ready = readyIssues(repos)
+    if (ready.isNotEmpty()) activities.startIssueProcessing(installationId, ready)
   }
+
+  private fun readyIssues(repos: List<FetchedRepoWithIssues>): List<ReadyIssue> =
+      repos.flatMap { fetched ->
+        fetched.issues
+            .filter { it.isReady }
+            .map {
+              ReadyIssue(
+                  githubRepoId = fetched.repo.githubRepoId,
+                  repoFullName = fetched.repo.fullName,
+                  number = it.number,
+                  title = it.title,
+              )
+            }
+      }
 }

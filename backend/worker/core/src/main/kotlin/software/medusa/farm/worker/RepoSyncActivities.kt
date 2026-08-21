@@ -2,32 +2,23 @@ package software.medusa.farm.worker
 
 import io.temporal.activity.ActivityInterface
 import io.temporal.activity.ActivityMethod
-import software.medusa.farm.shared.FetchedIssue
-import software.medusa.farm.shared.FetchedRepo
+import software.medusa.farm.shared.FetchedRepoWithIssues
+import software.medusa.farm.shared.ReadyIssue
 
 /** The GitHub fetch and the store reconcile the [RepoSyncWorkflow] delegates to. */
 @ActivityInterface
 interface RepoSyncActivities {
-  /** Fetches the installation's complete repo list, or throws so the fetch is retried. */
-  @ActivityMethod fun fetchInstallationRepos(installationId: Long): List<FetchedRepo>
+  /**
+   * Fetches the installation's complete repo list with each repo's open issues, or throws so the
+   * fetch is retried.
+   */
+  @ActivityMethod fun fetchInstallationRepos(installationId: Long): List<FetchedRepoWithIssues>
 
+  /** Reconciles the fetched repos, and then each one's issues, against the stored rows. */
   @ActivityMethod
-  fun reconcileRepos(
+  fun reconcile(
       installationId: Long,
-      repos: List<FetchedRepo>,
-      syncStartedAtEpochMillis: Long,
-  )
-
-  /** Fetches one repo's open issues, or throws so the fetch is retried. */
-  @ActivityMethod
-  fun fetchRepoIssues(installationId: Long, repoFullName: String): List<FetchedIssue>
-
-  @ActivityMethod
-  fun reconcileIssues(
-      installationId: Long,
-      githubRepoId: Long,
-      repoFullName: String,
-      issues: List<FetchedIssue>,
+      repos: List<FetchedRepoWithIssues>,
       syncStartedAtEpochMillis: Long,
   )
 
@@ -42,18 +33,14 @@ interface RepoSyncActivities {
   @ActivityMethod fun startRepoSync(installationId: Long)
 
   /**
-   * Starts (fire-and-forget) processing for one issue, and is a no-op while that issue is already
-   * in flight, so the sweep can attempt every ready issue on every run.
+   * Starts (fire-and-forget) processing for each of [issues], and is a no-op for any one already in
+   * flight, so the sweep can attempt every ready issue on every run.
    *
    * Only while in flight. What keeps a finished issue from being worked again is that the session
    * took the label off it, which is the sweep's own question rather than a property of the id.
+   *
+   * All of them in one call, so what a sweep spends on round trips does not grow with how much
+   * there is to work.
    */
-  @ActivityMethod
-  fun startIssueProcessing(
-      installationId: Long,
-      githubRepoId: Long,
-      repoFullName: String,
-      number: Int,
-      title: String,
-  )
+  @ActivityMethod fun startIssueProcessing(installationId: Long, issues: List<ReadyIssue>)
 }
