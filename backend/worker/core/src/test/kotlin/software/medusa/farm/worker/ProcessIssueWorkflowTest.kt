@@ -32,6 +32,9 @@ class ProcessIssueWorkflowTest {
   // Flip to make the attempt fail, so the failure path can be exercised.
   private var failAttempt = false
 
+  // Flip to make the agent find nothing worth changing, so no pull request is opened.
+  private var attemptChangesNothing = false
+
   // What the fake GitHub reports the pull request as, and when it says it was merged.
   private var pullRequestState = "open"
   private var pullRequestMerged = false
@@ -66,6 +69,13 @@ class ProcessIssueWorkflowTest {
         title: String,
     ): IssueAttemptOutcome {
       check(!failAttempt) { "attempt boom" }
+      if (attemptChangesNothing) {
+        return IssueAttemptOutcome(
+            pullRequestUrl = null,
+            pullRequestNumber = null,
+            pullRequestHeadSha = null,
+        )
+      }
       return IssueAttemptOutcome(
           pullRequestUrl = "https://github.com/acme/one/pull/12",
           pullRequestNumber = 12,
@@ -130,9 +140,57 @@ class ProcessIssueWorkflowTest {
     // The opened PR is recorded on the session.
     assertEquals("https://github.com/acme/one/pull/12", session.pullRequest?.url)
 
-    val commentPosts =
-        server.requests.count { it.method == "POST" && it.pathAndQuery.endsWith("/comments") }
-    assertEquals(1, commentPosts)
+    assertTrue(
+        issueComments().first().contains("https://github.com/acme/one/pull/12"),
+        "the issue was not told where the work went",
+    )
+  }
+
+  @Test
+  fun `a merged pull request takes the issue out of the queue`() {
+    env.registerDelayedCallback(Duration.ofMinutes(5)) {
+      pullRequestState = "closed"
+      pullRequestMerged = true
+    }
+
+    process()
+
+    assertEquals(1, readyLabelRemovals().size, "the issue was left in the queue")
+    assertTrue(
+        issueComments().last().contains("was merged"),
+        "the issue was not told how the session ended",
+    )
+    // Said before dropped: the label is what the sweep reads and what a person reads for, so an
+    // issue leaving the queue in silence disappears from both.
+    assertTrue(
+        server.requests.indexOfLast(::isIssueComment) <
+            server.requests.indexOfFirst { it.method == "DELETE" },
+        "the label went before anything on the issue said why",
+    )
+  }
+
+  @Test
+  fun `an issue the agent found nothing to do on leaves the queue saying so`() {
+    attemptChangesNothing = true
+
+    process()
+
+    val comment = issueComments().single()
+    assertTrue(comment.contains("didn't find anything to change"), comment)
+    assertTrue(comment.contains("farm:ready"), "nothing on the issue says why it left the queue")
+    assertEquals(1, readyLabelRemovals().size)
+  }
+
+  @Test
+  fun `a run that failed takes the issue out of the queue, and says it failed`() {
+    failAttempt = true
+    runCatching { process() }
+
+    // Not silently: an issue nobody managed to work is one somebody has to be able to put back.
+    val comment = issueComments().single()
+    assertTrue(comment.contains("failed"), comment)
+    assertTrue(comment.contains("farm:ready"), "nothing on the issue says why it left the queue")
+    assertEquals(1, readyLabelRemovals().size)
   }
 
   @Test
@@ -170,6 +228,8 @@ class ProcessIssueWorkflowTest {
     // Over, but not successful — which is read from the merge, not from the session ending.
     assertEquals(SessionState.COMPLETED, session.state)
     assertNull(session.pullRequest?.mergedAt)
+    assertTrue(issueComments().last().contains("closed without being merged"))
+    assertEquals(1, readyLabelRemovals().size, "the issue was left in the queue")
   }
 
   @Test
@@ -182,6 +242,8 @@ class ProcessIssueWorkflowTest {
     val session = runBlocking { sessions.listForOrgs(listOf(installationId)) }.single()
     assertEquals(SessionState.COMPLETED, session.state)
     assertNull(session.pullRequest?.mergedAt)
+    assertTrue(issueComments().last().contains("stopped following it"))
+    assertEquals(1, readyLabelRemovals().size, "the issue was left in the queue")
   }
 
   @Test
@@ -274,6 +336,18 @@ class ProcessIssueWorkflowTest {
     assertEquals(SessionState.FAILED, session.state)
   }
 
+  /** What Farm said on the issue, in the order it said it. */
+  private fun issueComments(): List<String> =
+      server.requests.filter(::isIssueComment).map { it.body }
+
+  private fun isIssueComment(request: FakeGitHubServer.Request): Boolean =
+      request.method == "POST" && request.pathAndQuery == "/repos/acme/one/issues/7/comments"
+
+  private fun readyLabelRemovals(): List<FakeGitHubServer.Request> =
+      server.requests.filter {
+        it.method == "DELETE" && it.pathAndQuery == "/repos/acme/one/issues/7/labels/farm%3Aready"
+      }
+
   private fun handle(request: FakeGitHubServer.Request): FakeGitHubServer.Response {
     val path = request.pathAndQuery.substringBefore('?')
     return when {
@@ -282,6 +356,7 @@ class ProcessIssueWorkflowTest {
               201,
               """{"token": "tok", "expires_at": "2999-01-01T00:00:00Z"}""",
           )
+      path.contains("/labels/") -> FakeGitHubServer.Response(200, "[]")
       path.endsWith("/reviews") -> FakeGitHubServer.Response(200, reviews)
       // Before the issue-comment clause below: a review's line comments hang off the pull request
       // and end in "/comments" too.

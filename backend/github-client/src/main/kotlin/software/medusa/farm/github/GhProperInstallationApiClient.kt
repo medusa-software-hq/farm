@@ -1,6 +1,8 @@
 package software.medusa.farm.github
 
+import java.net.URLEncoder
 import java.net.http.HttpClient
+import java.nio.charset.StandardCharsets
 import java.time.Instant
 import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.SerialName
@@ -10,10 +12,19 @@ import kotlinx.serialization.encodeToString
 private const val httpOk = 200
 private const val httpCreated = 201
 private const val httpNoContent = 204
+private const val httpNotFound = 404
 private const val httpUnprocessable = 422
 
 // Grey, so a label made by a client rather than a person does not claim a meaning by its colour.
 private const val defaultLabelColor = "ededed"
+
+/**
+ * [value] as one segment of a URL path. Label names are free text — a colon, a slash or a space is
+ * allowed in one — so a name cannot be pasted into a path as it stands.
+ */
+private fun pathSegment(value: String): String =
+    // The JDK encodes for a form, where a space is "+"; in a path it is "%20".
+    URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
 
 /**
  * The installation surface for one org: its installation-only endpoints, with the resource surface
@@ -112,6 +123,19 @@ private constructor(
     // as success.
     check(response.statusCode() == httpCreated || response.statusCode() == httpUnprocessable) {
       "GitHub label creation failed: ${response.statusCode()} ${response.body()}"
+    }
+  }
+
+  override suspend fun removeLabel(repo: GhRepoFullName, number: Int, name: String) {
+    val response =
+        http.delete(
+            "/repos/${repo.value}/issues/$number/labels/${pathSegment(name)}",
+            bearer = tokenProvider.provideToken(),
+        )
+    // Not carrying it is the outcome asked for, and GitHub reports that as not found rather than
+    // as success.
+    check(response.statusCode() == httpOk || response.statusCode() == httpNotFound) {
+      "GitHub label removal failed: ${response.statusCode()} ${response.body()}"
     }
   }
 

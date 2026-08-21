@@ -214,6 +214,17 @@ class FarmLoopSystemTest {
           }
         }
     assertEquals("COMPLETED", finished.state)
+
+    // The sweep's own view of the queue: open issues carrying the label. An issue still in it once
+    // the session is over is picked up by the next sweep to look, and the change that just landed
+    // is implemented all over again.
+    //
+    // Read straight after the session rather than waited for: the label comes off before the
+    // session closes.
+    assertTrue(
+        gitHub.listIssues(repo).none { READY_LABEL in it.labels },
+        "the finished issue is still offered up for work",
+    )
   }
 
   private suspend fun runsOf(api: FarmServiceGrpcKt.FarmServiceCoroutineStub, sessionId: String) =

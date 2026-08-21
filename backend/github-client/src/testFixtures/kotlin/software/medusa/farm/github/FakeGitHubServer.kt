@@ -9,7 +9,12 @@ import java.util.concurrent.CopyOnWriteArrayList
  * request, and answers via the supplied [handler]. Point a client's `baseUrl` at [baseUrl].
  */
 class FakeGitHubServer(private val handler: (Request) -> Response) : AutoCloseable {
-  class Request(val method: String, val pathAndQuery: String, val authorization: String?)
+  class Request(
+      val method: String,
+      val pathAndQuery: String,
+      val authorization: String?,
+      val body: String,
+  )
 
   class Response(
       val status: Int,
@@ -27,9 +32,9 @@ class FakeGitHubServer(private val handler: (Request) -> Response) : AutoCloseab
                   exchange.requestMethod,
                   exchange.requestURI.toString(),
                   exchange.requestHeaders.getFirst("Authorization"),
+                  exchange.requestBody.readBytes().decodeToString(),
               )
           requests += request
-          exchange.requestBody.readBytes()
           val response =
               try {
                 handler(request)

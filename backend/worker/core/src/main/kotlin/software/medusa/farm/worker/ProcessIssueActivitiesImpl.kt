@@ -7,6 +7,7 @@ import software.medusa.farm.github.GhInstallationId
 import software.medusa.farm.github.GhPullRequestReviewState
 import software.medusa.farm.github.GhPullRequestState
 import software.medusa.farm.github.GhRepoFullName
+import software.medusa.farm.shared.FarmLabels
 import software.medusa.farm.shared.SessionStore
 
 /** Runs the session writes and the GitHub comment posts on the activity thread. */
@@ -35,6 +36,13 @@ class ProcessIssueActivitiesImpl(
         .provideForInstallation(GhInstallationId(installationId))
         .createIssueComment(GhRepoFullName(repoFullName), number, body)
   }
+
+  override fun removeReadyLabel(installationId: Long, repoFullName: String, number: Int) =
+      runBlocking {
+        clientProvider
+            .provideForInstallation(GhInstallationId(installationId))
+            .removeLabel(GhRepoFullName(repoFullName), number, FarmLabels.READY)
+      }
 
   override fun recordPullRequest(
       sessionId: String,

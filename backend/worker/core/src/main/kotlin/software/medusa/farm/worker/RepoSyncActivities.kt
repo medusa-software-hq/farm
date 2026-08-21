@@ -42,9 +42,11 @@ interface RepoSyncActivities {
   @ActivityMethod fun startRepoSync(installationId: Long)
 
   /**
-   * Starts (fire-and-forget) processing for one issue. With the per-issue stable id and
-   * REJECT_DUPLICATE, an issue that was already processed (or is in flight) is a no-op, so the
-   * sweep can attempt every open issue every run without re-processing.
+   * Starts (fire-and-forget) processing for one issue, and is a no-op while that issue is already
+   * in flight, so the sweep can attempt every ready issue on every run.
+   *
+   * Only while in flight. What keeps a finished issue from being worked again is that the session
+   * took the label off it, which is the sweep's own question rather than a property of the id.
    */
   @ActivityMethod
   fun startIssueProcessing(

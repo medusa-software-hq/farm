@@ -250,6 +250,11 @@ class PublishActivitiesImplTest {
       assertContains(gitCli.calls, "commit")
       assertContains(gitCli.calls, "push:farm/issue-7")
       assertEquals(1, runBlocking { sessions.getRuns("session-1") }.size, "the run is recorded")
+
+      // What shuts the issue when this merges. Nothing else does it, and a change that has landed
+      // on an issue left open reads as work still outstanding.
+      val opened = server.requests.single { it.pathAndQuery.endsWith("/pulls") }
+      assertContains(opened.body, "Closes #7")
     }
   }
 

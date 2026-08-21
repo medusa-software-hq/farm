@@ -21,10 +21,14 @@ interface ProcessIssueWorkflow {
 }
 
 /**
- * The stable Temporal workflow id for processing one issue. Combined with REJECT_DUPLICATE at the
- * start site, it makes processing run once per issue: the hourly sweep re-attempts every open
- * issue, but an id that already ran is rejected rather than re-processed (and re-commented). Lives
- * in one place so the start site and any future re-trigger target the same id.
+ * The stable Temporal workflow id for processing one issue: one run at a time per issue, since the
+ * sweep re-attempts every ready issue on every pass and a second run alongside the first would work
+ * the same issue twice over. Lives in one place so the start site and any future re-trigger target
+ * the same id.
+ *
+ * Only while a run is in flight. Whether a *finished* issue is worked again is asked of the label,
+ * not of the id: a closed execution is forgotten when the namespace's retention runs out, so an id
+ * cannot say anything that has to outlast it.
  */
 fun processIssueWorkflowId(githubRepoId: Long, number: Int): String =
     "process-issue:$githubRepoId:$number"
