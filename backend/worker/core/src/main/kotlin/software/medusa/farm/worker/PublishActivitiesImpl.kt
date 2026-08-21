@@ -72,6 +72,7 @@ class PublishActivitiesImpl(
     try {
       gitCli.clone(cloneUrl(repo), clone, token)
       val baseBranch = gitCli.currentBranch(clone)
+      val baseSha = gitCli.headSha(clone)
 
       runAgent(
           sessionId = sessionId,
@@ -82,6 +83,7 @@ class PublishActivitiesImpl(
       )
 
       gitCli.stageAll(clone)
+      checkNothingWasCommitted(clone, baseSha)
       if (!gitCli.hasStagedChanges(clone)) {
         return@runBlocking IssueAttemptOutcome(
             pullRequestUrl = null,
@@ -139,6 +141,7 @@ class PublishActivitiesImpl(
       // Onto the branch the pull request is on, so the agent sees the work being reviewed rather
       // than the trunk it was branched from.
       gitCli.checkout(clone, branch)
+      val baseSha = gitCli.headSha(clone)
 
       runAgent(
           sessionId = sessionId,
@@ -155,6 +158,7 @@ class PublishActivitiesImpl(
       )
 
       gitCli.stageAll(clone)
+      checkNothingWasCommitted(clone, baseSha)
       // A review can be answered without changing anything — the reviewer was mistaken, or asked
       // for something already there. The run is still recorded; there is simply nothing to push.
       if (gitCli.hasStagedChanges(clone)) {
@@ -258,6 +262,23 @@ class PublishActivitiesImpl(
           spendBudget = SPEND_BUDGET,
       )
 
+  /**
+   * Refuses to carry on where the agent has committed the work itself.
+   *
+   * Publishing belongs to the caller: the commit it makes carries Farm's identity and its
+   * signature, and a commit made in the workspace carries whatever the machine's git happens to be
+   * configured with. Worse, a committed change leaves nothing staged — so what the agent did would
+   * read as an agent that changed nothing, and a run's work would be dropped with the workspace and
+   * nobody told.
+   */
+  private suspend fun checkNothingWasCommitted(clone: Path, baseSha: String) {
+    check(gitCli.headSha(clone) == baseSha) {
+      "The agent committed its own work, which it is asked not to do: publishing is this activity's " +
+          "to do, and a commit it did not make is one it cannot sign or attribute. Nothing was " +
+          "pushed."
+    }
+  }
+
   private companion object {
     const val INITIAL_RUN_ORDINAL = 0
 
@@ -276,6 +297,10 @@ class PublishActivitiesImpl(
     // question.
     val DISALLOWED_TOOL_RULES =
         listOf(
+            // Committing is the caller's too, not only pushing: a commit the agent makes cannot
+            // carry Farm's identity or its signature, and leaves nothing staged for the caller to
+            // find.
+            CldToolRule.Bash(CldToolRule.Bash.CommandMask("git commit:*")),
             CldToolRule.Bash(CldToolRule.Bash.CommandMask("git push:*")),
             CldToolRule.Bash(CldToolRule.Bash.CommandMask("gh:*")),
             CldToolRule.WebFetch,
@@ -291,7 +316,9 @@ class PublishActivitiesImpl(
         "You are an autonomous coding agent running non-interactively. The single message you are " +
             "given is the text of a GitHub issue, and your job is to implement and solve it " +
             "fully. Do not wait for further instructions or scope confirmation, and never ask " +
-            "for clarification; make reasonable assumptions and implement. Do not push commits " +
-            "or open pull requests yourself."
+            "for clarification; make reasonable assumptions and implement. Leave your work in " +
+            "the working tree: do not commit it, do not push, and do not open pull requests — " +
+            "publishing is done for you, and a change you commit yourself is a change that never " +
+            "gets published."
   }
 }

@@ -97,7 +97,13 @@ class PublishActivitiesImplTest {
   }
 
   /** Records the calls it received; [hasChanges] drives the diff check. */
-  private class FakeGitCli(private val hasChanges: Boolean) : GitCli {
+  private class FakeGitCli(
+      private val hasChanges: Boolean,
+      /**
+       * Whether the agent commits in the workspace, which moves head off where the clone left it.
+       */
+      private val agentCommits: Boolean,
+  ) : GitCli {
     val calls = mutableListOf<String>()
     var clonedInto: Path? = null
 
@@ -144,7 +150,10 @@ class PublishActivitiesImplTest {
 
     override suspend fun headSha(repo: Path): String {
       calls += "headSha"
-      return "0".repeat(40)
+      // The first answer is where the clone left head; a later one differs only where something
+      // committed in between.
+      val moved = agentCommits && calls.count { it == "headSha" } > 1
+      return if (moved) "1".repeat(40) else "0".repeat(40)
     }
   }
 
@@ -234,9 +243,26 @@ class PublishActivitiesImplTest {
   }
 
   @Test
+  fun `refuses to publish where the agent committed the work itself`() {
+    FakeGitHubServer(::handle).use { server ->
+      val gitCli = FakeGitCli(hasChanges = false, agentCommits = true)
+      val engine = FakeEngine()
+
+      val failure =
+          assertFailsWith<IllegalStateException> {
+            activities(gitCli, engine, server)
+                .attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
+          }
+
+      assertContains(failure.message.orEmpty(), "committed its own work")
+      assertFalse(gitCli.calls.any { it.startsWith("push") }, "it pushed anyway: ${gitCli.calls}")
+    }
+  }
+
+  @Test
   fun `runs the agent on the clone and opens a PR when there are changes`() {
     FakeGitHubServer(::handle).use { server ->
-      val gitCli = FakeGitCli(hasChanges = true)
+      val gitCli = FakeGitCli(hasChanges = true, agentCommits = false)
       val engine = FakeEngine()
 
       val outcome =
@@ -272,7 +298,12 @@ class PublishActivitiesImplTest {
         )
 
     FakeGitHubServer(::handle).use { server ->
-      activities(FakeGitCli(hasChanges = false), engine, server, sessionStore = store)
+      activities(
+              FakeGitCli(hasChanges = false, agentCommits = false),
+              engine,
+              server,
+              sessionStore = store,
+          )
           .attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
     }
 
@@ -314,7 +345,7 @@ class PublishActivitiesImplTest {
       // crashed attempt looks like: entries written, nothing to say about how it went.
       assertFailsWith<RunSummaryGenerationError> {
         activities(
-                FakeGitCli(hasChanges = false),
+                FakeGitCli(hasChanges = false, agentCommits = false),
                 engine,
                 server,
                 UnreachableSummarizer,
@@ -323,7 +354,7 @@ class PublishActivitiesImplTest {
             .attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
       }
 
-      activities(FakeGitCli(hasChanges = false), engine, server, attempt = 2)
+      activities(FakeGitCli(hasChanges = false, agentCommits = false), engine, server, attempt = 2)
           .attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
     }
 
@@ -343,7 +374,12 @@ class PublishActivitiesImplTest {
   fun `raises when the run cannot be summarized, so Temporal retries`() {
     FakeGitHubServer(::handle).use { server ->
       val activities =
-          activities(FakeGitCli(hasChanges = true), FakeEngine(), server, UnreachableSummarizer)
+          activities(
+              FakeGitCli(hasChanges = true, agentCommits = false),
+              FakeEngine(),
+              server,
+              UnreachableSummarizer,
+          )
 
       assertFailsWith<RunSummaryGenerationError> {
         activities.attemptIssue("session-1", 100L, "acme/one", 7, "Fix it")
@@ -359,7 +395,7 @@ class PublishActivitiesImplTest {
   @Test
   fun `does not open a PR when the agent produced no changes`() {
     FakeGitHubServer(::handle).use { server ->
-      val gitCli = FakeGitCli(hasChanges = false)
+      val gitCli = FakeGitCli(hasChanges = false, agentCommits = false)
 
       val outcome =
           activities(gitCli, FakeEngine(), server)
