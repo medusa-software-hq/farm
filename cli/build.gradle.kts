@@ -86,6 +86,10 @@ dependencies {
   runtimeOnly(libs.grpc.okhttp)
 
   testImplementation(libs.kotlin.test)
+  // The API server, so the CLI can be asked its questions of a real one: what the service sends
+  // back is the half of this that unit tests cannot reach.
+  testImplementation(project(":backend:api:core"))
+  testImplementation(libs.kotlinx.coroutines.core)
 }
 
 val grpcJavaId = "grpc"

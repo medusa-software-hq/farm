@@ -9,6 +9,8 @@ import software.medusa.farm.cli.command.LinkOrgCommand
 import software.medusa.farm.cli.command.LoginCommand
 import software.medusa.farm.cli.command.LogoutCommand
 import software.medusa.farm.cli.command.OrgsCommand
+import software.medusa.farm.cli.command.RunsCommand
+import software.medusa.farm.cli.command.SessionsCommand
 import software.medusa.farm.cli.command.SyncCommand
 
 class MainCommand : NoOpCliktCommand(name = "ms-farm") {
@@ -26,6 +28,8 @@ fun main(args: Array<String>) {
           LinkOrgCommand(),
           OrgsCommand(),
           IssuesCommand(),
+          SessionsCommand(),
+          RunsCommand(),
           SyncCommand(),
       )
       .main(args)
