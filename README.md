@@ -14,7 +14,8 @@ Label an issue `farm:ready` and Farm takes it: it clones the repository, works t
 issue with the agent, pushes a branch, and opens a pull request. Review it as you
 would anyone's. Asking for changes starts another run — a fresh one, given what the
 last run did and what the review said, rather than a conversation resumed — and
-merging ends the session. Nothing merges itself.
+merging ends the session. A check the branch requires going red starts a run of its
+own, without waiting to be asked. Nothing merges itself.
 
 ## Founding decisions
 

@@ -178,9 +178,10 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
   }
 
   /**
-   * Polls the pull request, running a fixup for each review that asks for changes, until it stops
-   * being open. Gives up after [REVIEW_SILENCE_LIMIT] of nothing happening: the session is over
-   * either way, and whether it succeeded is read from the merge, not from the session ending.
+   * Polls the pull request, running a fixup for each review that asks for changes and for each way
+   * its checks go red, until it stops being open. Gives up after [REVIEW_SILENCE_LIMIT] of nothing
+   * happening: the session is over either way, and whether it succeeded is read from the merge, not
+   * from the session ending.
    */
   private fun awaitPullRequestEnd(
       sessionId: String,
@@ -192,7 +193,9 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
   ): IssueOutcome {
     var silence = Duration.ZERO
     var lastReviewId = NO_REVIEW_YET
-    var fixupsRun = 0
+    var reviewFixupsRun = 0
+    var checkFixupsRun = 0
+    var checksWorked = emptyList<FailedCheck>()
 
     while (silence < REVIEW_SILENCE_LIMIT) {
       // Just opened or just pushed to, so nothing can have happened yet — sleep, then look.
@@ -213,30 +216,60 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
         GhPullRequestState.OPEN -> Unit
       }
 
-      val feedback = report.feedback ?: continue
-      // Marked as seen whether or not it is acted on, so a review that cannot be acted on does
-      // not come back every time round.
-      lastReviewId = feedback.reviewId
-      if (fixupsRun >= MAX_FIXUP_RUNS) continue
+      // A person before a machine: a reviewer who has read the change knows things the build does
+      // not, and the fixup they get pushes a commit the checks run against anyway.
+      val feedback = report.feedback
+      if (feedback != null) {
+        // Marked as seen whether or not it is acted on, so a review that cannot be acted on does
+        // not come back every time round.
+        lastReviewId = feedback.reviewId
+        if (reviewFixupsRun >= MAX_FIXUP_RUNS) continue
 
-      fixupsRun++
-      // The review is in, so the wait on a person is over until the fixup gives them something to
-      // look at again.
+        reviewFixupsRun++
+        // The review is in, so the wait on a person is over until the fixup gives them something to
+        // look at again.
+        activities.resumeWork(sessionId)
+        publishActivities.fixupIssue(
+            sessionId,
+            installationId,
+            repoFullName,
+            number,
+            title,
+            reviewFixupsRun + checkFixupsRun,
+            feedback,
+        )
+        activities.awaitReview(sessionId)
+
+        // Somebody is engaged with this pull request, so the clock that gives up on silence starts
+        // again rather than running out mid-conversation.
+        silence = Duration.ZERO
+        continue
+      }
+
+      // A review says something new each time it is left; a check says the same thing on every
+      // pass for as long as it is red, so it is worked once and then only when it fails differently
+      // — otherwise one test that always falls over the same way would spend the whole budget.
+      val failedChecks = report.failedChecks
+      if (failedChecks.isEmpty() || failedChecks == checksWorked) continue
+      checksWorked = failedChecks
+      if (checkFixupsRun >= MAX_CHECK_FIXUP_RUNS) continue
+
+      checkFixupsRun++
       activities.resumeWork(sessionId)
-      publishActivities.fixupIssue(
+      publishActivities.fixupChecks(
           sessionId,
           installationId,
           repoFullName,
           number,
           title,
-          fixupsRun,
-          feedback,
+          reviewFixupsRun + checkFixupsRun,
+          failedChecks,
       )
       activities.awaitReview(sessionId)
 
-      // Somebody is engaged with this pull request, so the clock that gives up on silence starts
-      // again rather than running out mid-conversation.
-      silence = Duration.ZERO
+      // Silence is not reset: it measures how long nobody has touched the pull request, and Farm
+      // repairing its own build is not somebody having touched it. Resetting here would let a
+      // pull request keep itself waited on without a person ever looking at it.
     }
 
     return IssueOutcome.ABANDONED
@@ -274,6 +307,10 @@ class ProcessIssueWorkflowImpl : ProcessIssueWorkflow {
     // A bound on going round in circles, not on how much review a change deserves: past this the
     // pull request is still watched for a merge, but its reviews stop being worked.
     internal const val MAX_FIXUP_RUNS = 3
+
+    // A budget of its own rather than a share of the reviews': a red build must not be able to eat
+    // the runs that the next thing a reviewer says is owed.
+    internal const val MAX_CHECK_FIXUP_RUNS = 3
 
     private val LABEL_IT_AGAIN =
         "Taking `${FarmLabels.READY}` off; label it again to have Farm try afresh."

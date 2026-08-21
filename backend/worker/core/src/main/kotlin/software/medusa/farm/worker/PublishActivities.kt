@@ -46,4 +46,22 @@ interface PublishActivities {
       runOrdinal: Int,
       feedback: ReviewFeedback,
   )
+
+  /**
+   * As [fixupIssue], but for a run put on [failedChecks] rather than on anything a person said.
+   *
+   * The agent is told what the checks reported and left to make them pass; it is not told to run
+   * them. Which of a repository's checks can be run outside CI at all — and how — is the
+   * repository's business, and the run reads it for that as it reads it for everything else.
+   */
+  @ActivityMethod
+  fun fixupChecks(
+      sessionId: String,
+      installationId: Long,
+      repoFullName: String,
+      number: Int,
+      title: String,
+      runOrdinal: Int,
+      failedChecks: List<FailedCheck>,
+  )
 }

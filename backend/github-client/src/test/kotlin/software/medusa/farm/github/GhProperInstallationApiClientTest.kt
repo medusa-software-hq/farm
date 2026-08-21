@@ -89,7 +89,7 @@ class GhProperInstallationApiClientTest {
           FakeGitHubServer.Response(
               201,
               """{"number": 42, "html_url": "https://github.com/acme/one/pull/42", """ +
-                  """"state": "open", "head": {"sha": "abc123"}}""",
+                  """"state": "open", "head": {"sha": "abc123"}, "base": {"ref": "trunk/v1"}}""",
           )
         }
         .use { server ->
@@ -106,6 +106,7 @@ class GhProperInstallationApiClientTest {
           assertEquals("https://github.com/acme/one/pull/42", pr.url)
           assertEquals(GhPullRequestState.OPEN, pr.state)
           assertEquals("abc123", pr.headSha)
+          assertEquals("trunk/v1", pr.baseBranch)
 
           val request = server.requests.single()
           assertEquals("POST", request.method)
@@ -137,7 +138,7 @@ class GhProperInstallationApiClientTest {
   @Test
   fun `reads pull request state, distinguishing merged from closed-unmerged`() = runBlocking {
     FakeGitHubServer { request ->
-          val head = """"head": {"sha": "s"}"""
+          val head = """"head": {"sha": "s"}, "base": {"ref": "trunk"}"""
           when {
             request.pathAndQuery.endsWith("/pulls/1") ->
                 FakeGitHubServer.Response(
@@ -227,6 +228,162 @@ class GhProperInstallationApiClientTest {
           assertEquals("Very nice line", comments.first().body)
           // A comment whose line has since moved out of the diff keeps its file but loses its line.
           assertNull(comments[1].line)
+        }
+  }
+
+  @Test
+  fun `reads how far a check got, how it came out, and what it reported`() = runBlocking {
+    // Shaped after a real commit's checks: one still going, one red with a report, one green, and
+    // a conclusion this library has no name for.
+    FakeGitHubServer { _ ->
+          FakeGitHubServer.Response(
+              200,
+              """{"total_count": 4, "check_runs": [
+                   {"id": 51226077961, "name": "test", "status": "in_progress",
+                    "conclusion": null},
+                   {"id": 51226077962, "name": "build", "status": "completed",
+                    "conclusion": "failure",
+                    "output": {"title": "1 error", "summary": "Compilation failed",
+                               "text": null}},
+                   {"id": 51226077963, "name": "lint", "status": "completed",
+                    "conclusion": "success", "output": {"title": null, "summary": null}},
+                   {"id": 51226077964, "name": "deploy", "status": "completed",
+                    "conclusion": "something_new"}]}""",
+          )
+        }
+        .use { server ->
+          val checkRuns = clientAgainst(server).listCheckRuns(GhRepoFullName("acme/one"), "abc123")
+
+          assertEquals(
+              listOf(
+                  GhCheckRunStatus.IN_PROGRESS,
+                  GhCheckRunStatus.COMPLETED,
+                  GhCheckRunStatus.COMPLETED,
+                  GhCheckRunStatus.COMPLETED,
+              ),
+              checkRuns.map { it.status },
+          )
+          assertEquals(
+              listOf(
+                  null,
+                  GhCheckRunConclusion.FAILURE,
+                  GhCheckRunConclusion.SUCCESS,
+                  GhCheckRunConclusion.UNRECOGNIZED,
+              ),
+              checkRuns.map { it.conclusion },
+          )
+          assertEquals(GhCheckRunId(51226077962), checkRuns[1].id)
+          assertEquals(
+              GhCheckRunOutput(title = "1 error", summary = "Compilation failed", text = ""),
+              checkRuns[1].output,
+          )
+          // A check is free to report nothing and be read for its conclusion alone.
+          assertEquals(GhCheckRunOutput(title = "", summary = "", text = ""), checkRuns[3].output)
+        }
+  }
+
+  @Test
+  fun `reads the places a check pointed at`() = runBlocking {
+    FakeGitHubServer { _ ->
+          FakeGitHubServer.Response(
+              200,
+              """[{"path": "src/main/kotlin/A.kt", "start_line": 5, "end_line": 5,
+                   "annotation_level": "failure", "message": "Unresolved reference: foo"},
+                  {"path": ".github", "start_line": 0, "end_line": 0,
+                   "annotation_level": "failure", "message": "Process completed with exit code 1"}]""",
+          )
+        }
+        .use { server ->
+          val annotations =
+              clientAgainst(server)
+                  .listCheckRunAnnotations(GhRepoFullName("acme/one"), GhCheckRunId(51226077962))
+
+          assertEquals("src/main/kotlin/A.kt", annotations.first().path)
+          assertEquals(5, annotations.first().startLine)
+          assertEquals("Unresolved reference: foo", annotations.first().message)
+          // A check with nothing in the diff to point at says so with line zero.
+          assertNull(annotations[1].startLine)
+        }
+  }
+
+  @Test
+  fun `reads the checks a branch requires, past the rules that are about something else`() =
+      runBlocking {
+        FakeGitHubServer { _ ->
+              FakeGitHubServer.Response(
+                  200,
+                  """[{"type": "deletion", "ruleset_id": 5},
+                      {"type": "pull_request", "ruleset_id": 5,
+                       "parameters": {"allowed_merge_methods": ["merge"]}},
+                      {"type": "required_status_checks", "ruleset_id": 5,
+                       "parameters": {"strict_required_status_checks_policy": true,
+                         "required_status_checks": [
+                           {"context": "Backend (implementation) / Check", "integration_id": 15368},
+                           {"context": "schema / Integration test", "integration_id": 15368}]}}]""",
+              )
+            }
+            .use { server ->
+              val required =
+                  clientAgainst(server)
+                      .listRequiredCheckNames(GhRepoFullName("acme/one"), "trunk/v1")
+
+              assertEquals(
+                  listOf("Backend (implementation) / Check", "schema / Integration test"),
+                  required,
+              )
+              // A branch name is free to contain a slash, which is not a path separator here.
+              assertTrue(
+                  server.requests
+                      .single()
+                      .pathAndQuery
+                      .startsWith("/repos/acme/one/rules/branches/trunk%2Fv1")
+              )
+            }
+      }
+
+  @Test
+  fun `a branch whose rules GitHub will not show requires no check`() = runBlocking {
+    FakeGitHubServer { _ ->
+          FakeGitHubServer.Response(
+              403,
+              """{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature."}""",
+          )
+        }
+        .use { server ->
+          assertEquals(
+              emptyList(),
+              clientAgainst(server).listRequiredCheckNames(GhRepoFullName("acme/one"), "trunk"),
+          )
+        }
+  }
+
+  @Test
+  fun `a spent rate limit is not mistaken for a branch that requires nothing`() = runBlocking {
+    FakeGitHubServer { _ ->
+          FakeGitHubServer.Response(
+              403,
+              """{"message":"API rate limit exceeded"}""",
+              headers = mapOf("x-ratelimit-remaining" to "0"),
+          )
+        }
+        .use { server ->
+          val failure =
+              assertFailsWith<GhRequestFailed> {
+                clientAgainst(server).listRequiredCheckNames(GhRepoFullName("acme/one"), "trunk")
+              }
+
+          assertTrue(failure.rateLimited, "a spent allowance read as a refusal")
+        }
+  }
+
+  @Test
+  fun `a branch under no rules requires no check`() = runBlocking {
+    FakeGitHubServer { _ -> FakeGitHubServer.Response(200, "[]") }
+        .use { server ->
+          assertEquals(
+              emptyList(),
+              clientAgainst(server).listRequiredCheckNames(GhRepoFullName("acme/one"), "trunk"),
+          )
         }
   }
 

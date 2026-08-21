@@ -1,6 +1,9 @@
 package software.medusa.farm.worker
 
 import kotlinx.coroutines.runBlocking
+import software.medusa.farm.github.GhCheckRunConclusion
+import software.medusa.farm.github.GhCheckRunOutput
+import software.medusa.farm.github.GhCheckRunStatus
 import software.medusa.farm.github.GhInstallationApiClient
 import software.medusa.farm.github.GhInstallationApiClientProvider
 import software.medusa.farm.github.GhInstallationId
@@ -68,11 +71,13 @@ class ProcessIssueActivitiesImpl(
 
     val report =
         if (pullRequest.state != GhPullRequestState.OPEN) {
-          PullRequestReport(state = pullRequest.state, feedback = null)
+          PullRequestReport(state = pullRequest.state, feedback = null, failedChecks = emptyList())
         } else {
           PullRequestReport(
               state = pullRequest.state,
               feedback = findFeedback(client, repo, number, afterReviewId),
+              failedChecks =
+                  findFailedChecks(client, repo, pullRequest.baseBranch, pullRequest.headSha),
           )
         }
 
@@ -109,6 +114,45 @@ class ProcessIssueActivitiesImpl(
     return ReviewFeedback(reviewId = review.id, body = review.body, comments = comments)
   }
 
+  /**
+   * What the checks on [headSha] that [baseBranch] will not let a merge past came back red on, with
+   * what each of them reported.
+   *
+   * Only those: a check the branch does not require can be red for reasons that live in the
+   * infrastructure it runs on rather than in the repository, and no edit the agent makes would turn
+   * it green. What blocks the merge is the part of the pipeline the agent can be held to.
+   *
+   * Nothing while any of them is still going: a pipeline read half way through reports whichever
+   * checks happen to have finished, and reworking a pull request on the first of thirteen to fall
+   * over — with the other twelve unread — is a run spent on a fraction of the problem.
+   */
+  private suspend fun findFailedChecks(
+      client: GhInstallationApiClient,
+      repo: GhRepoFullName,
+      baseBranch: String,
+      headSha: String,
+  ): List<FailedCheck> {
+    val required = client.listRequiredCheckNames(repo, baseBranch).toSet()
+    val checkRuns = client.listCheckRuns(repo, headSha).filter { it.name in required }
+    if (checkRuns.any { it.status != GhCheckRunStatus.COMPLETED }) return emptyList()
+
+    return checkRuns
+        .filter { it.conclusion in FAILING_CONCLUSIONS }
+        // By name, so that the same failure reported twice in whatever order GitHub happens to
+        // list it in is recognisable as the same failure.
+        .sortedBy { it.name }
+        .map { checkRun ->
+          FailedCheck(
+              name = checkRun.name,
+              report = checkRun.output.describe(),
+              annotations =
+                  client.listCheckRunAnnotations(repo, checkRun.id).map {
+                    FailedCheckAnnotation(path = it.path, line = it.startLine, message = it.message)
+                  },
+          )
+        }
+  }
+
   override fun awaitReview(sessionId: String) = runBlocking { sessionStore.awaitReview(sessionId) }
 
   override fun resumeWork(sessionId: String) = runBlocking { sessionStore.resumeWork(sessionId) }
@@ -116,4 +160,23 @@ class ProcessIssueActivitiesImpl(
   override fun completeSession(sessionId: String) = runBlocking { sessionStore.complete(sessionId) }
 
   override fun failSession(sessionId: String) = runBlocking { sessionStore.fail(sessionId) }
+
+  private companion object {
+    // What a branch protected by a check will not let a merge past. A cancelled run is not among
+    // them: a push supersedes the checks still running on the commit before it, and the commit that
+    // push made is checked in their place.
+    val FAILING_CONCLUSIONS =
+        setOf(
+            GhCheckRunConclusion.FAILURE,
+            GhCheckRunConclusion.TIMED_OUT,
+            GhCheckRunConclusion.ACTION_REQUIRED,
+            GhCheckRunConclusion.STARTUP_FAILURE,
+        )
+
+    /** The three boxes a check reports in, run together as the one thing it had to say. */
+    fun GhCheckRunOutput.describe(): String =
+        listOf(title, summary, text)
+            .filter { it.isNotBlank() }
+            .joinToString(separator = "\n\n") { it.trim() }
+  }
 }

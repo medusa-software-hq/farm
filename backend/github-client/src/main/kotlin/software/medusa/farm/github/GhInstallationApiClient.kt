@@ -39,6 +39,34 @@ interface GhInstallationApiClient : GhResourcesApiClient {
   ): List<GhPullRequestReviewComment>
 
   /**
+   * Every check run reported against commit [ref], whatever state each is in. Requires the App's
+   * Checks:read permission.
+   */
+  suspend fun listCheckRuns(repo: GhRepoFullName, ref: String): List<GhCheckRun>
+
+  /**
+   * The names of the checks a merge into [branch] is made to wait for, as the rulesets in force on
+   * it have them; empty when the branch asks nothing of a merge.
+   *
+   * A second question rather than a field on the check run, because whether a check has to pass is
+   * a property of the branch and not of the run reporting it. Rulesets are the whole answer here: a
+   * branch guarded by the older per-branch protection instead reads as requiring nothing, as does
+   * one whose rules GitHub refuses to show — an unanswerable question is not a failure to ask it.
+   */
+  suspend fun listRequiredCheckNames(repo: GhRepoFullName, branch: String): List<String>
+
+  /**
+   * The places in the code a check run pointed at. Requires the App's Checks:read permission.
+   *
+   * These are the only failure text a check leaves behind that names a file: what a build wrote to
+   * its own log belongs to whatever ran it, and is not on the check.
+   */
+  suspend fun listCheckRunAnnotations(
+      repo: GhRepoFullName,
+      checkRunId: GhCheckRunId,
+  ): List<GhCheckAnnotation>
+
+  /**
    * Creates a label if the repository has not got one by that name, and does nothing if it has.
    * Requires the App's Issues:write permission.
    */

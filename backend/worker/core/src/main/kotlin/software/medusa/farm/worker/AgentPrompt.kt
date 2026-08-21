@@ -5,11 +5,11 @@ import java.security.SecureRandom
 /**
  * Builds what the agent is asked to do.
  *
- * The material is written by whoever filed the issue or reviewed the pull request, which is anyone
- * who can do either — so it is given as labelled blocks rather than run together with the
+ * The material is written by whoever filed the issue, reviewed the pull request, or wrote the check
+ * that reported on it — so it is given as labelled blocks rather than run together with the
  * instructions around it, and the labels carry a nonce that the material cannot have known to
  * forge. Text that tries to close a block early stays inside it, and reads as what it is: something
- * the issue or the review said.
+ * the issue, the review or the check said.
  */
 object AgentPrompt {
   fun forIssue(title: String, body: String): String {
@@ -54,6 +54,34 @@ object AgentPrompt {
         .trimMargin()
   }
 
+  /**
+   * The prompt for a run putting [failedChecks] right. As with [forFixup] the session is a fresh
+   * one, so what the run being followed up did comes back as [previousSummary].
+   */
+  fun forFailedChecks(
+      title: String,
+      body: String,
+      previousSummary: String,
+      failedChecks: List<FailedCheck>,
+  ): String {
+    val nonce = nonce()
+
+    return """
+        |Make the failing checks below pass, in the repository you are working in. The work they ran
+        |against is already committed to the branch you are on; fix what they are failing on and
+        |leave the rest alone.
+        |
+        |$READ_THE_REPOSITORY_FIRST
+        |
+        |${block(nonce, name = "ISSUE", content = issue(title, body))}
+        |
+        |${block(nonce, name = "WHAT THE PREVIOUS RUN DID", content = previousSummary)}
+        |
+        |${block(nonce, name = "FAILING CHECKS", content = render(failedChecks))}
+        """
+        .trimMargin()
+  }
+
   private fun issue(title: String, body: String): String =
       "$title\n\n${body.ifBlank { "(no description)" }}"
 
@@ -74,6 +102,24 @@ object AgentPrompt {
         .ifEmpty { listOf("Changes were requested without any comment.") }
         .joinToString(separator = "\n\n")
   }
+
+  /**
+   * The checks as prose: each one named, then what it reported, then the lines it pointed at. A
+   * check that reported nothing at all is still named, which is the whole of what it left behind.
+   */
+  private fun render(failedChecks: List<FailedCheck>): String =
+      failedChecks.joinToString(separator = "\n\n") { check ->
+        buildList {
+              add("The check \"${check.name}\" failed.")
+              if (check.report.isNotBlank()) add(check.report.trim())
+
+              check.annotations.forEach { annotation ->
+                val where = annotation.line?.let { "${annotation.path}:$it" } ?: annotation.path
+                add("$where\n${annotation.message.trim()}")
+              }
+            }
+            .joinToString(separator = "\n\n")
+      }
 
   /**
    * Wraps [content] in markers labelled [name]. The nonce is drawn per prompt, so nothing written

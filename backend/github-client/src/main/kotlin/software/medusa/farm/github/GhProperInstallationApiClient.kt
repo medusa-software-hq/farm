@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
 
 private const val httpOk = 200
 private const val httpCreated = 201
@@ -249,6 +251,53 @@ private constructor(
           }
           .toList()
 
+  override suspend fun listCheckRuns(repo: GhRepoFullName, ref: String): List<GhCheckRun> =
+      http
+          .getPaged("/repos/${repo.value}/commits/$ref/check-runs", tokenProvider) { body ->
+            gitHubJson.decodeFromString<CheckRunsPageDto>(body).checkRuns.map { it.toGhCheckRun() }
+          }
+          .toList()
+
+  override suspend fun listRequiredCheckNames(
+      repo: GhRepoFullName,
+      branch: String,
+  ): List<String> =
+      try {
+        http
+            .getPaged(
+                "/repos/${repo.value}/rules/branches/${pathSegment(branch)}",
+                tokenProvider,
+            ) { body ->
+              gitHubJson.decodeFromString<List<BranchRuleDto>>(body).flatMap {
+                it.requiredCheckNames()
+              }
+            }
+            .toList()
+      } catch (refusal: GhRequestFailed) {
+        // A repository whose plan does not include rules, or a token not allowed to read them,
+        // answers by refusing. Neither is an answer that changes by asking again, and a branch
+        // whose requirements cannot be read requires nothing that anyone can be held to — the same
+        // as the older per-branch protection, which reads as empty here too.
+        //
+        // Only a refusal. A rate limit or a fault means the requirements are unknown rather than
+        // absent, and a pull request must not be treated as unguarded because GitHub was busy.
+        if (!refusal.refused) throw refusal
+        emptyList()
+      }
+
+  override suspend fun listCheckRunAnnotations(
+      repo: GhRepoFullName,
+      checkRunId: GhCheckRunId,
+  ): List<GhCheckAnnotation> =
+      http
+          .getPaged(
+              "/repos/${repo.value}/check-runs/${checkRunId.value}/annotations",
+              tokenProvider,
+          ) { body ->
+            gitHubJson.decodeFromString<List<AnnotationDto>>(body).map { it.toGhCheckAnnotation() }
+          }
+          .toList()
+
   override suspend fun getPullRequest(repo: GhRepoFullName, number: Int): GhPullRequest {
     val response =
         http.get("/repos/${repo.value}/pulls/$number", bearer = tokenProvider.provideToken())
@@ -286,9 +335,12 @@ private class PullRequestDto(
     val merged: Boolean = false,
     @SerialName("merged_at") val mergedAt: String? = null,
     val head: PullRequestHeadDto,
+    val base: PullRequestBaseDto,
 )
 
 @Serializable private class PullRequestHeadDto(val sha: String)
+
+@Serializable private class PullRequestBaseDto(val ref: String)
 
 private fun PullRequestDto.toGhPullRequest(): GhPullRequest =
     GhPullRequest(
@@ -301,6 +353,7 @@ private fun PullRequestDto.toGhPullRequest(): GhPullRequest =
               else -> GhPullRequestState.CLOSED
             },
         headSha = head.sha,
+        baseBranch = base.ref,
         mergedAt = mergedAt?.let(Instant::parse),
     )
 
@@ -367,6 +420,95 @@ private fun ReviewDto.toGhPullRequestReview(): GhPullRequestReview =
 
 private fun ReviewCommentDto.toGhPullRequestReviewComment(): GhPullRequestReviewComment =
     GhPullRequestReviewComment(reviewId = reviewId, path = path, line = line, body = body)
+
+@Serializable
+private class CheckRunsPageDto(@SerialName("check_runs") val checkRuns: List<CheckRunDto>)
+
+@Serializable
+private class CheckRunDto(
+    val id: Long,
+    val name: String,
+    val status: String,
+    val conclusion: String? = null,
+    val output: CheckRunOutputDto? = null,
+)
+
+@Serializable
+private class CheckRunOutputDto(
+    val title: String? = null,
+    val summary: String? = null,
+    val text: String? = null,
+)
+
+private fun CheckRunDto.toGhCheckRun(): GhCheckRun =
+    GhCheckRun(
+        id = GhCheckRunId(id),
+        name = name,
+        status =
+            when (status) {
+              "queued" -> GhCheckRunStatus.QUEUED
+              "in_progress" -> GhCheckRunStatus.IN_PROGRESS
+              "completed" -> GhCheckRunStatus.COMPLETED
+              else -> GhCheckRunStatus.UNRECOGNIZED
+            },
+        conclusion =
+            conclusion?.let {
+              when (it) {
+                "success" -> GhCheckRunConclusion.SUCCESS
+                "failure" -> GhCheckRunConclusion.FAILURE
+                "neutral" -> GhCheckRunConclusion.NEUTRAL
+                "cancelled" -> GhCheckRunConclusion.CANCELLED
+                "timed_out" -> GhCheckRunConclusion.TIMED_OUT
+                "action_required" -> GhCheckRunConclusion.ACTION_REQUIRED
+                "skipped" -> GhCheckRunConclusion.SKIPPED
+                "stale" -> GhCheckRunConclusion.STALE
+                "startup_failure" -> GhCheckRunConclusion.STARTUP_FAILURE
+                else -> GhCheckRunConclusion.UNRECOGNIZED
+              }
+            },
+        output =
+            GhCheckRunOutput(
+                title = output?.title.orEmpty(),
+                summary = output?.summary.orEmpty(),
+                text = output?.text.orEmpty(),
+            ),
+    )
+
+// Rules of every kind come back in one list, each with settings of a shape only its own kind
+// knows, so a rule's parameters are left undecoded until its kind says what they are.
+@Serializable private class BranchRuleDto(val type: String, val parameters: JsonElement? = null)
+
+@Serializable
+private class RequiredStatusChecksParametersDto(
+    @SerialName("required_status_checks") val requiredStatusChecks: List<RequiredStatusCheckDto>
+)
+
+@Serializable private class RequiredStatusCheckDto(val context: String)
+
+private fun BranchRuleDto.requiredCheckNames(): List<String> {
+  if (type != "required_status_checks") return emptyList()
+  val parameters = parameters ?: return emptyList()
+  return gitHubJson
+      .decodeFromJsonElement<RequiredStatusChecksParametersDto>(parameters)
+      .requiredStatusChecks
+      .map { it.context }
+}
+
+@Serializable
+private class AnnotationDto(
+    val path: String,
+    @SerialName("start_line") val startLine: Int? = null,
+    val message: String? = null,
+)
+
+private fun AnnotationDto.toGhCheckAnnotation(): GhCheckAnnotation =
+    GhCheckAnnotation(
+        path = path,
+        // A check that has nothing to point at in a file says so with line zero rather than by
+        // leaving the file out.
+        startLine = startLine?.takeIf { it > 0 },
+        message = message.orEmpty(),
+    )
 
 @Serializable private class RepositoriesPageDto(val repositories: List<RepositoryDto>)
 
