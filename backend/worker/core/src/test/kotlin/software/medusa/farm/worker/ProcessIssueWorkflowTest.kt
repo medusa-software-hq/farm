@@ -58,6 +58,12 @@ class ProcessIssueWorkflowTest {
   private var checkAnnotations = "[]"
   private val checkFixupsRun = mutableListOf<List<FailedCheck>>()
 
+  // The rules the fake GitHub reports on the pull request's base branch: both checks the tests
+  // serve are required of a merge unless a test says otherwise.
+  private var branchRules =
+      """[{"type": "required_status_checks",
+           "parameters": {"required_status_checks": [{"context": "build"}, {"context": "test"}]}}]"""
+
   // What the session said it was at the moment each fixup ran.
   private val statesDuringFixup = mutableListOf<SessionState?>()
 
@@ -524,6 +530,38 @@ class ProcessIssueWorkflowTest {
   }
 
   @Test
+  fun `a red check the branch does not require is left alone`() {
+    // The check nothing gates a merge on tends to be the expensive, flaky one, red for reasons that
+    // live in the machinery it runs on — and no edit to the repository would turn that green.
+    branchRules =
+        """[{"type": "required_status_checks",
+             "parameters": {"required_status_checks": [{"context": "test"}]}}]"""
+    checkRuns = failingCheckRuns(report = "Compilation failed")
+    env.registerDelayedCallback(Duration.ofMinutes(25)) { pullRequestState = "closed" }
+
+    process()
+
+    assertTrue(checkFixupsRun.isEmpty(), "a check no merge waits on was worked")
+  }
+
+  @Test
+  fun `a check nothing requires does not hold up the ones that are required`() {
+    branchRules =
+        """[{"type": "required_status_checks",
+             "parameters": {"required_status_checks": [{"context": "build"}]}}]"""
+    checkRuns =
+        """{"check_runs": [
+             {"id": 41, "name": "build", "status": "completed", "conclusion": "failure",
+              "output": {"summary": "Compilation failed"}},
+             {"id": 42, "name": "loop", "status": "in_progress", "conclusion": null}]}"""
+    env.registerDelayedCallback(Duration.ofMinutes(25)) { pullRequestState = "closed" }
+
+    process()
+
+    assertEquals("Compilation failed", checkFixupsRun.single().single().report)
+  }
+
+  @Test
   fun `checks that came out green are nothing to fix`() {
     checkRuns =
         """{"check_runs": [{"id": 41, "name": "build", "status": "completed",
@@ -598,6 +636,7 @@ class ProcessIssueWorkflowTest {
       path.contains("/labels/") ->
           if (labelRemovalRefusals-- > 0) FakeGitHubServer.Response(500, "not now")
           else FakeGitHubServer.Response(200, "[]")
+      path.contains("/rules/branches/") -> FakeGitHubServer.Response(200, branchRules)
       path.endsWith("/check-runs") -> FakeGitHubServer.Response(200, checkRuns)
       path.endsWith("/annotations") -> FakeGitHubServer.Response(200, checkAnnotations)
       path.endsWith("/reviews") -> FakeGitHubServer.Response(200, reviews)
@@ -612,7 +651,7 @@ class ProcessIssueWorkflowTest {
               """{"number": 12, "html_url": "https://github.com/acme/one/pull/12",
                  "state": "$pullRequestState", "merged": $pullRequestMerged,
                  "merged_at": ${if (pullRequestMerged) "\"2026-08-19T10:00:00Z\"" else "null"},
-                 "head": {"sha": "abc123"}}""",
+                 "head": {"sha": "abc123"}, "base": {"ref": "trunk"}}""",
           )
       else -> FakeGitHubServer.Response(404, "unexpected ${request.pathAndQuery}")
     }

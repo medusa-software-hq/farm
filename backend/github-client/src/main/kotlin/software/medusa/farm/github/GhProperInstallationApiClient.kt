@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
 
 private const val httpOk = 200
 private const val httpCreated = 201
@@ -256,6 +258,19 @@ private constructor(
           }
           .toList()
 
+  override suspend fun listRequiredCheckNames(
+      repo: GhRepoFullName,
+      branch: String,
+  ): List<String> =
+      http
+          .getPaged("/repos/${repo.value}/rules/branches/${pathSegment(branch)}", tokenProvider) {
+              body ->
+            gitHubJson.decodeFromString<List<BranchRuleDto>>(body).flatMap {
+              it.requiredCheckNames()
+            }
+          }
+          .toList()
+
   override suspend fun listCheckRunAnnotations(
       repo: GhRepoFullName,
       checkRunId: GhCheckRunId,
@@ -306,9 +321,12 @@ private class PullRequestDto(
     val merged: Boolean = false,
     @SerialName("merged_at") val mergedAt: String? = null,
     val head: PullRequestHeadDto,
+    val base: PullRequestBaseDto,
 )
 
 @Serializable private class PullRequestHeadDto(val sha: String)
+
+@Serializable private class PullRequestBaseDto(val ref: String)
 
 private fun PullRequestDto.toGhPullRequest(): GhPullRequest =
     GhPullRequest(
@@ -321,6 +339,7 @@ private fun PullRequestDto.toGhPullRequest(): GhPullRequest =
               else -> GhPullRequestState.CLOSED
             },
         headSha = head.sha,
+        baseBranch = base.ref,
         mergedAt = mergedAt?.let(Instant::parse),
     )
 
@@ -440,6 +459,26 @@ private fun CheckRunDto.toGhCheckRun(): GhCheckRun =
                 text = output?.text.orEmpty(),
             ),
     )
+
+// Rules of every kind come back in one list, each with settings of a shape only its own kind
+// knows, so a rule's parameters are left undecoded until its kind says what they are.
+@Serializable private class BranchRuleDto(val type: String, val parameters: JsonElement? = null)
+
+@Serializable
+private class RequiredStatusChecksParametersDto(
+    @SerialName("required_status_checks") val requiredStatusChecks: List<RequiredStatusCheckDto>
+)
+
+@Serializable private class RequiredStatusCheckDto(val context: String)
+
+private fun BranchRuleDto.requiredCheckNames(): List<String> {
+  if (type != "required_status_checks") return emptyList()
+  val parameters = parameters ?: return emptyList()
+  return gitHubJson
+      .decodeFromJsonElement<RequiredStatusChecksParametersDto>(parameters)
+      .requiredStatusChecks
+      .map { it.context }
+}
 
 @Serializable
 private class AnnotationDto(

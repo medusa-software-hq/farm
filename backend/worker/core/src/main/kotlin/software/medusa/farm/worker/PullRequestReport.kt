@@ -4,7 +4,7 @@ import software.medusa.farm.github.GhPullRequestState
 
 /**
  * What one look at the pull request found: where it stands, any review left to act on, and whatever
- * its checks came back red on.
+ * the checks standing between it and a merge came back red on.
  */
 data class PullRequestReport(
     val state: GhPullRequestState,

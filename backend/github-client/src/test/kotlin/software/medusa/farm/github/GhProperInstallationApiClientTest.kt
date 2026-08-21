@@ -89,7 +89,7 @@ class GhProperInstallationApiClientTest {
           FakeGitHubServer.Response(
               201,
               """{"number": 42, "html_url": "https://github.com/acme/one/pull/42", """ +
-                  """"state": "open", "head": {"sha": "abc123"}}""",
+                  """"state": "open", "head": {"sha": "abc123"}, "base": {"ref": "trunk/v1"}}""",
           )
         }
         .use { server ->
@@ -106,6 +106,7 @@ class GhProperInstallationApiClientTest {
           assertEquals("https://github.com/acme/one/pull/42", pr.url)
           assertEquals(GhPullRequestState.OPEN, pr.state)
           assertEquals("abc123", pr.headSha)
+          assertEquals("trunk/v1", pr.baseBranch)
 
           val request = server.requests.single()
           assertEquals("POST", request.method)
@@ -137,7 +138,7 @@ class GhProperInstallationApiClientTest {
   @Test
   fun `reads pull request state, distinguishing merged from closed-unmerged`() = runBlocking {
     FakeGitHubServer { request ->
-          val head = """"head": {"sha": "s"}"""
+          val head = """"head": {"sha": "s"}, "base": {"ref": "trunk"}"""
           when {
             request.pathAndQuery.endsWith("/pulls/1") ->
                 FakeGitHubServer.Response(
@@ -302,6 +303,52 @@ class GhProperInstallationApiClientTest {
           assertEquals("Unresolved reference: foo", annotations.first().message)
           // A check with nothing in the diff to point at says so with line zero.
           assertNull(annotations[1].startLine)
+        }
+  }
+
+  @Test
+  fun `reads the checks a branch requires, past the rules that are about something else`() =
+      runBlocking {
+        FakeGitHubServer { _ ->
+              FakeGitHubServer.Response(
+                  200,
+                  """[{"type": "deletion", "ruleset_id": 5},
+                      {"type": "pull_request", "ruleset_id": 5,
+                       "parameters": {"allowed_merge_methods": ["merge"]}},
+                      {"type": "required_status_checks", "ruleset_id": 5,
+                       "parameters": {"strict_required_status_checks_policy": true,
+                         "required_status_checks": [
+                           {"context": "Backend (implementation) / Check", "integration_id": 15368},
+                           {"context": "schema / Integration test", "integration_id": 15368}]}}]""",
+              )
+            }
+            .use { server ->
+              val required =
+                  clientAgainst(server)
+                      .listRequiredCheckNames(GhRepoFullName("acme/one"), "trunk/v1")
+
+              assertEquals(
+                  listOf("Backend (implementation) / Check", "schema / Integration test"),
+                  required,
+              )
+              // A branch name is free to contain a slash, which is not a path separator here.
+              assertTrue(
+                  server.requests
+                      .single()
+                      .pathAndQuery
+                      .startsWith("/repos/acme/one/rules/branches/trunk%2Fv1")
+              )
+            }
+      }
+
+  @Test
+  fun `a branch under no rules requires no check`() = runBlocking {
+    FakeGitHubServer { _ -> FakeGitHubServer.Response(200, "[]") }
+        .use { server ->
+          assertEquals(
+              emptyList(),
+              clientAgainst(server).listRequiredCheckNames(GhRepoFullName("acme/one"), "trunk"),
+          )
         }
   }
 

@@ -236,7 +236,7 @@ class PublishActivitiesImplTest {
           FakeGitHubServer.Response(
               201,
               """{"number": 12, "html_url": "https://github.com/acme/one/pull/12", """ +
-                  """"state": "open", "head": {"sha": "abc"}}""",
+                  """"state": "open", "head": {"sha": "abc"}, "base": {"ref": "trunk"}}""",
           )
       else -> FakeGitHubServer.Response(404, "unexpected ${request.pathAndQuery}")
     }

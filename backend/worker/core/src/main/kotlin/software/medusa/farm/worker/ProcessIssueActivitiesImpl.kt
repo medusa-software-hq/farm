@@ -76,7 +76,8 @@ class ProcessIssueActivitiesImpl(
           PullRequestReport(
               state = pullRequest.state,
               feedback = findFeedback(client, repo, number, afterReviewId),
-              failedChecks = findFailedChecks(client, repo, pullRequest.headSha),
+              failedChecks =
+                  findFailedChecks(client, repo, pullRequest.baseBranch, pullRequest.headSha),
           )
         }
 
@@ -114,7 +115,12 @@ class ProcessIssueActivitiesImpl(
   }
 
   /**
-   * What the checks on [headSha] came back red on, with what each of them reported.
+   * What the checks on [headSha] that [baseBranch] will not let a merge past came back red on, with
+   * what each of them reported.
+   *
+   * Only those: a check the branch does not require can be red for reasons that live in the
+   * infrastructure it runs on rather than in the repository, and no edit the agent makes would turn
+   * it green. What blocks the merge is the part of the pipeline the agent can be held to.
    *
    * Nothing while any of them is still going: a pipeline read half way through reports whichever
    * checks happen to have finished, and reworking a pull request on the first of thirteen to fall
@@ -123,9 +129,11 @@ class ProcessIssueActivitiesImpl(
   private suspend fun findFailedChecks(
       client: GhInstallationApiClient,
       repo: GhRepoFullName,
+      baseBranch: String,
       headSha: String,
   ): List<FailedCheck> {
-    val checkRuns = client.listCheckRuns(repo, headSha)
+    val required = client.listRequiredCheckNames(repo, baseBranch).toSet()
+    val checkRuns = client.listCheckRuns(repo, headSha).filter { it.name in required }
     if (checkRuns.any { it.status != GhCheckRunStatus.COMPLETED }) return emptyList()
 
     return checkRuns
