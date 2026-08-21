@@ -2,12 +2,14 @@ import { Card, Group, Loader, SimpleGrid, Stack, Text, Title } from '@mantine/co
 import { useEffect, useState } from 'react';
 import { farm } from '../api.ts';
 import { useOrg } from '../OrgContext.tsx';
+import { isAwaitingReview } from '../sessionState.ts';
 import { useApiHeaders } from '../useApiHeaders.ts';
 
 interface Snapshot {
   repos: number;
   issues: number;
   running: number;
+  awaitingReview: number;
   completed: number;
 }
 
@@ -49,11 +51,12 @@ export function Overview() {
           repos: repos.repositories.filter((r) => r.orgLogin === selected.orgLogin).length,
           issues: orgIssues.length,
           running: orgIssues.filter((i) => i.sessionState === 'RUNNING').length,
+          awaitingReview: orgIssues.filter((i) => isAwaitingReview(i.sessionState)).length,
           completed: orgIssues.filter((i) => i.sessionState === 'COMPLETED').length,
         });
       } catch {
         if (!cancelled) {
-          setSnap({ repos: 0, issues: 0, running: 0, completed: 0 });
+          setSnap({ repos: 0, issues: 0, running: 0, awaitingReview: 0, completed: 0 });
         }
       }
     })();
@@ -76,10 +79,11 @@ export function Overview() {
       {snap === null ? (
         <Loader size="sm" color="fern" />
       ) : (
-        <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
+        <SimpleGrid cols={{ base: 2, sm: 5 }} spacing="md">
           <Stat label="Repositories" value={snap.repos} />
           <Stat label="Open issues" value={snap.issues} />
           <Stat label="Running now" value={snap.running} color="yellow.7" />
+          <Stat label="Awaiting review" value={snap.awaitingReview} color="blue.7" />
           <Stat label="Completed" value={snap.completed} color="fern" />
         </SimpleGrid>
       )}

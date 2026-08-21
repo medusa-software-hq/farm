@@ -43,6 +43,14 @@ class InMemorySessionStore(private val clock: Clock) : SessionStore {
     }
   }
 
+  override suspend fun awaitReview(id: String) {
+    transition(id, SessionState.AWAITING_REVIEW)
+  }
+
+  override suspend fun resumeWork(id: String) {
+    transition(id, SessionState.RUNNING)
+  }
+
   override suspend fun complete(id: String) {
     transition(id, SessionState.COMPLETED)
   }
@@ -143,7 +151,9 @@ class InMemorySessionStore(private val clock: Clock) : SessionStore {
 
   private fun transition(id: String, state: SessionState) {
     val now = clock.instant()
-    rows.computeIfPresent(id) { _, s -> s.copy(state = state, finishedAt = now) }
+    rows.computeIfPresent(id) { _, s ->
+      s.copy(state = state, finishedAt = if (state.finished) now else null)
+    }
   }
 
   override suspend fun listForOrgs(installationIds: List<Long>): List<Session> =

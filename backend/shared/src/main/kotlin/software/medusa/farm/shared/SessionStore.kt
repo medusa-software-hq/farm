@@ -17,6 +17,15 @@ interface SessionStore {
       title: String,
   )
 
+  /**
+   * Marks the session as waiting on somebody to review the pull request it opened: still live, but
+   * with nothing left for Farm to do until a person says something. Idempotent.
+   */
+  suspend fun awaitReview(id: String)
+
+  /** Marks the session as working again, after [awaitReview]. Idempotent. */
+  suspend fun resumeWork(id: String)
+
   /** Marks the session completed. */
   suspend fun complete(id: String)
 

@@ -84,6 +84,7 @@ export function SessionsArchive() {
               data={[
                 { value: 'all', label: 'All states' },
                 { value: 'RUNNING', label: 'Running' },
+                { value: 'AWAITING_REVIEW', label: 'Awaiting review' },
                 { value: 'COMPLETED', label: 'Completed' },
                 { value: 'FAILED', label: 'Failed' },
               ]}

@@ -117,6 +117,15 @@ export function IconX({ size }: IconProps) {
   );
 }
 
+export function IconReview({ size }: IconProps) {
+  return (
+    <Svg size={size}>
+      <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z" />
+      <circle cx="12" cy="12" r="2.6" />
+    </Svg>
+  );
+}
+
 export function IconActivity({ size }: IconProps) {
   return (
     <Svg size={size}>

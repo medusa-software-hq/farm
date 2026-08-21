@@ -163,6 +163,12 @@ class FarmLoopSystemTest {
         "the run recorded nothing the agent did",
     )
 
+    // Waited for rather than read straight off: the pull request reaches GitHub a moment before
+    // Farm records the wait against the session.
+    awaitUntil("the session to say it is waiting on a review", SETTLE_LIMIT) {
+      stateOf(api, sessionId).takeIf { it == "AWAITING_REVIEW" }
+    }
+
     // Reviewed the way a person does: something in the box, and something against a line the agent
     // actually wrote.
     val touched =
@@ -207,10 +213,12 @@ class FarmLoopSystemTest {
       gitHub.mergePullRequest(repo, pullRequest.number, GhMergeMethod.SQUASH)
     }
 
+    // Over, rather than merely not RUNNING: a session awaiting review is not running either, and
+    // this wait would end on it the moment the fixup went up.
     val finished =
         awaitUntil("the session to finish", SETTLE_LIMIT) {
           api.listSessions(ListSessionsRequest.getDefaultInstance()).sessionsList.firstOrNull {
-            it.id == sessionId && it.state != "RUNNING"
+            it.id == sessionId && it.finishedAtMillis > 0
           }
         }
     assertEquals("COMPLETED", finished.state)
@@ -226,6 +234,16 @@ class FarmLoopSystemTest {
         "the finished issue is still offered up for work",
     )
   }
+
+  /** What the session says it is, as somebody reading the farm's own screens would see it. */
+  private suspend fun stateOf(
+      api: FarmServiceGrpcKt.FarmServiceCoroutineStub,
+      sessionId: String,
+  ): String? =
+      api.listSessions(ListSessionsRequest.getDefaultInstance())
+          .sessionsList
+          .firstOrNull { it.id == sessionId }
+          ?.state
 
   private suspend fun runsOf(api: FarmServiceGrpcKt.FarmServiceCoroutineStub, sessionId: String) =
       api.getSessionRuns(GetSessionRunsRequest.newBuilder().setSessionId(sessionId).build())
