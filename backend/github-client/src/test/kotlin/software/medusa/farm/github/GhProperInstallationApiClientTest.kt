@@ -114,6 +114,27 @@ class GhProperInstallationApiClientTest {
   }
 
   @Test
+  fun `takes a label off an issue, encoding the name into the path`() = runBlocking {
+    FakeGitHubServer { FakeGitHubServer.Response(200, "[]") }
+        .use { server ->
+          clientAgainst(server).removeLabel(GhRepoFullName("acme/one"), 7, "farm:ready")
+
+          val request = server.requests.single()
+          assertEquals("DELETE", request.method)
+          assertEquals("/repos/acme/one/issues/7/labels/farm%3Aready", request.pathAndQuery)
+        }
+  }
+
+  @Test
+  fun `taking off a label the issue has not got is not a failure`(): Unit = runBlocking {
+    FakeGitHubServer { FakeGitHubServer.Response(404, """{"message": "Label does not exist"}""") }
+        .use { server ->
+          // Asking twice has to be as good as asking once: what the caller wants is the label gone.
+          clientAgainst(server).removeLabel(GhRepoFullName("acme/one"), 7, "farm:ready")
+        }
+  }
+
+  @Test
   fun `reads pull request state, distinguishing merged from closed-unmerged`() = runBlocking {
     FakeGitHubServer { request ->
           val head = """"head": {"sha": "s"}"""

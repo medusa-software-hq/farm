@@ -23,6 +23,12 @@ interface ProcessIssueActivities {
   @ActivityMethod
   fun postIssueComment(installationId: Long, repoFullName: String, number: Int, body: String)
 
+  /**
+   * Takes the label that offers an issue up for work off it, so the sweep stops seeing it.
+   * Idempotent.
+   */
+  @ActivityMethod fun removeReadyLabel(installationId: Long, repoFullName: String, number: Int)
+
   /** Records the pull request the session opened. */
   @ActivityMethod
   fun recordPullRequest(sessionId: String, number: Int, url: String, headSha: String)

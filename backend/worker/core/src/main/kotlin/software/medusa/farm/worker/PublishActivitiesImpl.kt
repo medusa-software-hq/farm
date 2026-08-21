@@ -100,7 +100,9 @@ class PublishActivitiesImpl(
               head = branch,
               base = baseBranch,
               title = title,
-              body = "Refs #$number\n\n🌱 Opened by Farm.",
+              // "Closes", so GitHub shuts the issue when this is merged rather than leaving it
+              // open on a change that has landed.
+              body = "Closes #$number\n\n🌱 Opened by Farm.",
           )
       IssueAttemptOutcome(
           pullRequestUrl = pullRequest.url,

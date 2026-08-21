@@ -122,15 +122,24 @@ class RepoSyncActivitiesImpl(
             WorkflowOptions.newBuilder()
                 .setTaskQueue(taskQueue)
                 .setWorkflowId(processIssueWorkflowId(githubRepoId, number))
+                // A finished run does not stand in the way of a new one. Refusing the id would
+                // read as "process each issue once" and mean "once per retention window": the
+                // refusal expires with the execution, and the issue would be worked afresh
+                // whenever that happened to be. The label is what says an issue wants working,
+                // and the session takes it off when it is done with it.
+                //
+                // The id still refuses a start while a run is in flight, and a run does not
+                // finish until the issue is out of the queue — so an issue that cannot be
+                // unlabelled holds a run open rather than being offered up on every pass.
                 .setWorkflowIdReusePolicy(
-                    WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE
+                    WorkflowIdReusePolicy.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE
                 )
                 .build(),
         )
     try {
       WorkflowClient.start(stub::process, installationId, githubRepoId, repoFullName, number, title)
     } catch (ignored: WorkflowExecutionAlreadyStarted) {
-      // Already processed (or in flight): process each issue once. Nothing to do.
+      // Being worked already. Nothing to do.
     }
   }
 }

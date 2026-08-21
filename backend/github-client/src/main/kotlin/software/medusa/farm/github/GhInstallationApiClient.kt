@@ -44,6 +44,12 @@ interface GhInstallationApiClient : GhResourcesApiClient {
    */
   suspend fun ensureLabel(repo: GhRepoFullName, name: String)
 
+  /**
+   * Takes [name] off an issue, and does nothing if the issue was not carrying it. Requires the
+   * App's Issues:write permission.
+   */
+  suspend fun removeLabel(repo: GhRepoFullName, number: Int, name: String)
+
   /** Opens an issue carrying [labels]. Requires the App's Issues:write permission. */
   suspend fun createIssue(
       repo: GhRepoFullName,
