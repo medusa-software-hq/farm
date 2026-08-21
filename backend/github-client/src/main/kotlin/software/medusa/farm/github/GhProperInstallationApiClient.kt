@@ -249,6 +249,26 @@ private constructor(
           }
           .toList()
 
+  override suspend fun listCheckRuns(repo: GhRepoFullName, ref: String): List<GhCheckRun> =
+      http
+          .getPaged("/repos/${repo.value}/commits/$ref/check-runs", tokenProvider) { body ->
+            gitHubJson.decodeFromString<CheckRunsPageDto>(body).checkRuns.map { it.toGhCheckRun() }
+          }
+          .toList()
+
+  override suspend fun listCheckRunAnnotations(
+      repo: GhRepoFullName,
+      checkRunId: GhCheckRunId,
+  ): List<GhCheckAnnotation> =
+      http
+          .getPaged(
+              "/repos/${repo.value}/check-runs/${checkRunId.value}/annotations",
+              tokenProvider,
+          ) { body ->
+            gitHubJson.decodeFromString<List<AnnotationDto>>(body).map { it.toGhCheckAnnotation() }
+          }
+          .toList()
+
   override suspend fun getPullRequest(repo: GhRepoFullName, number: Int): GhPullRequest {
     val response =
         http.get("/repos/${repo.value}/pulls/$number", bearer = tokenProvider.provideToken())
@@ -367,6 +387,75 @@ private fun ReviewDto.toGhPullRequestReview(): GhPullRequestReview =
 
 private fun ReviewCommentDto.toGhPullRequestReviewComment(): GhPullRequestReviewComment =
     GhPullRequestReviewComment(reviewId = reviewId, path = path, line = line, body = body)
+
+@Serializable
+private class CheckRunsPageDto(@SerialName("check_runs") val checkRuns: List<CheckRunDto>)
+
+@Serializable
+private class CheckRunDto(
+    val id: Long,
+    val name: String,
+    val status: String,
+    val conclusion: String? = null,
+    val output: CheckRunOutputDto? = null,
+)
+
+@Serializable
+private class CheckRunOutputDto(
+    val title: String? = null,
+    val summary: String? = null,
+    val text: String? = null,
+)
+
+private fun CheckRunDto.toGhCheckRun(): GhCheckRun =
+    GhCheckRun(
+        id = GhCheckRunId(id),
+        name = name,
+        status =
+            when (status) {
+              "queued" -> GhCheckRunStatus.QUEUED
+              "in_progress" -> GhCheckRunStatus.IN_PROGRESS
+              "completed" -> GhCheckRunStatus.COMPLETED
+              else -> GhCheckRunStatus.UNRECOGNIZED
+            },
+        conclusion =
+            conclusion?.let {
+              when (it) {
+                "success" -> GhCheckRunConclusion.SUCCESS
+                "failure" -> GhCheckRunConclusion.FAILURE
+                "neutral" -> GhCheckRunConclusion.NEUTRAL
+                "cancelled" -> GhCheckRunConclusion.CANCELLED
+                "timed_out" -> GhCheckRunConclusion.TIMED_OUT
+                "action_required" -> GhCheckRunConclusion.ACTION_REQUIRED
+                "skipped" -> GhCheckRunConclusion.SKIPPED
+                "stale" -> GhCheckRunConclusion.STALE
+                "startup_failure" -> GhCheckRunConclusion.STARTUP_FAILURE
+                else -> GhCheckRunConclusion.UNRECOGNIZED
+              }
+            },
+        output =
+            GhCheckRunOutput(
+                title = output?.title.orEmpty(),
+                summary = output?.summary.orEmpty(),
+                text = output?.text.orEmpty(),
+            ),
+    )
+
+@Serializable
+private class AnnotationDto(
+    val path: String,
+    @SerialName("start_line") val startLine: Int? = null,
+    val message: String? = null,
+)
+
+private fun AnnotationDto.toGhCheckAnnotation(): GhCheckAnnotation =
+    GhCheckAnnotation(
+        path = path,
+        // A check that has nothing to point at in a file says so with line zero rather than by
+        // leaving the file out.
+        startLine = startLine?.takeIf { it > 0 },
+        message = message.orEmpty(),
+    )
 
 @Serializable private class RepositoriesPageDto(val repositories: List<RepositoryDto>)
 

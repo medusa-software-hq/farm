@@ -12,7 +12,7 @@ import software.medusa.farm.shared.FarmStore
 
 /**
  * What the worker cannot work an issue without: it clones and pushes, comments on issues, and opens
- * pull requests to read the reviews left on them.
+ * pull requests to read the reviews and the checks left on them.
  *
  * Not everything the deployed App holds. Workflows:write is wanted only by a farm whose agent edits
  * a workflow file, and a farm none does is a farm that runs without it.
@@ -23,6 +23,7 @@ private val requiredPermissionSet =
             GhPermissionId.Contents to GhPermissionMode.Write,
             GhPermissionId.Issues to GhPermissionMode.Write,
             GhPermissionId.PullRequests to GhPermissionMode.Write,
+            GhPermissionId.Checks to GhPermissionMode.Read,
             GhPermissionId.Metadata to GhPermissionMode.Read,
         )
     )

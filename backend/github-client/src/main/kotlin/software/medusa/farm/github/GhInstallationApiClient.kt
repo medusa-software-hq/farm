@@ -39,6 +39,23 @@ interface GhInstallationApiClient : GhResourcesApiClient {
   ): List<GhPullRequestReviewComment>
 
   /**
+   * Every check run reported against commit [ref], whatever state each is in. Requires the App's
+   * Checks:read permission.
+   */
+  suspend fun listCheckRuns(repo: GhRepoFullName, ref: String): List<GhCheckRun>
+
+  /**
+   * The places in the code a check run pointed at. Requires the App's Checks:read permission.
+   *
+   * These are the only failure text a check leaves behind that names a file: what a build wrote to
+   * its own log belongs to whatever ran it, and is not on the check.
+   */
+  suspend fun listCheckRunAnnotations(
+      repo: GhRepoFullName,
+      checkRunId: GhCheckRunId,
+  ): List<GhCheckAnnotation>
+
+  /**
    * Creates a label if the repository has not got one by that name, and does nothing if it has.
    * Requires the App's Issues:write permission.
    */

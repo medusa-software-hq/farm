@@ -230,6 +230,81 @@ class GhProperInstallationApiClientTest {
         }
   }
 
+  @Test
+  fun `reads how far a check got, how it came out, and what it reported`() = runBlocking {
+    // Shaped after a real commit's checks: one still going, one red with a report, one green, and
+    // a conclusion this library has no name for.
+    FakeGitHubServer { _ ->
+          FakeGitHubServer.Response(
+              200,
+              """{"total_count": 4, "check_runs": [
+                   {"id": 51226077961, "name": "test", "status": "in_progress",
+                    "conclusion": null},
+                   {"id": 51226077962, "name": "build", "status": "completed",
+                    "conclusion": "failure",
+                    "output": {"title": "1 error", "summary": "Compilation failed",
+                               "text": null}},
+                   {"id": 51226077963, "name": "lint", "status": "completed",
+                    "conclusion": "success", "output": {"title": null, "summary": null}},
+                   {"id": 51226077964, "name": "deploy", "status": "completed",
+                    "conclusion": "something_new"}]}""",
+          )
+        }
+        .use { server ->
+          val checkRuns = clientAgainst(server).listCheckRuns(GhRepoFullName("acme/one"), "abc123")
+
+          assertEquals(
+              listOf(
+                  GhCheckRunStatus.IN_PROGRESS,
+                  GhCheckRunStatus.COMPLETED,
+                  GhCheckRunStatus.COMPLETED,
+                  GhCheckRunStatus.COMPLETED,
+              ),
+              checkRuns.map { it.status },
+          )
+          assertEquals(
+              listOf(
+                  null,
+                  GhCheckRunConclusion.FAILURE,
+                  GhCheckRunConclusion.SUCCESS,
+                  GhCheckRunConclusion.UNRECOGNIZED,
+              ),
+              checkRuns.map { it.conclusion },
+          )
+          assertEquals(GhCheckRunId(51226077962), checkRuns[1].id)
+          assertEquals(
+              GhCheckRunOutput(title = "1 error", summary = "Compilation failed", text = ""),
+              checkRuns[1].output,
+          )
+          // A check is free to report nothing and be read for its conclusion alone.
+          assertEquals(GhCheckRunOutput(title = "", summary = "", text = ""), checkRuns[3].output)
+        }
+  }
+
+  @Test
+  fun `reads the places a check pointed at`() = runBlocking {
+    FakeGitHubServer { _ ->
+          FakeGitHubServer.Response(
+              200,
+              """[{"path": "src/main/kotlin/A.kt", "start_line": 5, "end_line": 5,
+                   "annotation_level": "failure", "message": "Unresolved reference: foo"},
+                  {"path": ".github", "start_line": 0, "end_line": 0,
+                   "annotation_level": "failure", "message": "Process completed with exit code 1"}]""",
+          )
+        }
+        .use { server ->
+          val annotations =
+              clientAgainst(server)
+                  .listCheckRunAnnotations(GhRepoFullName("acme/one"), GhCheckRunId(51226077962))
+
+          assertEquals("src/main/kotlin/A.kt", annotations.first().path)
+          assertEquals(5, annotations.first().startLine)
+          assertEquals("Unresolved reference: foo", annotations.first().message)
+          // A check with nothing in the diff to point at says so with line zero.
+          assertNull(annotations[1].startLine)
+        }
+  }
+
   private fun isSecondPage(pathAndQuery: String): Boolean =
       Regex("[?&]page=(\\d+)").find(pathAndQuery)?.groupValues?.get(1)?.toInt() == 2
 

@@ -53,6 +53,11 @@ class ProcessIssueWorkflowTest {
   private var reviewComments = "[]"
   private val fixupsRun = mutableListOf<ReviewFeedback>()
 
+  // Checks the fake GitHub serves against the pull request's head, and what the fixups put on them.
+  private var checkRuns = """{"check_runs": []}"""
+  private var checkAnnotations = "[]"
+  private val checkFixupsRun = mutableListOf<List<FailedCheck>>()
+
   // What the session said it was at the moment each fixup ran.
   private val statesDuringFixup = mutableListOf<SessionState?>()
 
@@ -79,6 +84,19 @@ class ProcessIssueWorkflowTest {
         feedback: ReviewFeedback,
     ) {
       fixupsRun += feedback
+      statesDuringFixup += runBlocking { sessions.get(sessionId) }?.state
+    }
+
+    override fun fixupChecks(
+        sessionId: String,
+        installationId: Long,
+        repoFullName: String,
+        number: Int,
+        title: String,
+        runOrdinal: Int,
+        failedChecks: List<FailedCheck>,
+    ) {
+      checkFixupsRun += failedChecks
       statesDuringFixup += runBlocking { sessions.get(sessionId) }?.state
     }
 
@@ -403,6 +421,121 @@ class ProcessIssueWorkflowTest {
   }
 
   @Test
+  fun `a check that goes red is worked without anybody asking`() {
+    checkRuns = failingCheckRuns(report = "Compilation failed")
+    checkAnnotations =
+        """[{"path": "src/A.kt", "start_line": 5, "message": "Unresolved reference: foo"}]"""
+    env.registerDelayedCallback(Duration.ofMinutes(25)) {
+      pullRequestState = "closed"
+      pullRequestMerged = true
+    }
+
+    process()
+
+    val failed = checkFixupsRun.single().single()
+    assertEquals("build", failed.name)
+    assertEquals("Compilation failed", failed.report)
+    assertEquals(
+        listOf(
+            FailedCheckAnnotation(
+                path = "src/A.kt",
+                line = 5,
+                message = "Unresolved reference: foo",
+            )
+        ),
+        failed.annotations,
+    )
+    // Nobody said anything: the red build alone is what put the agent back to work.
+    assertEquals(listOf<SessionState?>(SessionState.RUNNING), statesDuringFixup)
+  }
+
+  @Test
+  fun `a check that keeps failing the same way stops costing runs`() {
+    checkRuns = failingCheckRuns(report = "Compilation failed")
+
+    // Never merged, never closed: the loop looks until it gives up on silence, and the same red
+    // build seen on every one of those passes is worth one run between them.
+    process()
+
+    assertEquals(1, checkFixupsRun.size, "one failure was worked over and over")
+  }
+
+  @Test
+  fun `a check that starts failing differently is worked again`() {
+    checkRuns = failingCheckRuns(report = "Compilation failed")
+    env.registerDelayedCallback(Duration.ofMinutes(25)) {
+      checkRuns = failingCheckRuns(report = "A test failed")
+    }
+
+    process()
+
+    assertEquals(
+        listOf("Compilation failed", "A test failed"),
+        checkFixupsRun.map { it.single().report },
+    )
+  }
+
+  @Test
+  fun `a check that fails a new way every time runs out of a budget of its own`() {
+    checkRuns = failingCheckRuns(report = "Failure 0")
+    // A build red in a different place on every pass — a flaky suite, or a fix that trades one
+    // failure for the next — has no end to it, so what ends it is the budget.
+    (1..ProcessIssueWorkflowImpl.MAX_CHECK_FIXUP_RUNS + 1).forEach { round ->
+      env.registerDelayedCallback(Duration.ofMinutes(25L * round)) {
+        checkRuns = failingCheckRuns(report = "Failure $round")
+      }
+    }
+
+    // A reviewer turns up once the build has spent everything it had.
+    env.registerDelayedCallback(
+        Duration.ofMinutes(25L * (ProcessIssueWorkflowImpl.MAX_CHECK_FIXUP_RUNS + 2))
+    ) {
+      reviews =
+          """[{"id": 901, "state": "CHANGES_REQUESTED", "body": "Needs work",
+               "submitted_at": "2026-08-19T20:05:00Z"}]"""
+    }
+
+    process()
+
+    assertEquals(
+        ProcessIssueWorkflowImpl.MAX_CHECK_FIXUP_RUNS,
+        checkFixupsRun.size,
+        "the check budget was overspent",
+    )
+    // And the reviews' budget is untouched by any of it: what the reviewer said is still owed a
+    // run.
+    assertEquals(listOf("Needs work"), fixupsRun.map { it.body })
+  }
+
+  @Test
+  fun `checks still running are left to finish`() {
+    // Acting on the first of them to fall over would spend a run on a fraction of what the
+    // pipeline is about to report.
+    checkRuns =
+        """{"check_runs": [
+             {"id": 41, "name": "build", "status": "completed", "conclusion": "failure",
+              "output": {"summary": "Compilation failed"}},
+             {"id": 42, "name": "test", "status": "in_progress", "conclusion": null}]}"""
+    env.registerDelayedCallback(Duration.ofMinutes(25)) { pullRequestState = "closed" }
+
+    process()
+
+    assertTrue(checkFixupsRun.isEmpty(), "a pipeline read half way through was worked")
+  }
+
+  @Test
+  fun `checks that came out green are nothing to fix`() {
+    checkRuns =
+        """{"check_runs": [{"id": 41, "name": "build", "status": "completed",
+             "conclusion": "success"}]}"""
+    env.registerDelayedCallback(Duration.ofMinutes(25)) { pullRequestState = "closed" }
+
+    process()
+
+    assertTrue(checkFixupsRun.isEmpty(), "a check that passed triggered a fixup")
+  }
+
+  @Test
   fun `waiting out the silence limit stays inside a workflow history`() {
     // The poll interval and the silence limit are coupled through history: every pass costs events,
     // and a workflow that runs out of history is terminated mid-wait. Measured rather than
@@ -444,6 +577,11 @@ class ProcessIssueWorkflowTest {
   private fun isIssueComment(request: FakeGitHubServer.Request): Boolean =
       request.method == "POST" && request.pathAndQuery == "/repos/acme/one/issues/7/comments"
 
+  /** One finished check, red, reporting [report]. */
+  private fun failingCheckRuns(report: String): String =
+      """{"check_runs": [{"id": 41, "name": "build", "status": "completed",
+           "conclusion": "failure", "output": {"summary": "$report"}}]}"""
+
   private fun readyLabelRemovals(): List<FakeGitHubServer.Request> =
       server.requests.filter {
         it.method == "DELETE" && it.pathAndQuery == "/repos/acme/one/issues/7/labels/farm%3Aready"
@@ -460,6 +598,8 @@ class ProcessIssueWorkflowTest {
       path.contains("/labels/") ->
           if (labelRemovalRefusals-- > 0) FakeGitHubServer.Response(500, "not now")
           else FakeGitHubServer.Response(200, "[]")
+      path.endsWith("/check-runs") -> FakeGitHubServer.Response(200, checkRuns)
+      path.endsWith("/annotations") -> FakeGitHubServer.Response(200, checkAnnotations)
       path.endsWith("/reviews") -> FakeGitHubServer.Response(200, reviews)
       // Before the issue-comment clause below: a review's line comments hang off the pull request
       // and end in "/comments" too.

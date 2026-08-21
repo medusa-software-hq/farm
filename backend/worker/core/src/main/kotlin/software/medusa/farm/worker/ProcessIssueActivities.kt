@@ -34,8 +34,9 @@ interface ProcessIssueActivities {
   fun recordPullRequest(sessionId: String, number: Int, url: String, headSha: String)
 
   /**
-   * Looks at the session's pull request: where it stands, and whether a review newer than
-   * [afterReviewId] has asked for changes. Records the merge when it finds one. Idempotent.
+   * Looks at the session's pull request: where it stands, whether a review newer than
+   * [afterReviewId] has asked for changes, and what its checks came back red on. Records the merge
+   * when it finds one. Idempotent.
    */
   @ActivityMethod
   fun readPullRequest(

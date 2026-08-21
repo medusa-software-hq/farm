@@ -126,6 +126,64 @@ class PublishActivitiesImpl(
       runOrdinal: Int,
       feedback: ReviewFeedback,
   ): Unit = runBlocking {
+    fixUp(
+        sessionId = sessionId,
+        installationId = installationId,
+        repoFullName = repoFullName,
+        number = number,
+        runOrdinal = runOrdinal,
+        commitSubject = "Address review feedback",
+    ) { body, previousSummary ->
+      AgentPrompt.forFixup(
+          title = title,
+          body = body,
+          previousSummary = previousSummary,
+          feedback = feedback,
+      )
+    }
+  }
+
+  override fun fixupChecks(
+      sessionId: String,
+      installationId: Long,
+      repoFullName: String,
+      number: Int,
+      title: String,
+      runOrdinal: Int,
+      failedChecks: List<FailedCheck>,
+  ): Unit = runBlocking {
+    fixUp(
+        sessionId = sessionId,
+        installationId = installationId,
+        repoFullName = repoFullName,
+        number = number,
+        runOrdinal = runOrdinal,
+        commitSubject = "Fix the failing checks",
+    ) { body, previousSummary ->
+      AgentPrompt.forFailedChecks(
+          title = title,
+          body = body,
+          previousSummary = previousSummary,
+          failedChecks = failedChecks,
+      )
+    }
+  }
+
+  /**
+   * Runs one agent session over the branch the session's pull request is on, as run [runOrdinal],
+   * and pushes whatever it changed under [commitSubject]. What the agent is asked for is
+   * [promptFor]'s, built from the issue's body and what the run before this one did — which the
+   * fresh session no longer holds.
+   */
+  private suspend fun fixUp(
+      sessionId: String,
+      installationId: Long,
+      repoFullName: String,
+      number: Int,
+      runOrdinal: Int,
+      commitSubject: String,
+      promptFor: (body: String, previousSummary: String) -> String,
+  ) {
     val installation = GhInstallationId(installationId)
     val repo = GhRepoFullName(repoFullName)
     val client = clientProvider.provideForInstallation(installation)
@@ -148,21 +206,15 @@ class PublishActivitiesImpl(
           runOrdinal = runOrdinal,
           workspacePath = clone,
           configDirPath = configDir,
-          prompt =
-              AgentPrompt.forFixup(
-                  title = title,
-                  body = body,
-                  previousSummary = previousRunSummary(sessionId),
-                  feedback = feedback,
-              ),
+          prompt = promptFor(body, previousRunSummary(sessionId)),
       )
 
       gitCli.stageAll(clone)
       checkNothingWasCommitted(clone, baseSha)
-      // A review can be answered without changing anything — the reviewer was mistaken, or asked
-      // for something already there. The run is still recorded; there is simply nothing to push.
+      // A fixup can end without changing anything — the reviewer was mistaken, or the check that
+      // went red was flaky. The run is still recorded; there is simply nothing to push.
       if (gitCli.hasStagedChanges(clone)) {
-        gitCli.commit(clone, fixupCommitMessage(number), commitAuthor, signingKey)
+        gitCli.commit(clone, "$commitSubject\n\nRefs #$number", commitAuthor, signingKey)
         gitCli.push(clone, branch, token)
       }
     } finally {
@@ -241,8 +293,6 @@ class PublishActivitiesImpl(
           ?.summary ?: error("session $sessionId has no finished run to follow up")
 
   private fun branchFor(number: Int): String = "farm/issue-$number"
-
-  private fun fixupCommitMessage(number: Int): String = "Address review feedback\n\nRefs #$number"
 
   private fun cloneUrl(repo: GhRepoFullName): String = "https://github.com/${repo.value}.git"
 
